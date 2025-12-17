@@ -1,0 +1,3444 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Initialize default in-memory users synchronously
+  initDefaultUsers();
+
+  // Initialize Firebase BEFORE starting the app to avoid race conditions
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 8));
+    // ignore: avoid_print
+    print('Firebase initialized successfully in main()');
+  } catch (e) {
+    // Initialization failed or timed out — log but continue
+    // ignore: avoid_print
+    print('Firebase init failed in main(): $e');
+  }
+
+  runApp(const MyApp());
+}
+
+class SarikotPage extends StatelessWidget {
+  const SarikotPage({super.key});
+
+  static Widget _buildPrinciple(String number, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: Colors.orangeAccent,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('סריקות רחוב')),
+        body: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'סריקות רחוב',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'איתור וזיהוי איומים במרחב אורבני. שימוש בכיסויי שטח, חלוקת מגזרים, ומעבר סדור בין נקודות חמות.',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 32),
+                const Text(
+                  'חמש עקרונות סריקות רחוב',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                _buildPrinciple('1', 'אבטחה היקפית'),
+                const SizedBox(height: 16),
+                _buildPrinciple('2', 'שמירה על קשר בתוך הכוח הסורק'),
+                const SizedBox(height: 16),
+                _buildPrinciple('3', 'שליטה בכוח'),
+                const SizedBox(height: 16),
+                _buildPrinciple('4', 'יצירת גירוי'),
+                const SizedBox(height: 16),
+                _buildPrinciple('5', 'עבודה ממרכז'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Simple app user
+class AppUser {
+  final String username;
+  final String name;
+  final String role; // 'Instructor' | 'Admin' | 'User'
+  final String? uid;
+  const AppUser({
+    required this.username,
+    required this.name,
+    required this.role,
+    this.uid,
+  });
+}
+
+/// Currently logged-in user (null if not logged)
+AppUser? currentUser;
+
+/// Predefined users (username -> password,name,role,active)
+final Map<String, Map<String, dynamic>> predefinedUsers = {};
+
+/// Feedback folders (fixed categories)
+const List<String> feedbackFolders = [
+  'מחלקות ההגנה – חטיבה 474',
+  'מטווחי ירי',
+  'מיונים לקורס מדריכים',
+  'מיונים – כללי',
+  'עבודה במבנה',
+  'משובים – כללי',
+];
+
+/// Initialize default users on first run (in-memory)
+void initDefaultUsers() {
+  if (predefinedUsers.isNotEmpty) return; // already initialized
+
+  predefinedUsers.addAll({
+    'admin': {
+      'password': '2404',
+      'name': 'מנהל המערכת',
+      'role': 'Admin',
+      'active': true,
+    },
+    'yotam': {
+      'password': '1234',
+      'name': 'יותם אלון',
+      'role': 'Instructor',
+      'active': true,
+    },
+    'chen': {
+      'password': '1234',
+      'name': 'חן לוי',
+      'role': 'Instructor',
+      'active': true,
+    },
+    'liron': {
+      'password': '1234',
+      'name': 'לירון מוסרי',
+      'role': 'Instructor',
+      'active': true,
+    },
+    'yogev': {
+      'password': '1234',
+      'name': 'יוגב נגרקר',
+      'role': 'Instructor',
+      'active': true,
+    },
+  });
+}
+
+/// Feedback model
+class FeedbackModel {
+  final String? id;
+  final String role;
+  final String name;
+  final String exercise;
+  final Map<String, int> scores;
+  final Map<String, String> notes;
+  final List<String> criteriaList;
+  final DateTime createdAt;
+  final String instructorName;
+  final String instructorRole;
+  final String commandText;
+  final String commandStatus; // פתוח | בטיפול | בוצע
+  final String folder; // תיקייה
+  final String scenario; // תרחיש
+
+  FeedbackModel({
+    this.id,
+    required this.role,
+    required this.name,
+    required this.exercise,
+    required this.scores,
+    required this.notes,
+    required this.createdAt,
+    this.instructorName = '',
+    this.instructorRole = '',
+    this.commandText = '',
+    this.commandStatus = 'פתוח',
+    this.criteriaList = const [],
+    this.folder = '',
+    this.scenario = '',
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'role': role,
+      'name': name,
+      'exercise': exercise,
+      'scores': scores,
+      'notes': notes,
+      'criteriaList': criteriaList,
+      'createdAt': createdAt.toIso8601String(),
+      'instructorName': instructorName,
+      'instructorRole': instructorRole,
+      'commandText': commandText,
+      'commandStatus': commandStatus,
+      'instructorUsername': currentUser?.username ?? '',
+      'folder': folder,
+      'scenario': scenario,
+    };
+  }
+
+  static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
+    if (m == null) return null;
+    // normalize notes/comments and criteria field names, and parse createdAt robustly
+    final rawScores = m['scores'];
+    final scores = <String, int>{};
+    if (rawScores is Map) {
+      rawScores.forEach((k, v) {
+        try {
+          final val = (v is num)
+              ? v.toInt()
+              : int.tryParse(v?.toString() ?? '') ?? 0;
+          scores[k.toString()] = val;
+        } catch (_) {
+          // ignore invalid values
+        }
+      });
+    }
+
+    final rawNotes = m['notes'] ?? m['comments'];
+    final notes = <String, String>{};
+    if (rawNotes is Map) {
+      rawNotes.forEach((k, v) {
+        notes[k.toString()] = v?.toString() ?? '';
+      });
+    }
+
+    final rawCriteria = m['criteriaList'] ?? m['selectedCriteria'];
+    final criteriaList = <String>[];
+    if (rawCriteria is List) {
+      for (final e in rawCriteria) {
+        if (e is Map) {
+          // try to extract a name field
+          final name =
+              e['name'] ??
+              e['label'] ??
+              (e.values.isNotEmpty ? e.values.first : null);
+          if (name != null) {
+            criteriaList.add(name.toString());
+          }
+        } else if (e != null) {
+          criteriaList.add(e.toString());
+        }
+      }
+    }
+
+    DateTime createdAt;
+    if (m['createdAt'] is Timestamp) {
+      createdAt = (m['createdAt'] as Timestamp).toDate();
+    } else if (m['createdAt'] is String) {
+      createdAt = DateTime.tryParse(m['createdAt']) ?? DateTime.now();
+    } else {
+      createdAt = DateTime.now();
+    }
+
+    return FeedbackModel(
+      id: id,
+      role: (m['role'] ?? m['roleEvaluated'] ?? '').toString(),
+      name: (m['name'] ?? m['evaluatedName'] ?? '').toString(),
+      exercise: (m['exercise'] ?? m['exerciseName'] ?? '').toString(),
+      scores: scores,
+      notes: notes,
+      criteriaList: criteriaList,
+      createdAt: createdAt,
+      instructorName: m['instructorName'] ?? '',
+      instructorRole: m['instructorRole'] ?? '',
+      commandText: m['commandText'] ?? '',
+      commandStatus: m['commandStatus'] ?? 'פתוח',
+      folder: m['folder'] ?? '',
+      scenario: m['scenario'] ?? '',
+    );
+  }
+
+  FeedbackModel copyWith({
+    String? role,
+    String? name,
+    String? exercise,
+    Map<String, int>? scores,
+    Map<String, String>? notes,
+    DateTime? createdAt,
+    String? instructorName,
+    String? instructorRole,
+    String? commandText,
+    String? commandStatus,
+    List<String>? criteriaList,
+    String? folder,
+    String? scenario,
+  }) {
+    return FeedbackModel(
+      role: role ?? this.role,
+      name: name ?? this.name,
+      exercise: exercise ?? this.exercise,
+      scores: scores ?? this.scores,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      instructorName: instructorName ?? this.instructorName,
+      instructorRole: instructorRole ?? this.instructorRole,
+      commandText: commandText ?? this.commandText,
+      commandStatus: commandStatus ?? this.commandStatus,
+      criteriaList: criteriaList ?? this.criteriaList,
+      folder: folder ?? this.folder,
+      scenario: scenario ?? this.scenario,
+    );
+  }
+}
+
+/// Global in-memory storage
+final List<FeedbackModel> feedbackStorage = [];
+
+// Load feedbacks from Firestore according to current user permissions
+// בדיקה זמנית - שאילתה פשוטה בלי where לוודא שהדאטה קיימת
+Future<void> testSimpleFeedbackQuery() async {
+  try {
+    debugPrint('\n🧪 ===== TEST: Simple Query (no filters) =====');
+    final snap = await FirebaseFirestore.instance
+        .collection('feedbacks')
+        .orderBy('createdAt', descending: true)
+        .get()
+        .timeout(const Duration(seconds: 10));
+
+    debugPrint('✅ TEST SUCCESS: Got ${snap.docs.length} total documents');
+
+    for (var i = 0; i < snap.docs.length && i < 3; i++) {
+      final doc = snap.docs[i];
+      final data = doc.data();
+      debugPrint(
+        '   Doc $i: id=${doc.id}, instructorId=${data['instructorId']}, createdAt=${data['createdAt']}',
+      );
+    }
+
+    debugPrint('🧪 ===== TEST END =====\n');
+  } catch (e) {
+    debugPrint('❌ TEST FAILED: $e');
+  }
+}
+
+Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
+  feedbackStorage.clear();
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  debugPrint('\n===== loadFeedbacksForCurrentUser START =====');
+  debugPrint('ROLE: ${currentUser?.role}');
+  debugPrint('UID: $uid');
+  debugPrint('========================================\n');
+
+  if (uid == null || uid.isEmpty) {
+    debugPrint('⚠️ loadFeedbacksForCurrentUser: uid is null/empty, returning');
+    return;
+  }
+
+  bool adminFlag = isAdmin ?? false;
+  if (isAdmin == null) {
+    // Fetch role once if not provided to decide query scope.
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(const Duration(seconds: 8));
+      final data = doc.data();
+      final role = (data?['role'] ?? '').toString().toLowerCase();
+      adminFlag = role == 'admin';
+      debugPrint(
+        '🔍 loadFeedbacksForCurrentUser: fetched role=$role, adminFlag=$adminFlag',
+      );
+    } catch (e) {
+      debugPrint('⚠️ loadFeedbacksForCurrentUser: role fetch error $e');
+      adminFlag = false; // fallback to instructor scope on errors
+    }
+  } else {
+    debugPrint(
+      '🔍 loadFeedbacksForCurrentUser: isAdmin param provided=$isAdmin',
+    );
+    adminFlag = isAdmin;
+  }
+
+  final coll = FirebaseFirestore.instance.collection('feedbacks');
+  Query q = coll;
+
+  debugPrint('\n🔍 ===== QUERY CONSTRUCTION =====');
+  debugPrint('   Current User UID: "$uid"');
+  debugPrint('   Is Admin: $adminFlag');
+  debugPrint('   Role: ${currentUser?.role}');
+
+  // Admin sees all; instructor filtered by their UID
+  if (!adminFlag) {
+    debugPrint('   Building INSTRUCTOR query with filter:');
+    debugPrint('   where("instructorId", "==", "$uid")');
+    q = q.where('instructorId', isEqualTo: uid);
+  } else {
+    debugPrint('   Building ADMIN query (NO filter - all feedbacks)');
+  }
+
+  // Apply orderBy AFTER where clause (requires composite index for instructors)
+  q = q.orderBy('createdAt', descending: true);
+  debugPrint('   orderBy("createdAt", descending: true)');
+  debugPrint('🔍 ===== QUERY READY =====\n');
+
+  debugPrint('🚀 Executing Firestore query...');
+
+  try {
+    final snap = await q.get().timeout(const Duration(seconds: 15));
+    final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = snap.docs
+        .cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
+
+    debugPrint('\n✅ ===== QUERY RESULTS =====');
+    debugPrint('   RESULT SIZE: ${docs.length}');
+    debugPrint('   Query returned ${docs.length} document(s)');
+    debugPrint('   User UID: "$uid"');
+    debugPrint('   Is Admin: $adminFlag');
+
+    if (docs.isEmpty) {
+      debugPrint('\n⚠️⚠️⚠️ NO DOCUMENTS FOUND ⚠️⚠️⚠️');
+      debugPrint('   Possible reasons:');
+      debugPrint('   1. instructorId in Firestore does NOT match current UID');
+      debugPrint('   2. No feedback documents exist for this instructor');
+      debugPrint('   3. Composite index is still building');
+      debugPrint('');
+      debugPrint('   🔍 DEBUG STEPS:');
+      debugPrint('   1. Open Firebase Console → Firestore');
+      debugPrint('   2. Check a feedback document');
+      debugPrint('   3. Compare instructorId field value to: "$uid"');
+      debugPrint('   4. They must match EXACTLY (case-sensitive)');
+      debugPrint('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️\n');
+    }
+
+    for (final doc in docs) {
+      final raw = doc.data();
+      final docInstructorId = raw['instructorId'] ?? 'MISSING';
+      debugPrint(
+        '📄 Document ${doc.id}: instructorId="$docInstructorId", evaluatedName="${raw['name'] ?? raw['evaluatedName']}"',
+      );
+      final model = FeedbackModel.fromMap(raw, id: doc.id);
+      if (model == null) {
+        debugPrint('  ⚠️ Failed to parse document ${doc.id}');
+        continue;
+      }
+      // Firestore query already filtered by instructorId for instructors
+      feedbackStorage.add(model);
+      debugPrint(
+        '  ✅ Added feedback: ${model.name} by ${model.instructorName}',
+      );
+    }
+    debugPrint(
+      '📋 loadFeedbacksForCurrentUser: total ${feedbackStorage.length} feedbacks in storage',
+    );
+  } on FirebaseException catch (e) {
+    debugPrint('❌ FirebaseException: ${e.code}');
+    debugPrint('   Message: ${e.message}');
+
+    if (e.code == 'failed-precondition' ||
+        e.message?.contains('index') == true) {
+      debugPrint('\n🔥🔥🔥 COMPOSITE INDEX ERROR DETECTED! 🔥🔥🔥');
+      debugPrint('');
+      debugPrint('The query requires a composite index on:');
+      debugPrint('  Collection: feedbacks');
+      debugPrint('  Fields:');
+      debugPrint('    1. instructorId (Ascending)');
+      debugPrint('    2. createdAt (Descending)');
+      debugPrint('');
+      debugPrint('📋 To create the index:');
+      debugPrint('   1. Go to: https://console.firebase.google.com/');
+      debugPrint('   2. Select your project');
+      debugPrint('   3. Go to: Firestore Database → Indexes');
+      debugPrint('   4. Click "Create Index"');
+      debugPrint('   5. Enter:');
+      debugPrint('      - Collection ID: feedbacks');
+      debugPrint('      - Field 1: instructorId | Ascending');
+      debugPrint('      - Field 2: createdAt | Descending');
+      debugPrint('   6. Click "Create"');
+      debugPrint('   7. Wait for index to build (usually 1-5 minutes)');
+      debugPrint('');
+      debugPrint('Or use the Firebase CLI:');
+      debugPrint('   firebase firestore:indexes');
+      debugPrint('');
+      debugPrint(
+        '⚠️ Until the index is created, instructors will see empty feedback list.',
+      );
+      debugPrint('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
+    }
+
+    // On error, leave feedbackStorage empty - UI will show empty state
+    // This prevents the screen from freezing in loading state
+  } on TimeoutException catch (e) {
+    debugPrint('❌ Query timeout: $e');
+    debugPrint('   Firestore query took too long to respond');
+    // On error, leave feedbackStorage empty - UI will show empty state
+  } catch (e) {
+    debugPrint('❌ loadFeedbacksForCurrentUser: unexpected error $e');
+    // On error, leave feedbackStorage empty - UI will show empty state
+  }
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'מערכת משובים',
+      theme: ThemeData.dark().copyWith(
+        primaryColor: Colors.blueGrey[900],
+        scaffoldBackgroundColor: Colors.black,
+      ),
+      home: const AuthGate(),
+      routes: {'/main': (_) => const MainScreen()},
+      // readiness and alerts routes
+      onGenerateRoute: (settings) {
+        if (settings.name == '/commander') {
+          return MaterialPageRoute(
+            builder: (_) => const CommanderDashboardPage(),
+          );
+        }
+        if (settings.name == '/alerts') {
+          return MaterialPageRoute(builder: (_) => const AlertsPage());
+        }
+        if (settings.name == '/readiness') {
+          return MaterialPageRoute(builder: (_) => const ReadinessPage());
+        }
+        return null;
+      },
+    );
+  }
+}
+
+/* ================== AUTH GATE ================== */
+
+/// AuthGate: continuously listens to auth state and validates profile.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnap) {
+        debugPrint('AuthGate: authStateChanges=${authSnap.data?.uid}');
+
+        // Still waiting for initial auth state
+        if (authSnap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('טוען...'),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // No user signed in
+        final user = authSnap.data;
+        if (user == null) {
+          debugPrint('AuthGate: no user → login');
+          return const LoginPage();
+        }
+
+        // User signed in; now validate profile
+        debugPrint('AuthGate: user=${user.uid}, loading profile...');
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get()
+              .timeout(const Duration(seconds: 10)),
+          builder: (context, docSnap) {
+            // Still loading profile
+            if (docSnap.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('טוען פרופיל...'),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            // Error or timeout
+            if (docSnap.hasError) {
+              debugPrint('AuthGate: profile error ${docSnap.error}');
+              return _buildMessage('שגיאה בטעינת פרופיל: ${docSnap.error}');
+            }
+
+            // Profile missing
+            if (!docSnap.hasData || !docSnap.data!.exists) {
+              debugPrint('AuthGate: profile missing');
+              return _buildMessage('משתמש לא קיים במערכת.\nפנה למנהל המערכת.');
+            }
+
+            final data = docSnap.data!.data() as Map<String, dynamic>?;
+            final role = (data?['role'] ?? '').toString().toLowerCase();
+            debugPrint('AuthGate: role=$role');
+
+            if (role != 'instructor' && role != 'admin') {
+              return _buildMessage(
+                'אין הרשאה - נדרש תפקיד מדריך או מנהל.\nהתפקיד שלך: $role',
+              );
+            }
+
+            currentUser = AppUser(
+              username: user.email ?? user.uid,
+              name: (data?['name'] ?? user.email ?? ''),
+              role: role == 'admin' ? 'Admin' : 'Instructor',
+              uid: user.uid,
+            );
+            // Note: MainScreen.initState will load feedbacks
+            // Removed duplicate preload here to prevent race condition
+
+            debugPrint('AuthGate: authorized → MainScreen');
+            return const MainScreen();
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMessage(String message) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('אין הרשאה'),
+        automaticallyImplyLeading: false,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.block, size: 80, color: Colors.red),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                message,
+                style: const TextStyle(fontSize: 18, color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('התנתק'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/* ================== READINESS / ALERTS SERVICES & PAGES ================== */
+
+class ReadinessSnapshot {
+  final DateTime at;
+  final Map<String, double> personScores; // name -> 0-100
+  ReadinessSnapshot({required this.at, required this.personScores});
+  Map<String, dynamic> toJson() => {
+    'at': at.toIso8601String(),
+    'personScores': personScores,
+  };
+  static ReadinessSnapshot fromJson(Map<String, dynamic> j) =>
+      ReadinessSnapshot(
+        at: DateTime.parse(j['at']),
+        personScores: Map<String, double>.from(j['personScores'] ?? {}),
+      );
+}
+
+class ReadinessService {
+  // Weights aligned with current evaluation criteria (equal weight by default)
+  static const Map<String, double> weights = {
+    'פוש': 0.1111111111111111,
+    'הכרזה': 0.1111111111111111,
+    'הפצה': 0.1111111111111111,
+    'מיקום המפקד': 0.1111111111111111,
+    'מיקום הכוח': 0.1111111111111111,
+    'חיילות פרט': 0.1111111111111111,
+    'מקצועיות המחלקה': 0.1111111111111111,
+    'הבנת האירוע': 0.1111111111111111,
+    'תפקוד באירוע': 0.1111111111111111,
+  };
+
+  // compute readiness for a person across feedbacks
+  static double computeReadinessForPerson(
+    String person,
+    List<FeedbackModel> data,
+  ) {
+    // average per category for the person
+    final Map<String, List<int>> vals = {for (final k in weights.keys) k: []};
+    for (final f in data.where((x) => x.name == person)) {
+      for (final k in weights.keys) {
+        final v = f.scores[k];
+        if (v != null && v != 0) {
+          final list = vals[k];
+          if (list == null) {
+            vals[k] = [v];
+          } else {
+            list.add(v);
+          }
+        }
+      }
+    }
+    if (vals.values.every((l) => l.isEmpty)) return 0.0;
+    double weighted = 0.0;
+    for (final k in weights.keys) {
+      final list = vals[k];
+      if (list == null || list.isEmpty) continue;
+      final avg = list.reduce((a, b) => a + b) / list.length; // 1..5
+      weighted += (avg / 5.0) * (weights[k] ?? 0.0);
+    }
+    return (weighted * 100.0);
+  }
+
+  // compute readiness per exercise
+  static double computeReadinessForExercise(
+    String exercise,
+    List<FeedbackModel> data,
+  ) {
+    final Map<String, List<int>> vals = {for (final k in weights.keys) k: []};
+    for (final f in data.where((x) => x.exercise == exercise)) {
+      for (final k in weights.keys) {
+        final v = f.scores[k];
+        if (v != null && v != 0) {
+          final list = vals[k];
+          if (list == null) {
+            vals[k] = [v];
+          } else {
+            list.add(v);
+          }
+        }
+      }
+    }
+    if (vals.values.every((l) => l.isEmpty)) return 0.0;
+    double weighted = 0.0;
+    for (final k in weights.keys) {
+      final list = vals[k];
+      if (list == null || list.isEmpty) continue;
+      final avg = list.reduce((a, b) => a + b) / list.length;
+      weighted += (avg / 5.0) * (weights[k] ?? 0.0);
+    }
+    return (weighted * 100.0);
+  }
+
+  // persist snapshot
+  static Future<void> saveSnapshot(ReadinessSnapshot snap) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('readiness_history') ?? '[]';
+    final List<dynamic> arr = json.decode(raw);
+    arr.add(snap.toJson());
+    await prefs.setString('readiness_history', json.encode(arr));
+  }
+
+  static Future<List<ReadinessSnapshot>> loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('readiness_history') ?? '[]';
+    final List<dynamic> arr = json.decode(raw);
+    return arr
+        .map((e) => ReadinessSnapshot.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  // generate alerts: returns list of maps describing alerts
+  static List<Map<String, dynamic>> generateAlerts(List<FeedbackModel> data) {
+    final List<Map<String, dynamic>> alerts = [];
+    // per person, compare exercises ordered by date (simple: by createdAt)
+    final persons = data.map((f) => f.name).toSet();
+    for (final p in persons) {
+      final perPerson = data.where((f) => f.name == p).toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      if (perPerson.length < 2) continue;
+      // compute readiness per exercise occurrence
+      final List<double> vals = [];
+      final List<String> exNames = [];
+      for (final f in perPerson) {
+        final r = computeReadinessForPerson(p, [f]);
+        vals.add(r);
+        exNames.add(f.exercise);
+      }
+      for (var i = 1; i < vals.length; i++) {
+        if (vals[i - 1] - vals[i] > 10.0) {
+          alerts.add({
+            'who': p,
+            'from': exNames[i - 1],
+            'to': exNames[i],
+            'drop': (vals[i - 1] - vals[i]).toStringAsFixed(1),
+          });
+        }
+      }
+    }
+    // category average <=3 (on 1..5) -> alert
+    final Map<String, List<int>> catVals = {
+      for (final k in weights.keys) k: [],
+    };
+    for (final f in data) {
+      for (final k in weights.keys) {
+        final v = f.scores[k];
+        if (v != null && v != 0) {
+          final list = catVals[k];
+          if (list == null) {
+            catVals[k] = [v];
+          } else {
+            list.add(v);
+          }
+        }
+      }
+    }
+    for (final k in catVals.keys) {
+      final list = catVals[k];
+      if (list == null || list.isEmpty) continue;
+      final avg = list.reduce((a, b) => a + b) / list.length;
+      if (avg <= 3.0) {
+        alerts.add({'category': k, 'avg': avg.toStringAsFixed(2)});
+      }
+    }
+    return alerts;
+  }
+}
+
+class ReadinessPage extends StatefulWidget {
+  const ReadinessPage({super.key});
+  @override
+  State<ReadinessPage> createState() => _ReadinessPageState();
+}
+
+class _ReadinessPageState extends State<ReadinessPage> {
+  DateTime? from;
+  DateTime? to;
+
+  Future<void> snapshotNow() async {
+    // compute readiness per person
+    final persons = feedbackStorage.map((f) => f.name).toSet();
+    final Map<String, double> map = {};
+    for (final p in persons) {
+      map[p] = ReadinessService.computeReadinessForPerson(p, feedbackStorage);
+    }
+    final snap = ReadinessSnapshot(at: DateTime.now(), personScores: map);
+    await ReadinessService.saveSnapshot(snap);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('נשמר מדד כשירות')));
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = currentUser?.role == 'Admin';
+    final persons = feedbackStorage.map((f) => f.name).toSet().toList();
+    persons.sort();
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('מדד כשירות')),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: isAdmin ? snapshotNow : null,
+                    child: const Text('שמור מדידה'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pushNamed(context, '/alerts'),
+                    child: const Text('התראות'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  children: persons.map((p) {
+                    final score = ReadinessService.computeReadinessForPerson(
+                      p,
+                      feedbackStorage,
+                    ).round();
+                    final color = score >= 80
+                        ? Colors.green
+                        : (score >= 60 ? Colors.yellow : Colors.red);
+                    return ListTile(
+                      title: Text(
+                        p,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      trailing: CircleAvatar(
+                        backgroundColor: color,
+                        child: Text('$score'),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AlertsPage extends StatelessWidget {
+  const AlertsPage({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = currentUser?.role == 'Admin';
+    if (!isAdmin) return const Scaffold(body: Center(child: Text('אין הרשאה')));
+    final alerts = ReadinessService.generateAlerts(feedbackStorage);
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('התראות מבצעיות')),
+        body: ListView(
+          children: alerts.map((a) {
+            if (a.containsKey('who')) {
+              return ListTile(
+                title: Text('נפילה מעל 10%: ${a['who']}'),
+                subtitle: Text('מ ${a['from']} ל ${a['to']} — ${a['drop']}'),
+              );
+            }
+            return ListTile(
+              title: Text('קטגוריה חלשה: ${a['category']}'),
+              subtitle: Text('ממוצע ${a['avg']}'),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class CommanderDashboardPage extends StatelessWidget {
+  const CommanderDashboardPage({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = currentUser?.role == 'Admin';
+    if (!isAdmin) return const Scaffold(body: Center(child: Text('אין הרשאה')));
+    final persons = feedbackStorage.map((f) => f.name).toSet().toList();
+    final List<MapEntry<String, double>> scores = persons
+        .map(
+          (p) => MapEntry(
+            p,
+            ReadinessService.computeReadinessForPerson(p, feedbackStorage),
+          ),
+        )
+        .toList();
+    scores.sort((a, b) => b.value.compareTo(a.value));
+    final top5 = scores.take(5).toList();
+    final bottom5 = scores.reversed.take(5).toList();
+    final alerts = ReadinessService.generateAlerts(feedbackStorage);
+    final overall = scores.isEmpty
+        ? 0.0
+        : scores.map((e) => e.value).reduce((a, b) => a + b) / scores.length;
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('לוח מבצע')),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView(
+            children: [
+              ListTile(
+                title: const Text('ממוצע כולל'),
+                trailing: Text(overall.toStringAsFixed(1)),
+              ),
+              const Divider(),
+              const Text(
+                'Top 5',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              ...top5.map(
+                (e) => ListTile(
+                  title: Text(e.key),
+                  trailing: Text(e.value.toStringAsFixed(1)),
+                ),
+              ),
+              const Divider(),
+              const Text(
+                'Bottom 5',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              ...bottom5.map(
+                (e) => ListTile(
+                  title: Text(e.key),
+                  trailing: Text(e.value.toStringAsFixed(1)),
+                ),
+              ),
+              const Divider(),
+              const Text(
+                'התראות אחרונות',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              ...alerts
+                  .take(10)
+                  .map(
+                    (a) => ListTile(
+                      title: Text(
+                        a.containsKey('who')
+                            ? 'נפילה: ${a['who']}'
+                            : 'קטגוריה: ${a['category']}',
+                      ),
+                      subtitle: Text(
+                        a.containsKey('drop') ? '${a['drop']}' : '${a['avg']}',
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int selectedIndex = 0;
+
+  late final List<Widget> _pages;
+  bool _loadingData = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = const [
+      HomePage(),
+      ExercisesPage(),
+      FeedbacksPage(),
+      StatisticsPage(),
+      MaterialsPage(),
+    ];
+    // Initial data load from Firestore to populate feedbackStorage
+    Future.microtask(() async {
+      try {
+        // בדיקה זמנית - מריצים שאילתה פשוטה קודם
+        await testSimpleFeedbackQuery();
+
+        final isAdmin = currentUser?.role == 'Admin';
+        debugPrint('\n🔍 ===== DIAGNOSTIC INFO =====');
+        debugPrint('   currentUser.name: ${currentUser?.name}');
+        debugPrint('   currentUser.role: ${currentUser?.role}');
+        debugPrint('   currentUser.uid: ${currentUser?.uid}');
+        debugPrint(
+          '   auth.currentUser.uid: ${FirebaseAuth.instance.currentUser?.uid}',
+        );
+        debugPrint('   isAdmin: $isAdmin');
+        debugPrint(
+          '   feedbackStorage.length BEFORE load: ${feedbackStorage.length}',
+        );
+        debugPrint('🔍 ===========================\n');
+        debugPrint(
+          '📥 Loading feedbacks for role: ${currentUser?.role} (isAdmin: $isAdmin)',
+        );
+        await loadFeedbacksForCurrentUser(isAdmin: isAdmin).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () {
+            debugPrint('MainScreen: feedback load timeout');
+            // Don't throw; just continue with empty feedbackStorage
+          },
+        );
+
+        // ✅ קריטי: קורא ל-setState אחרי שה-feedbackStorage התעדכן
+        if (mounted) {
+          setState(() {
+            debugPrint('\n✅ ===== UI UPDATE =====');
+            debugPrint(
+              '   feedbackStorage.length AFTER load: ${feedbackStorage.length}',
+            );
+            debugPrint('   Triggering rebuild...');
+            debugPrint('✅ ====================\n');
+          });
+        }
+      } catch (e) {
+        debugPrint('MainScreen: feedback load error $e');
+        // Continue; let UI show empty state
+      } finally {
+        // Always clear loading state, regardless of success/timeout/error
+        if (mounted) {
+          setState(() {
+            _loadingData = false;
+            debugPrint('MainScreen: _loadingData cleared for instructor/admin');
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: _loadingData
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 12),
+                    Text('טוען נתונים...'),
+                  ],
+                ),
+              )
+            : _pages[selectedIndex],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: selectedIndex,
+        onTap: (i) => setState(() => selectedIndex = i),
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.blueGrey.shade900,
+        selectedItemColor: Colors.orangeAccent,
+        unselectedItemColor: Colors.white,
+        showUnselectedLabels: true,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'בית'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assignment),
+            label: 'תרגילים',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.feedback), label: 'משובים'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart),
+            label: 'סטטיסטיקה',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.menu_book),
+            label: 'חומר עיוני',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ================== LOGIN ================== */
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final TextEditingController _userCtrl = TextEditingController();
+  final TextEditingController _passCtrl = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _userCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _tryLogin() async {
+    final email = _userCtrl.text.trim();
+    final pass = _passCtrl.text.trim();
+    if (email.isEmpty || pass.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('אנא מלא אימייל וסיסמה')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // ignore: avoid_print
+      print('🔵 התחלת תהליך התחברות: $email');
+
+      // Step 1: Sign in with Firebase Auth
+      // ignore: avoid_print
+      print('🔐 שלב 1: אימות Firebase Auth');
+      final UserCredential cred = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: pass);
+
+      // ignore: avoid_print
+      print('✅ אימות הצליח! UID: ${cred.user?.uid}');
+
+      // Step 2: Verify currentUser is not null
+      if (cred.user == null || cred.user!.uid.isEmpty) {
+        // ignore: avoid_print
+        print('❌ שגיאה: currentUser הוא null למרות התחברות מוצלחת');
+        setState(() => _isLoading = false);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאת אימות - לא הצלחנו לאמת את המשתמש'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final String uid = cred.user!.uid;
+
+      // Step 3: Read user document from Firestore with timeout
+      // ignore: avoid_print
+      print('📋 שלב 2: קריאת מסמך משתמש מ-Firestore (users/$uid)');
+      String? userRole;
+      bool docExists = false;
+
+      try {
+        final profileDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 5));
+
+        docExists = profileDoc.exists;
+
+        if (profileDoc.exists) {
+          final data = profileDoc.data();
+          userRole = data?['role'] as String?;
+          // ignore: avoid_print
+          print('✅ מסמך משתמש נמצא. Role: $userRole');
+        } else {
+          // ignore: avoid_print
+          print('⚠️ מסמך משתמש לא קיים ב-Firestore');
+        }
+      } on TimeoutException {
+        // ignore: avoid_print
+        print('⏱️ Timeout בקריאה מ-Firestore (5 שניות)');
+      } on FirebaseException catch (fe) {
+        // ignore: avoid_print
+        print('⚠️ שגיאת Firestore: ${fe.code} - ${fe.message}');
+      } catch (e) {
+        // ignore: avoid_print
+        print('⚠️ שגיאה לא צפויה בקריאת Firestore: $e');
+      }
+
+      // If document doesn't exist, show error and stop
+      if (!docExists) {
+        setState(() => _isLoading = false);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('משתמש לא קיים במערכת - פנה למנהל'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Normalize role
+      userRole = (userRole?.toLowerCase() ?? '').trim();
+      final bool isAdmin = userRole == 'admin';
+
+      debugPrint('✅ התחברות הושלמה בהצלחה!');
+      debugPrint('   Email: $email');
+      debugPrint('   UID: $uid');
+      debugPrint('   Role: ${isAdmin ? 'admin' : 'user'}');
+
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+
+      // AuthGate will automatically navigate based on authStateChanges
+      debugPrint('🚀 AuthGate יטפל בניווט אוטומטית');
+    } on FirebaseAuthException catch (fae) {
+      debugPrint('❌ FirebaseAuthException: ${fae.code}');
+      debugPrint('   Message: ${fae.message}');
+
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+
+      String errorMsg;
+      switch (fae.code) {
+        case 'user-not-found':
+          errorMsg = 'המשתמש לא קיים במערכת';
+          break;
+        case 'wrong-password':
+          errorMsg = 'סיסמה שגויה';
+          break;
+        case 'invalid-email':
+          errorMsg = 'כתובת אימייל לא תקינה';
+          break;
+        case 'too-many-requests':
+          errorMsg = 'יותר מדי ניסיונות התחברות - נסה שוב מאוחר יותר';
+          break;
+        case 'unknown':
+          errorMsg = 'שגיאה לא ידועה - בדוק את ההגדרות של Firebase';
+          break;
+        default:
+          errorMsg = 'שגיאת אימות: ${fae.code}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ שגיאה כללית: $e');
+
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה לא צפויה: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('כניסה')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: _userCtrl,
+              decoration: const InputDecoration(labelText: 'אימייל'),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passCtrl,
+              decoration: const InputDecoration(labelText: 'סיסמה'),
+              obscureText: true,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _tryLogin,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('התחבר'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Simple role-based home pages
+class AdminHomePage extends StatelessWidget {
+  const AdminHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Admin Home')),
+      body: const Center(child: Text('Welcome, Admin')),
+    );
+  }
+}
+
+class UserHomePage extends StatelessWidget {
+  const UserHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('User Home')),
+      body: const Center(child: Text('Welcome, User')),
+    );
+  }
+}
+
+/* ================== HOME ================== */
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
+  static bool _hasPlayed = false; // play only once per app session
+
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<double> _scale;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _scale = Tween<double>(
+      begin: 0.90,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _offset = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    if (_hasPlayed) {
+      _controller.value = 1.0;
+    } else {
+      _controller.forward();
+      _hasPlayed = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          Center(
+            child: FadeTransition(
+              opacity: _opacity,
+              child: SlideTransition(
+                position: _offset,
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // MAIN HEADING
+                        const Text(
+                          'מגנים על הבית!!!',
+                          style: TextStyle(
+                            fontSize: 42,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orangeAccent,
+                            letterSpacing: 1.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        // MAIN CARD
+                        Card(
+                          elevation: 8,
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              minWidth: 280,
+                              maxWidth: 520,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 28.0,
+                                horizontal: 24.0,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: const [
+                                  Text(
+                                    'מגן אנושי',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'משוב בית הספר להגנת היישוב',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.black87,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    'חטיבה 474',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black54,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Logout button in top left corner
+          Positioned(
+            top: 16,
+            left: 16,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  // AuthGate will automatically handle navigation
+                },
+                icon: const Icon(Icons.logout, size: 16),
+                label: const Text('יציאה'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent.withOpacity(0.8),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  textStyle: const TextStyle(fontSize: 14),
+                  elevation: 2,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ================== EXERCISES ================== */
+
+class ExercisesPage extends StatelessWidget {
+  const ExercisesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final exercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('תרגילים')),
+      body: ListView.builder(
+        itemCount: exercises.length,
+        itemBuilder: (ctx, i) {
+          final ex = exercises[i];
+          return ListTile(
+            title: Text(ex),
+            trailing: ElevatedButton(
+              onPressed: () {
+                debugPrint('⚡ פתח משוב עבור "$ex"');
+                // Allow Instructors and Admins to open feedback
+                if (currentUser == null ||
+                    (currentUser?.role != 'Instructor' &&
+                        currentUser?.role != 'Admin')) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('רק מדריכים או מנהל יכולים לפתוח משוב'),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FeedbackFormPage(exercise: ex),
+                  ),
+                );
+              },
+              child: const Text('פתח משוב'),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/* ================== FEEDBACK FORM ================== */
+
+class FeedbackFormPage extends StatefulWidget {
+  final String? exercise;
+  const FeedbackFormPage({super.key, this.exercise});
+
+  @override
+  State<FeedbackFormPage> createState() => _FeedbackFormPageState();
+}
+
+class _FeedbackFormPageState extends State<FeedbackFormPage> {
+  final List<String> roles = [
+    'רבש"ץ',
+    'סגן רבש"ץ',
+    'מפקד מחלקה',
+    'סגן מפקד מחלקה',
+    'לוחם',
+  ];
+  String? selectedRole;
+  String name = '';
+  String generalNote = '';
+  // instructor is the logged in user
+  String instructorNameDisplay = '';
+  String instructorRoleDisplay = '';
+
+  final List<String> exercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+  String? selectedExercise;
+  String evaluatedName = '';
+  String? selectedFolder; // תיקייה נבחרת (חובה)
+  String scenario = ''; // תרחיש
+
+  // available criteria (user-selectable)
+  final List<String> availableCriteria = [
+    'פוש',
+    'הכרזה',
+    'הפצה',
+    'מיקום המפקד',
+    'מיקום הכוח',
+    'חיילות פרט',
+    'מקצועיות המחלקה',
+    'הבנת האירוע',
+    'תפקוד באירוע',
+  ];
+
+  // which criteria are active (checkboxes at top)
+  final Map<String, bool> activeCriteria = {};
+
+  final Map<String, int> scores = {};
+  final Map<String, String> notes = {};
+  // Admin command fields
+  String adminCommandText = '';
+  String adminCommandStatus = 'פתוח';
+  static const List<String> adminStatuses = ['פתוח', 'בטיפול', 'בוצע'];
+
+  // Prevent double-submission
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedExercise =
+        (widget.exercise != null && exercises.contains(widget.exercise))
+        ? widget.exercise
+        : null;
+    if (currentUser != null) {
+      instructorNameDisplay = currentUser?.name ?? '';
+      instructorRoleDisplay = currentUser?.role ?? '';
+    }
+    for (final c in availableCriteria) {
+      scores[c] = 0;
+      notes[c] = '';
+      activeCriteria[c] = false; // do NOT display by default
+    }
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    // Prevent double-submission
+    if (_isSaving) {
+      debugPrint('⚠️ _save() already in progress, ignoring duplicate call');
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    debugPrint('🔵 _save() called, currentUser=${currentUser?.name}');
+    // ensure instructor is logged in and is Instructor or Admin
+    if (currentUser == null ||
+        (currentUser?.role != 'Instructor' && currentUser?.role != 'Admin')) {
+      debugPrint('❌ role check failed: ${currentUser?.role}');
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('רק מדריכים או מנהל יכולים לשמור משוב')),
+      );
+      return;
+    }
+
+    if (evaluatedName.trim().isEmpty) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('אנא מלא שם הנבדק')));
+      return;
+    }
+
+    if (selectedRole == null) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('אנא בחר תפקיד')));
+      return;
+    }
+
+    if (selectedExercise == null) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('אנא בחר תרגיל')));
+      return;
+    }
+
+    if (selectedFolder == null || selectedFolder!.isEmpty) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('אנא בחר תיקייה')));
+      return;
+    }
+
+    // include general note under special key
+    final notesCopy = Map<String, String>.from(notes);
+    notesCopy['general'] = generalNote.trim();
+
+    // only consider active criteria: require each active criterion to have a non-zero score
+    final activeKeys = availableCriteria
+        .where((c) => activeCriteria[c] == true)
+        .toList();
+    if (activeKeys.isEmpty) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('אנא בחר לפחות קריטריון אחד להערכה')),
+      );
+      return;
+    }
+    for (final k in activeKeys) {
+      final v = scores[k] ?? 0;
+      if (v == 0) {
+        setState(() {
+          _isSaving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('אנא דרג את כל הקריטריונים שנבחרו')),
+        );
+        return;
+      }
+    }
+
+    // build filtered scores and criteria objects only from active criteria
+    final filteredScores = <String, int>{};
+    final List<Map<String, dynamic>> criteriaObjs = [];
+    for (final k in activeKeys) {
+      final v = scores[k] ?? 0;
+      if (v != 0) {
+        filteredScores[k] = v;
+        final note = notes[k] ?? '';
+        criteriaObjs.add({'name': k, 'score': v, 'note': note});
+      }
+    }
+
+    // build Firestore payload per requirements (store both legacy and new keys)
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      debugPrint('❌ _save: uid is empty, cannot save');
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה: לא ניתן לזהות את המדריך')));
+      return;
+    }
+    final Map<String, String> commentsMap = {
+      for (final k in filteredScores.keys) k: notes[k] ?? '',
+    };
+    if (generalNote.trim().isNotEmpty) {
+      commentsMap['general'] = generalNote.trim();
+    }
+    final payload = {
+      'instructorName': currentUser?.name ?? '',
+      'instructorId': uid,
+      'roleEvaluated': selectedRole ?? '',
+      'evaluatedName': evaluatedName.trim(),
+      'exerciseName': selectedExercise ?? '',
+      // canonical field names for UI/query compatibility
+      'role': selectedRole ?? '',
+      'name': evaluatedName.trim(),
+      'exercise': selectedExercise ?? '',
+      'selectedCriteria': activeKeys,
+      'criteriaList': activeKeys,
+      'scores': filteredScores,
+      'comments': Map<String, String>.from(commentsMap),
+      'notes': Map<String, String>.from(commentsMap),
+      'createdAt': FieldValue.serverTimestamp(),
+      'instructorRole': currentUser?.role ?? '',
+      'folder': selectedFolder ?? '',
+      'scenario': scenario.trim(),
+    };
+
+    try {
+      debugPrint('\n💾 ===== SAVING FEEDBACK =====');
+      debugPrint('   instructorId: $uid');
+      debugPrint('   instructorName: ${currentUser?.name}');
+      debugPrint('   evaluatedName: $evaluatedName');
+      debugPrint(
+        '   ⚠️ CRITICAL: instructorId MUST equal auth.currentUser.uid',
+      );
+      debugPrint('   Payload: $payload');
+
+      final docRef = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .add(payload);
+      debugPrint('\n✅ Feedback saved successfully with ID: ${docRef.id}');
+      debugPrint('   Document can be verified at: feedbacks/${docRef.id}');
+      debugPrint('   Saved instructorId value: "$uid"');
+      debugPrint(
+        '   🔍 Go to Firebase Console and verify instructorId matches exactly!',
+      );
+
+      debugPrint('\n🔄 ===== RELOADING FEEDBACK LIST =====');
+      final isAdmin = currentUser?.role == 'Admin';
+      debugPrint('   Current role: ${currentUser?.role} (isAdmin: $isAdmin)');
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      debugPrint('📋 feedbacks reloaded after save');
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('משוב נשמר')));
+      Navigator.pop(context);
+    } catch (e) {
+      debugPrint('❌ save error: $e');
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: ${e.toString()}')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('משוב - ${selectedExercise ?? ''}')),
+      body: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: ListView(
+          children: [
+            // Instructor (required)
+            const Text('מדריך ממשב'),
+            const SizedBox(height: 8),
+            Text(
+              instructorNameDisplay.isNotEmpty
+                  ? instructorNameDisplay
+                  : 'לא מחובר',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'תפקיד: ${instructorRoleDisplay.isNotEmpty ? instructorRoleDisplay : 'לא מוגדר'}',
+            ),
+            const SizedBox(height: 12),
+            const Text('בחר תפקיד'),
+            const SizedBox(height: 8),
+            Builder(
+              builder: (ctx) {
+                final items = roles.toSet().toList();
+                final value = items.contains(selectedRole)
+                    ? selectedRole
+                    : null;
+                return DropdownButtonFormField<String>(
+                  initialValue: value,
+                  hint: const Text('בחר תפקיד'),
+                  items: items
+                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                      .toList(),
+                  onChanged: (v) => setState(() => selectedRole = v),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              decoration: const InputDecoration(labelText: 'שם הנבדק'),
+              onChanged: (v) => evaluatedName = v,
+            ),
+            const SizedBox(height: 12),
+            const Text('בחר תיקייה'),
+            const SizedBox(height: 8),
+            Builder(
+              builder: (ctx) {
+                return DropdownButtonFormField<String>(
+                  initialValue: selectedFolder,
+                  hint: const Text('בחר תיקייה (חובה)'),
+                  decoration: InputDecoration(
+                    labelText: 'תיקייה',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: feedbackFolders
+                      .map(
+                        (folder) => DropdownMenuItem(
+                          value: folder,
+                          child: Text(folder),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => selectedFolder = v),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              decoration: const InputDecoration(labelText: 'תרחיש'),
+              maxLines: 2,
+              onChanged: (v) => setState(() => scenario = v),
+            ),
+            const SizedBox(height: 12),
+            const Divider(),
+            const SizedBox(height: 8),
+            // Criteria selector (checkboxes)
+            const Text(
+              'בחר קריטריונים להערכתם',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: availableCriteria.map((c) {
+                return FilterChip(
+                  label: Text(c),
+                  selected: activeCriteria[c] ?? false,
+                  onSelected: (sel) => setState(() => activeCriteria[c] = sel),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+            // Active criteria inputs
+            ...availableCriteria.where((c) => activeCriteria[c] == true).map((
+              c,
+            ) {
+              final val = scores[c] ?? 0;
+              // Use 1-5 scale for "תפקוד באירוע", 1,3,5 for others
+              final scoreOptions = c == 'תפקוד באירוע'
+                  ? [1, 2, 3, 4, 5]
+                  : [1, 3, 5];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: scoreOptions.map((v) {
+                        final selected = val == v;
+                        return ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: selected
+                                ? Colors.blueAccent
+                                : Colors.grey.shade300,
+                            foregroundColor: selected
+                                ? Colors.white
+                                : Colors.black,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            elevation: selected ? 4 : 1,
+                          ),
+                          onPressed: () => setState(() => scores[c] = v),
+                          child: Text(
+                            v.toString(),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'הערות'),
+                      maxLines: 2,
+                      onChanged: (t) => notes[c] = t,
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+            TextField(
+              decoration: const InputDecoration(labelText: 'הערה כללית'),
+              maxLines: 3,
+              onChanged: (v) => generalNote = v,
+            ),
+            const SizedBox(height: 12),
+            // Admin command section
+            if (currentUser?.role == 'Admin') ...[
+              Card(
+                color: Colors.blueGrey.shade700,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'הנחיה פיקודית',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        decoration: const InputDecoration(
+                          labelText: 'טקסט פקודה (אופציונלי)',
+                        ),
+                        maxLines: 3,
+                        onChanged: (v) => adminCommandText = v,
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: adminCommandStatus,
+                        decoration: const InputDecoration(
+                          labelText: 'סטטוס הנחיה',
+                        ),
+                        items: adminStatuses
+                            .map(
+                              (s) => DropdownMenuItem(value: s, child: Text(s)),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(
+                          () => adminCommandStatus = v ?? adminCommandStatus,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _save,
+                child: _isSaving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : const Text('שמור משוב'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/* ================== FEEDBACKS LIST + DETAILS ================== */
+
+class FeedbacksPage extends StatefulWidget {
+  const FeedbacksPage({super.key});
+
+  @override
+  State<FeedbacksPage> createState() => _FeedbacksPageState();
+}
+
+class _FeedbacksPageState extends State<FeedbacksPage> {
+  bool _isRefreshing = false;
+  String?
+  _selectedFolder; // null = show folders, non-null = show feedbacks from that folder
+
+  Future<void> _refreshFeedbacks() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      debugPrint('🔄 Manual refresh triggered by user');
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('רשימת המשובים עודכנה')));
+    } catch (e) {
+      debugPrint('❌ Refresh error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה בטעינת משובים')));
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Show folders view
+    if (_selectedFolder == null) {
+      return Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('משובים - תיקיות'),
+            actions: [
+              IconButton(
+                icon: _isRefreshing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                onPressed: _isRefreshing ? null : _refreshFeedbacks,
+                tooltip: 'רענן רשימה',
+              ),
+            ],
+          ),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+              return Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isMobile ? 2 : 3,
+                    crossAxisSpacing: isMobile ? 12 : 6,
+                    mainAxisSpacing: isMobile ? 12 : 6,
+                    childAspectRatio: isMobile ? 1.5 : 2.2,
+                  ),
+                  itemCount: feedbackFolders.length,
+                  itemBuilder: (ctx, i) {
+                    final folder = feedbackFolders[i];
+                    // Count feedbacks: regular + old feedbacks without folder (assigned to "משובים – כללי")
+                    int count;
+                    if (folder == 'משובים – כללי') {
+                      count = feedbackStorage
+                          .where((f) => f.folder == folder || f.folder.isEmpty)
+                          .length;
+                    } else {
+                      count = feedbackStorage
+                          .where((f) => f.folder == folder)
+                          .length;
+                    }
+                    return Card(
+                      elevation: isMobile ? 4 : 2,
+                      color: Colors.blueGrey.shade700,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
+                        onTap: () => setState(() => _selectedFolder = folder),
+                        child: Padding(
+                          padding: EdgeInsets.all(isMobile ? 12.0 : 4.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.folder,
+                                size: isMobile ? 48 : 20,
+                                color: Colors.orangeAccent,
+                              ),
+                              SizedBox(height: isMobile ? 8 : 2),
+                              Text(
+                                folder,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: isMobile ? 14 : 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: isMobile ? 4 : 1),
+                              Text(
+                                '$count משובים',
+                                style: TextStyle(
+                                  fontSize: isMobile ? 12 : 8,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    // Show feedbacks for selected folder
+    // Include old feedbacks without folder in "משובים – כללי"
+    final filteredFeedbacks = _selectedFolder == 'משובים – כללי'
+        ? feedbackStorage
+              .where((f) => f.folder == _selectedFolder || f.folder.isEmpty)
+              .toList()
+        : feedbackStorage.where((f) => f.folder == _selectedFolder).toList();
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_selectedFolder!),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => setState(() => _selectedFolder = null),
+            tooltip: 'חזרה לתיקיות',
+          ),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refreshFeedbacks,
+              tooltip: 'רענן רשימה',
+            ),
+          ],
+        ),
+        body: filteredFeedbacks.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.inbox, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    const Text('אין משובים בתיקייה זו'),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () => setState(() => _selectedFolder = null),
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const Text('חזרה לתיקיות'),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                itemCount: filteredFeedbacks.length,
+                itemBuilder: (_, i) {
+                  final f = filteredFeedbacks[i];
+                  final date = f.createdAt
+                      .toLocal()
+                      .toString()
+                      .split('.')
+                      .first;
+                  return ListTile(
+                    title: Text('${f.role} — ${f.name}'),
+                    subtitle: Text(
+                      '${f.exercise} • ${f.instructorName.isNotEmpty ? '${f.instructorName} • ' : ''}$date',
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FeedbackDetailsPage(feedback: f),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+}
+
+class FeedbackDetailsPage extends StatefulWidget {
+  final FeedbackModel feedback;
+  const FeedbackDetailsPage({super.key, required this.feedback});
+
+  @override
+  State<FeedbackDetailsPage> createState() => _FeedbackDetailsPageState();
+}
+
+class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
+  late FeedbackModel feedback;
+  String editCommandText = '';
+  String editCommandStatus = 'פתוח';
+
+  @override
+  void initState() {
+    super.initState();
+    feedback = widget.feedback;
+    editCommandText = feedback.commandText;
+    editCommandStatus = feedback.commandStatus;
+  }
+
+  // Admin command editing removed (admin is view-only)
+
+  @override
+  Widget build(BuildContext context) {
+    final date = feedback.createdAt.toLocal().toString().split('.').first;
+    final canViewCommand =
+        currentUser != null &&
+        (currentUser?.role == 'Admin' || currentUser?.role == 'Instructor');
+    return Scaffold(
+      appBar: AppBar(title: const Text('פרטי משוב')),
+      body: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: ListView(
+          children: [
+            Text('מדריך: ${feedback.instructorName}'),
+            const SizedBox(height: 8),
+            Text('תאריך: $date'),
+            const SizedBox(height: 8),
+            Text('תרגיל: ${feedback.exercise}'),
+            const SizedBox(height: 8),
+            if (feedback.folder.isNotEmpty) ...[
+              Text('תיקייה: ${feedback.folder}'),
+              const SizedBox(height: 8),
+            ],
+            if (feedback.scenario.isNotEmpty) ...[
+              Text('תרחיש: ${feedback.scenario}'),
+              const SizedBox(height: 8),
+            ],
+            Text('תפקיד: ${feedback.role}'),
+            const SizedBox(height: 8),
+            Text('שם: ${feedback.name}'),
+            const SizedBox(height: 12),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Text(
+              'קריטריונים:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            // show saved criteria names if present, otherwise fall back to scores map (only non-zero)
+            if (feedback.criteriaList.isNotEmpty)
+              ...feedback.criteriaList.map((name) {
+                final score = feedback.scores[name] ?? '';
+                final note = feedback.notes[name] ?? '';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$name — $score'),
+                      if (note.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text('הערה: $note'),
+                      ],
+                    ],
+                  ),
+                );
+              })
+            else
+              ...feedback.scores.entries.where((e) => e.value != 0).map((e) {
+                final name = e.key;
+                final score = e.value;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [Text('$name — $score')],
+                  ),
+                );
+              }),
+            Text(
+              'הערה כללית: ${feedback.notes['general'] ?? feedback.notes['__general__'] ?? ''}',
+            ),
+            const SizedBox(height: 20),
+            // Average score card
+            Builder(
+              builder: (ctx) {
+                final scores = feedback.scores.values
+                    .where((v) => v > 0)
+                    .toList();
+                if (scores.isEmpty) return const SizedBox.shrink();
+                final avg = scores.reduce((a, b) => a + b) / scores.length;
+                return Card(
+                  color: Colors.blueGrey.shade800,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'ציון ממוצע',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${avg.toStringAsFixed(1)} / 5',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orangeAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            // Command box (visible to Admin + Instructors)
+            if (canViewCommand) ...[
+              const SizedBox(height: 12),
+              Card(
+                color: Colors.blueGrey.shade800,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'הנחיה פיקודית',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        feedback.commandText.isNotEmpty
+                            ? feedback.commandText
+                            : '-',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'סטטוס: ${feedback.commandStatus}',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// helper removed: statuses are not editable in UI (read-only for admin)
+
+/* ================== STUBS ================== */
+
+class StatisticsPage extends StatefulWidget {
+  const StatisticsPage({super.key});
+
+  @override
+  State<StatisticsPage> createState() => _StatisticsPageState();
+}
+
+class _StatisticsPageState extends State<StatisticsPage> {
+  // topic display names (Hebrew)
+  static const Map<String, String> topicMap = {
+    'פוש': 'פוש',
+    'הכרזה': 'הכרזה',
+    'הפצה': 'הפצה',
+    'מיקום המפקד': 'מיקום המפקד',
+    'מיקום הכוח': 'מיקום הכוח',
+    'חיילות פרט': 'חיילות פרט',
+    'מקצועיות המחלקה': 'מקצועיות המחלקה',
+    'הבנת האירוע': 'הבנת האירוע',
+    'תפקוד באירוע': 'תפקוד באירוע',
+  };
+
+  // roles available for filtering (Hebrew)
+  static const List<String> availableRoles = [
+    'כל התפקידים',
+    'רבש"ץ',
+    'סגן רבש"ץ',
+    'מפקד מחלקה',
+    'סגן מפקד מחלקה',
+    'לוחם',
+  ];
+
+  String selectedRoleFilter = 'כל התפקידים';
+  String selectedInstructor = 'כל המדריכים';
+  String selectedExercise = 'כל התרגילים';
+  String personFilter = '';
+  DateTime? dateFrom;
+  DateTime? dateTo;
+
+  List<FeedbackModel> getFiltered() {
+    final isAdmin = currentUser?.role == 'Admin';
+    return feedbackStorage.where((f) {
+      // instructor permission: non-admins (instructors) only see feedback they submitted
+      if (!isAdmin) {
+        if (currentUser == null) return false;
+        if (currentUser?.role == 'Instructor' &&
+            f.instructorName != (currentUser?.name ?? '')) {
+          return false;
+        }
+      }
+
+      if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
+        return false;
+      }
+      if (selectedInstructor != 'כל המדריכים' &&
+          f.instructorName != selectedInstructor) {
+        return false;
+      }
+      if (selectedExercise != 'כל התרגילים' && f.exercise != selectedExercise) {
+        return false;
+      }
+      if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
+        return false;
+      }
+      if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
+      if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
+      return true;
+    }).toList();
+  }
+
+  Future<void> pickFrom(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateFrom ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateFrom = r);
+  }
+
+  Future<void> pickTo(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateTo ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateTo = r);
+  }
+
+  double avgOf(List<int> vals) {
+    if (vals.isEmpty) return 0.0;
+    final sum = vals.reduce((a, b) => a + b);
+    return sum / vals.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = getFiltered();
+    final total = filtered.length;
+
+    final isAdmin = currentUser?.role == 'Admin';
+
+    // topic aggregates
+    final Map<String, List<int>> topicValues = {
+      for (final k in topicMap.keys) k: [],
+    };
+    // role aggregates
+    final Map<String, List<int>> roleValues = {};
+    // instructor aggregates
+    final Map<String, List<int>> instrValues = {};
+
+    for (final f in filtered) {
+      for (final t in topicMap.keys) {
+        final val = f.scores[t];
+        if (val != null && val != 0) topicValues[t]!.add(val);
+      }
+      roleValues.putIfAbsent(f.role, () => []);
+      for (final v in f.scores.values) {
+        if (v != 0) {
+          final list = roleValues[f.role];
+          if (list == null) {
+            roleValues[f.role] = [v];
+          } else {
+            list.add(v);
+          }
+        }
+      }
+      if (f.instructorName.isNotEmpty) {
+        instrValues.putIfAbsent(f.instructorName, () => []);
+        for (final v in f.scores.values) {
+          if (v != 0) {
+            final list = instrValues[f.instructorName];
+            if (list == null) {
+              instrValues[f.instructorName] = [v];
+            } else {
+              list.add(v);
+            }
+          }
+        }
+      }
+    }
+
+    // lists for dropdowns
+    final exercises = <String>{'כל התרגילים'}
+      ..addAll(feedbackStorage.map((f) => f.exercise));
+    final instructors = <String>{'כל המדריכים'}
+      ..addAll(
+        feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
+      );
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('סטטיסטיקה')),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView(
+            children: [
+              // Filters
+              Card(
+                color: Colors.blueGrey.shade800,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'סינון',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          // Role filter (admin only)
+                          SizedBox(
+                            width: 220,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = availableRoles.toSet().toList();
+                                final value = items.contains(selectedRoleFilter)
+                                    ? selectedRoleFilter
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  hint: const Text('בחר תפקיד'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'תפקיד',
+                                  ),
+                                  items: items
+                                      .map(
+                                        (r) => DropdownMenuItem(
+                                          value: r,
+                                          child: Text(r),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: isAdmin
+                                      ? (v) => setState(
+                                          () => selectedRoleFilter =
+                                              v ?? 'כל התפקידים',
+                                        )
+                                      : null,
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Person filter (free text)
+                          SizedBox(
+                            width: 200,
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                labelText: 'שם הנבדק',
+                              ),
+                              onChanged: (v) =>
+                                  setState(() => personFilter = v),
+                            ),
+                          ),
+
+                          // Instructor filter
+                          SizedBox(
+                            width: 220,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = instructors.toSet().toList();
+                                final value = items.contains(selectedInstructor)
+                                    ? selectedInstructor
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  hint: const Text('בחר מדריך'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'מדריך ממשב',
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: isAdmin
+                                      ? (v) => setState(
+                                          () => selectedInstructor =
+                                              v ?? 'כל המדריכים',
+                                        )
+                                      : null,
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Exercise filter
+                          SizedBox(
+                            width: 220,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = exercises.toSet().toList();
+                                final value = items.contains(selectedExercise)
+                                    ? selectedExercise
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  hint: const Text('בחר תרגיל'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'תרגיל',
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () => selectedExercise = v ?? 'כל התרגילים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Date range
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () => pickFrom(context),
+                                child: Text(
+                                  dateFrom == null
+                                      ? 'מתאריך'
+                                      : '${dateFrom!.toLocal()}'.split(' ')[0],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () => pickTo(context),
+                                child: Text(
+                                  dateTo == null
+                                      ? 'עד תאריך'
+                                      : '${dateTo!.toLocal()}'.split(' ')[0],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+              Text('סה"כ משובים: $total', style: const TextStyle(fontSize: 14)),
+
+              const SizedBox(height: 12),
+              const Text(
+                'ממוצע לפי קריטריון',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...topicMap.entries.map((e) {
+                final key = e.key;
+                final label = e.value;
+                final vals = topicValues[key] ?? [];
+                final a = avgOf(vals);
+                final pct = (a / 5.0).clamp(0.0, 1.0);
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    label,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Container(
+                    height: 10,
+                    color: Colors.white24,
+                    child: FractionallySizedBox(
+                      widthFactor: pct,
+                      alignment: Alignment.centerRight,
+                      child: Container(color: Colors.orangeAccent),
+                    ),
+                  ),
+                  trailing: Text(
+                    vals.isEmpty ? '-' : a.toStringAsFixed(1),
+                    style: const TextStyle(color: Colors.orangeAccent),
+                  ),
+                );
+              }),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'ממוצע לפי תפקיד',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...roleValues.entries.map((e) {
+                final label = e.key;
+                final a = avgOf(e.value);
+                final pct = (a / 5.0).clamp(0.0, 1.0);
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    label,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Container(
+                    height: 10,
+                    color: Colors.white24,
+                    child: FractionallySizedBox(
+                      widthFactor: pct,
+                      alignment: Alignment.centerRight,
+                      child: Container(color: Colors.lightBlueAccent),
+                    ),
+                  ),
+                  trailing: Text(
+                    e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                    style: const TextStyle(color: Colors.lightBlueAccent),
+                  ),
+                );
+              }),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'ממוצע לפי מדריך',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (instrValues.isEmpty) const ListTile(title: Text('-')),
+              ...instrValues.entries.map((e) {
+                final a = avgOf(e.value);
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    e.key,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  trailing: Text(
+                    a.toStringAsFixed(1),
+                    style: const TextStyle(color: Colors.greenAccent),
+                  ),
+                );
+              }),
+
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'מגמה לאורך זמן (ממוצעים לפי יום)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              // Simple trend: group by date and show average of all scores that day
+              Builder(
+                builder: (ctx) {
+                  final Map<String, List<int>> byDate = {};
+                  for (final f in filtered) {
+                    final d =
+                        '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
+                    byDate.putIfAbsent(d, () => []);
+                    for (final v in f.scores.values) {
+                      if (v != 0) byDate[d]!.add(v);
+                    }
+                  }
+                  final entries = byDate.entries.toList()
+                    ..sort((a, b) => a.key.compareTo(b.key));
+                  if (entries.isEmpty) return const ListTile(title: Text('-'));
+                  return Column(
+                    children: entries.map((en) {
+                      final dayAvg = avgOf(en.value);
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          en.key,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Container(
+                          height: 8,
+                          color: Colors.white24,
+                          child: FractionallySizedBox(
+                            widthFactor: (dayAvg / 5.0).clamp(0.0, 1.0),
+                            alignment: Alignment.centerRight,
+                            child: Container(color: Colors.purpleAccent),
+                          ),
+                        ),
+                        trailing: Text(
+                          dayAvg.toStringAsFixed(1),
+                          style: const TextStyle(color: Colors.purpleAccent),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 12),
+              const Text('הערה', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              const Text(
+                'חישובים משתמשים בציונים 1/3/5; ממוצעים מעוגלים לאחת עשרונית.',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MaterialsPage extends StatelessWidget {
+  const MaterialsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Final implementation: list of cards leading to detail screens
+    final cards = [
+      {'title': 'מעגל פרוץ', 'subtitle': 'עבודה על פי חיר', 'route': 'poruz'},
+      {'title': 'מעגל פתוח', 'subtitle': 'סריקות ותגובה', 'route': 'patuach'},
+      {
+        'title': 'סריקות רחוב',
+        'subtitle': 'איתור וזיהוי איומים',
+        'route': 'sarikot',
+      },
+      {
+        'title': 'שבע עקרונות לחימה',
+        'subtitle': 'עקרונות פעולה בשטח',
+        'route': 'sheva',
+      },
+      {'title': 'סעב"ל', 'subtitle': 'סדר עדיפויות בלחימה', 'route': 'saabal'},
+    ];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('חומר עיוני')),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView.separated(
+            itemCount: cards.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (ctx, i) {
+              final item = cards[i];
+              return Card(
+                color: Colors.grey.shade50,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: () {
+                    final route = item['route'];
+                    if (route == 'patuach') {
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                          builder: (_) => const MaagalPatuachPage(),
+                        ),
+                      );
+                    } else if (route == 'sheva') {
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                          builder: (_) => const ShevaPrinciplesPage(),
+                        ),
+                      );
+                    } else if (route == 'saabal') {
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(builder: (_) => const SaabalPage()),
+                      );
+                    } else if (route == 'poruz') {
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                          builder: (_) => const MaagalPoruzPage(),
+                        ),
+                      );
+                    } else if (route == 'sarikot') {
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(builder: (_) => const SarikotPage()),
+                      );
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 16.0,
+                      horizontal: 14.0,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item['title']!,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item['subtitle']!,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_back_ios, color: Colors.black54),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/* ================== DETAILS PAGES FOR MATERIALS ================== */
+
+class DetailsPlaceholderPage extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  const DetailsPlaceholderPage({
+    super.key,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text('תוכן יתווסף בהמשך', style: const TextStyle(fontSize: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MaagalPatuachPage extends StatelessWidget {
+  const MaagalPatuachPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('מעגל פתוח')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(18.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text(
+                  'מעגל פתוח',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                // Vertical flow with arrows
+                const Text(
+                  'מגע',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                const Icon(Icons.arrow_downward, size: 32),
+                const SizedBox(height: 8),
+                const Text(
+                  'סריקות',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                const Icon(Icons.arrow_downward, size: 32),
+                const SizedBox(height: 8),
+                const Text(
+                  'זיכוי',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'נלחמים לפי עקרונות לחימה',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ShevaPrinciplesPage extends StatelessWidget {
+  const ShevaPrinciplesPage({super.key});
+
+  static const List<String> items = [
+    'קשר עין',
+    'בחירת ציר התקדמות',
+    'זיהוי איום עיקרי ואיום משני',
+    'קצב אש ומרחק',
+    'ירי בטוח בתוך קהל',
+    'וידוא ניטרול',
+    'זיהוי והזדהות',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('שבע עקרונות לחימה')),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'שבע עקרונות לחימה',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
+                  itemBuilder: (ctx, i) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Row(
+                        children: [
+                          Text(
+                            '${i + 1}.',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              items[i],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SaabalPage extends StatelessWidget {
+  const SaabalPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('סעב"ל – סדר עדיפויות בלחימה')),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ListView(
+            children: [
+              const SizedBox(height: 8),
+              const Text(
+                'סעב"ל – סדר עדיפויות בלחימה',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              _buildStep('1. מחבל בעין'),
+              const SizedBox(height: 12),
+              _buildStep('2. התייחסות לגירוי'),
+              const SizedBox(height: 12),
+              _buildStep('3. וידוא נטרול'),
+              const SizedBox(height: 12),
+              _buildStep('4. המשך חיפוש לחימה'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStep(String text) {
+    return Card(
+      color: Colors.grey.shade50,
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class MaagalPoruzPage extends StatelessWidget {
+  const MaagalPoruzPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('מעגל פרוץ')),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 8),
+              // Highlighted centered quote
+              Card(
+                color: Colors.grey.shade100,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 18.0,
+                    horizontal: 14.0,
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '"מי שרואה אותי – הורג אותי.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'ומי שלא רואה אותי – מת ממני."',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              // Exact list below the quote
+              const Text(
+                '- עבודה על פי תו״ל חי״ר',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '- דילוגים ממקום למקום',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              const Text('- מעבר בין מחסות', style: TextStyle(fontSize: 16)),
+              const SizedBox(height: 8),
+              const Text('- עבודה איטית', style: TextStyle(fontSize: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
