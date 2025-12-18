@@ -15,18 +15,35 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
   late stt.SpeechToText _speech;
   bool _isListening = false;
   bool _isInitialized = false;
+  bool _permissionRequested = false;
   String _currentText = '';
 
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
-    _initSpeech();
+    // אין אתחול אוטומטי - רק בעת לחיצה על הכפתור
   }
 
-  Future<void> _initSpeech() async {
+  Future<void> _requestMicrophonePermission() async {
+    debugPrint('mic button clicked');
+
+    if (_isInitialized) {
+      // כבר יש הרשאה - התחל האזנה ישירות
+      await _startListening();
+      return;
+    }
+
+    if (_permissionRequested) {
+      // נסיון חוזר אחרי דחייה
+      debugPrint('⚠️ Permission previously denied - retrying initialization');
+    }
+
     try {
-      debugPrint('🎤 Initializing Voice Assistant...');
+      debugPrint('microphone permission requested');
+      _permissionRequested = true;
+
+      // speech_to_text מבקש הרשאה אוטומטית ב-initialize
       _isInitialized = await _speech.initialize(
         onError: (error) {
           debugPrint('❌ Voice Assistant Error: ${error.errorMsg}');
@@ -52,14 +69,28 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
           }
         },
       );
+
       if (_isInitialized) {
-        debugPrint('✅ Voice Assistant initialized successfully');
+        debugPrint('microphone permission granted');
+        if (mounted) setState(() {});
+        // התחל האזנה מיד לאחר הענקת ההרשאה
+        await _startListening();
       } else {
-        debugPrint('⚠️ Voice Assistant initialization returned false');
+        debugPrint('⚠️ Microphone permission denied or not available');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('נא לאשר גישה למיקרופון בהגדרות הדפדפן'),
+              duration: Duration(seconds: 3),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            ),
+          );
+        }
       }
-      if (mounted) setState(() {});
     } catch (e) {
-      debugPrint('❌ Voice Assistant Initialization Failed: $e');
+      debugPrint('❌ Microphone Permission Failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -77,19 +108,12 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
   Future<void> _startListening() async {
     if (!_isInitialized) {
       debugPrint('⚠️ Cannot start listening - not initialized');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('העוזרת הקולית אינה זמינה. נסה לרענן את הדף.'),
-          duration: Duration(seconds: 3),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
+      // נסה לבקש הרשאה שוב
+      await _requestMicrophonePermission();
       return;
     }
 
-    debugPrint('🎤 Starting to listen...');
+    debugPrint('speech recognition started');
     setState(() {
       _isListening = true;
       _currentText = '';
@@ -118,7 +142,7 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
           partialResults: true,
         ),
       );
-      debugPrint('✅ Listening started');
+      debugPrint('✅ Listening active');
     } catch (e) {
       debugPrint('❌ Error starting listening: $e');
       setState(() => _isListening = false);
@@ -185,10 +209,10 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
         ),
         tooltip: _isListening
             ? 'לחץ להפסקה'
-            : (_isInitialized ? 'לחץ לדיבור (עברית)' : 'העוזרת לא זמינה'),
-        onPressed: _isInitialized
-            ? (_isListening ? _stopListening : _startListening)
-            : null,
+            : (_isInitialized
+                  ? 'לחץ לדיבור (עברית)'
+                  : 'לחץ לאישור גישה למיקרופון'),
+        onPressed: _isListening ? _stopListening : _requestMicrophonePermission,
       ),
     );
   }
