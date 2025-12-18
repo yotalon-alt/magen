@@ -29,8 +29,36 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>flutter_application_1</title>
+  <title>מערכת משובים - מגן אנושי</title>
   <link rel="manifest" href="manifest.json">
+  
+  <script>
+    // בדיקת תמיכה ב-Web Speech API
+    console.log('🔍 Checking Web Speech API support...');
+    
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.error('❌ Web Speech API not supported in this browser');
+      console.log('💡 Please use Chrome, Edge, or Safari');
+    } else {
+      console.log('✅ Web Speech API is supported');
+    }
+    
+    // בדיקת הרשאות מיקרופון
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      console.log('✅ getUserMedia API available');
+    } else {
+      console.error('❌ getUserMedia API not available');
+      console.log('💡 Make sure you are using HTTPS or localhost');
+    }
+    
+    // בדיקת פרוטוקול
+    if (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('✅ Running on secure context (HTTPS/localhost)');
+    } else {
+      console.warn('⚠️ Not running on secure context - microphone may not work');
+      console.log('💡 Use HTTPS or localhost for microphone access');
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
