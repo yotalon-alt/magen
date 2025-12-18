@@ -22,6 +22,10 @@ class _InstructorCourseFeedbackPageState
       TextEditingController();
   int? _candidateNumber;
 
+  // Level test specific fields
+  final TextEditingController _hitsController = TextEditingController();
+  final TextEditingController _timeSecondsController = TextEditingController();
+
   // Categories with scores (1-5)
   final Map<String, int> categories = {
     'בוחן רמה': 0,
@@ -31,13 +35,62 @@ class _InstructorCourseFeedbackPageState
     'תרגיל הפתעה': 0,
   };
 
-  // Is suitable for instructors course
-  bool isSuitable = false;
+  // Calculate rating for level test based on hits and time
+  int _calculateLevelTestRating() {
+    final hits = int.tryParse(_hitsController.text) ?? 0;
+    final timeSeconds = int.tryParse(_timeSecondsController.text) ?? 0;
+
+    if (hits == 0 && timeSeconds == 0) return 0;
+
+    if (timeSeconds <= 7 && hits >= 10) return 5;
+    if (timeSeconds <= 9 && hits >= 9) return 4;
+    if (timeSeconds <= 11 && hits >= 8) return 3;
+    if (timeSeconds <= 12 && hits >= 8) return 2;
+    return 1;
+  }
+
+  // Update level test rating when hits or time changes
+  void _updateLevelTestRating() {
+    setState(() {
+      categories['בוחן רמה'] = _calculateLevelTestRating();
+    });
+  }
+
+  // Weights for weighted average calculation
+  static const Map<String, double> _categoryWeights = {
+    'בוחן רמה': 0.15, // levelTest = 15%
+    'תרגיל הפתעה': 0.25, // surpriseExercise = 25%
+    'יבשים': 0.20, // dryStructure = 20%
+    'הדרכה טובה': 0.20, // goodInstruction = 20%
+    'הדרכת מבנה': 0.20, // otherComponent = 20%
+  };
 
   // Saving state
   bool _isSaving = false;
 
-  // Calculate average score in real-time
+  // Calculate weighted final score (1-5)
+  double get finalWeightedScore {
+    double weightedSum = 0.0;
+    double totalWeight = 0.0;
+
+    _categoryWeights.forEach((category, weight) {
+      final score = categories[category] ?? 0;
+      if (score > 0) {
+        weightedSum += score * weight;
+        totalWeight += weight;
+      }
+    });
+
+    if (totalWeight == 0) return 0.0;
+    return weightedSum / totalWeight * 5.0;
+  }
+
+  // Determine if candidate is suitable for instructor course
+  bool get isSuitableForInstructorCourse {
+    return finalWeightedScore >= 3.6;
+  }
+
+  // Calculate average score in real-time (kept for compatibility)
   double get averageScore {
     final scores = categories.values.where((score) => score > 0).toList();
     if (scores.isEmpty) return 0.0;
@@ -54,6 +107,8 @@ class _InstructorCourseFeedbackPageState
   void dispose() {
     _hativaController.dispose();
     _candidateNameController.dispose();
+    _hitsController.dispose();
+    _timeSecondsController.dispose();
     super.dispose();
   }
 
@@ -131,22 +186,31 @@ class _InstructorCourseFeedbackPageState
     setState(() => _isSaving = true);
 
     try {
-      // ✅ Correct collection path - top-level collections
-      final String collectionPath = isSuitable
+      // ✅ Correct collection path - determined automatically by weighted score
+      final String collectionPath = isSuitableForInstructorCourse
           ? 'instructor_course_selection_suitable'
           : 'instructor_course_selection_not_suitable';
 
       debugPrint('📝 Saving to: $collectionPath');
-      debugPrint('   isSuitable: $isSuitable');
+      debugPrint(
+        '   finalWeightedScore: ${finalWeightedScore.toStringAsFixed(1)}',
+      );
+      debugPrint(
+        '   isSuitable: $isSuitableForInstructorCourse (auto-determined)',
+      );
       debugPrint('   averageScore: ${averageScore.toStringAsFixed(2)}');
 
-      // Prepare scores map
+      // Prepare scores map with weighted final score
       final scores = {
         'levelTest': categories['בוחן רמה'] ?? 0,
+        'levelTestHits': int.tryParse(_hitsController.text) ?? 0,
+        'levelTestTimeSeconds': int.tryParse(_timeSecondsController.text) ?? 0,
         'goodInstruction': categories['הדרכה טובה'] ?? 0,
         'structureInstruction': categories['הדרכת מבנה'] ?? 0,
         'dryPractice': categories['יבשים'] ?? 0,
         'surpriseExercise': categories['תרגיל הפתעה'] ?? 0,
+        'finalScore': finalWeightedScore,
+        'isFitForInstructorCourse': isSuitableForInstructorCourse,
       };
 
       // Get current user's UID
@@ -155,7 +219,7 @@ class _InstructorCourseFeedbackPageState
         throw Exception('User not authenticated');
       }
 
-      // Prepare document data
+      // Prepare document data (isSuitable determined automatically)
       final feedbackData = {
         'command': _selectedPikud ?? '',
         'brigade': _hativaController.text.trim(),
@@ -165,7 +229,8 @@ class _InstructorCourseFeedbackPageState
         'instructorId': uid, // Add instructorId for security rules
         'scores': scores,
         'averageScore': averageScore,
-        'isSuitable': isSuitable,
+        'finalWeightedScore': finalWeightedScore,
+        'isSuitable': isSuitableForInstructorCourse,
         'createdAt': FieldValue.serverTimestamp(),
       };
 
@@ -180,17 +245,20 @@ class _InstructorCourseFeedbackPageState
 
       if (!mounted) return;
 
-      // Show success message
+      // Show success message with automatic determination
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isSuitable
-                ? 'המועמד מתאים לקורס מדריכים'
-                : 'המועמד לא מתאים לקורס מדריכים',
+            isSuitableForInstructorCourse
+                ? 'משוב נשמר! ציון משוקלל: ${finalWeightedScore.toStringAsFixed(1)} - מתאים לקורס מדריכים'
+                : 'משוב נשמר! ציון משוקלל: ${finalWeightedScore.toStringAsFixed(1)} - לא מתאים לקורס מדריכים',
           ),
-          backgroundColor: isSuitable ? Colors.green : Colors.red,
+          backgroundColor: isSuitableForInstructorCourse
+              ? Colors.green
+              : Colors.orange,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+          duration: const Duration(seconds: 4),
         ),
       );
 
@@ -217,6 +285,11 @@ class _InstructorCourseFeedbackPageState
   }
 
   Widget _buildCategoryRow(String category) {
+    // Special handling for level test
+    if (category == 'בוחן רמה') {
+      return _buildLevelTestRow();
+    }
+
     final currentScore = categories[category] ?? 0;
 
     return Padding(
@@ -282,6 +355,146 @@ class _InstructorCourseFeedbackPageState
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLevelTestRow() {
+    final currentRating = categories['בוחן רמה'] ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      child: Card(
+        color: Colors.purple.shade50,
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.access_time, color: Colors.purple),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'בוחן רמה',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.purple,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (currentRating > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: currentRating >= 4
+                            ? Colors.green
+                            : Colors.orange,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'ציון: $currentRating',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _hitsController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'מספר פגיעות',
+                        hintText: 'הזן מספר',
+                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Colors.white,
+                        prefixIcon: Icon(Icons.my_location),
+                      ),
+                      onChanged: (_) => _updateLevelTestRating(),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _timeSecondsController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'זמן (שניות)',
+                        hintText: 'הזן שניות',
+                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Colors.white,
+                        prefixIcon: Icon(Icons.timer),
+                      ),
+                      onChanged: (_) => _updateLevelTestRating(),
+                    ),
+                  ),
+                ],
+              ),
+              if (currentRating > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: currentRating >= 4
+                        ? Colors.green.shade100
+                        : Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: currentRating >= 4 ? Colors.green : Colors.orange,
+                      width: 2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        currentRating >= 4 ? Icons.check_circle : Icons.info,
+                        color: currentRating >= 4
+                            ? Colors.green
+                            : Colors.orange,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        currentRating >= 4 ? 'עובר' : 'לא עובר',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: currentRating >= 4
+                              ? Colors.green.shade900
+                              : Colors.orange.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'חישוב אוטומטי: ${_hitsController.text} פגיעות ב-${_timeSecondsController.text} שניות',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -441,72 +654,97 @@ class _InstructorCourseFeedbackPageState
                 const SizedBox(height: 24),
                 const Divider(),
 
-                // Average Score Display
+                // Weighted Final Score Display with Auto-Determination
                 Card(
-                  color: Colors.blueGrey.shade800,
+                  elevation: 8,
+                  color: isSuitableForInstructorCourse
+                      ? Colors.green.shade700
+                      : Colors.orange.shade800,
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(20.0),
                     child: Column(
                       children: [
-                        const Text(
-                          'ציון ממוצע',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white70,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isSuitableForInstructorCourse
+                                  ? Icons.check_circle
+                                  : Icons.info_outline,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'ציון סופי משוקלל',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          finalWeightedScore.toStringAsFixed(1),
+                          style: const TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          averageScore.toStringAsFixed(2),
-                          style: const TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orangeAccent,
+                        const Text(
+                          'מתוך 5.0',
+                          style: TextStyle(fontSize: 16, color: Colors.white70),
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isSuitableForInstructorCourse
+                                    ? Icons.thumb_up
+                                    : Icons.priority_high,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                isSuitableForInstructorCourse
+                                    ? 'מתאים לקורס מדריכים'
+                                    : 'לא מתאים לקורס מדריכים',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 12),
                         Text(
-                          'מתוך 5.00',
-                          style: TextStyle(fontSize: 14, color: Colors.white54),
+                          'הקביעה אוטומטית: ${isSuitableForInstructorCourse ? "ציון מעל 3.6" : "ציון מתחת 3.6"}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white60,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                const Divider(),
-
-                // Suitability Checkbox
-                Card(
-                  color: isSuitable
-                      ? Colors.green.shade700
-                      : Colors.red.shade700,
-                  child: CheckboxListTile(
-                    title: const Text(
-                      'מתאים לקורס מדריכים',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    subtitle: Text(
-                      isSuitable
-                          ? 'המועמד יישמר כמתאים'
-                          : 'המועמד יישמר כלא מתאים',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    value: isSuitable,
-                    onChanged: (value) {
-                      setState(() => isSuitable = value ?? false);
-                    },
-                    activeColor: Colors.white,
-                    checkColor: Colors.green.shade700,
                   ),
                 ),
 
@@ -537,7 +775,9 @@ class _InstructorCourseFeedbackPageState
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isSuitable ? Colors.green : Colors.red,
+                      backgroundColor: isSuitableForInstructorCourse
+                          ? Colors.green
+                          : Colors.orange,
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey,
                       shape: RoundedRectangleBorder(
@@ -552,7 +792,7 @@ class _InstructorCourseFeedbackPageState
 
                 // Info text
                 Text(
-                  isSuitable
+                  isSuitableForInstructorCourse
                       ? 'המשוב יישמר ב: instructor_course_selection_suitable'
                       : 'המשוב יישמר ב: instructor_course_selection_not_suitable',
                   textAlign: TextAlign.center,
