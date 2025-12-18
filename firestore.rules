@@ -14,6 +14,20 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // Instructor course selection feedbacks - suitable candidates
+    match /instructor_course_selection_suitable/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.instructorId;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
+    }
+
+    // Instructor course selection feedbacks - not suitable candidates
+    match /instructor_course_selection_not_suitable/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.instructorId;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
+    }
+
     // Block everything else
     match /{document=**} {
       allow read, write: if false;

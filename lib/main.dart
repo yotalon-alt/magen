@@ -7,6 +7,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'instructor_course_feedback_page.dart';
+import 'instructor_course_selection_feedbacks_page.dart';
+import 'voice_assistant.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -195,6 +198,7 @@ class FeedbackModel {
   final String commandStatus; // פתוח | בטיפול | בוצע
   final String folder; // תיקייה
   final String scenario; // תרחיש
+  final String settlement; // יישוב
 
   FeedbackModel({
     this.id,
@@ -211,6 +215,7 @@ class FeedbackModel {
     this.criteriaList = const [],
     this.folder = '',
     this.scenario = '',
+    this.settlement = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -229,6 +234,7 @@ class FeedbackModel {
       'instructorUsername': currentUser?.username ?? '',
       'folder': folder,
       'scenario': scenario,
+      'settlement': settlement,
     };
   }
 
@@ -301,6 +307,7 @@ class FeedbackModel {
       commandStatus: m['commandStatus'] ?? 'פתוח',
       folder: m['folder'] ?? '',
       scenario: m['scenario'] ?? '',
+      settlement: m['settlement'] ?? '',
     );
   }
 
@@ -318,6 +325,7 @@ class FeedbackModel {
     List<String>? criteriaList,
     String? folder,
     String? scenario,
+    String? settlement,
   }) {
     return FeedbackModel(
       role: role ?? this.role,
@@ -333,6 +341,7 @@ class FeedbackModel {
       criteriaList: criteriaList ?? this.criteriaList,
       folder: folder ?? this.folder,
       scenario: scenario ?? this.scenario,
+      settlement: settlement ?? this.settlement,
     );
   }
 }
@@ -1079,15 +1088,166 @@ class _MainScreenState extends State<MainScreen> {
   late final List<Widget> _pages;
   bool _loadingData = true;
 
+  // GlobalKey for StatisticsPage to access its state
+  final GlobalKey<_StatisticsPageState> _statisticsKey =
+      GlobalKey<_StatisticsPageState>();
+
+  void _handleVoiceCommand(String command) {
+    VoiceCommandHandler.handleCommand(
+      context,
+      command,
+      selectedIndex,
+      _handleFeedbackFilter,
+      _handleStatisticsFilter,
+      _handleExerciseAction,
+      _handleMaterialsAction,
+    );
+  }
+
+  void _handleFeedbackFilter(String filter) {
+    // Navigate to feedbacks page and apply filter
+    setState(() => selectedIndex = 2);
+    // Filter logic will be handled by FeedbacksPage
+    debugPrint('Feedback filter: $filter');
+  }
+
+  void _handleStatisticsFilter(String filter) {
+    // Navigate to statistics page
+    setState(() => selectedIndex = 3);
+    debugPrint('Statistics filter: $filter');
+
+    // Wait for page to build, then apply filter
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final statisticsState = _statisticsKey.currentState;
+      if (statisticsState == null) return;
+
+      statisticsState.setState(() {
+        if (filter.contains('folder_')) {
+          // Extract folder name from filter
+          if (filter.contains('matawhim')) {
+            statisticsState.selectedFolder = 'מטווחי ירי';
+          } else if (filter.contains('hativah')) {
+            statisticsState.selectedFolder = 'מחלקות ההגנה – חטיבה 474';
+          } else if (filter.contains('binyan')) {
+            statisticsState.selectedFolder = 'עבודה במבנה';
+          } else if (filter.contains('mioonim_madrichim')) {
+            statisticsState.selectedFolder = 'מיונים לקורס מדריכים';
+          } else if (filter.contains('mioonim')) {
+            statisticsState.selectedFolder = 'מיונים – כללי';
+          } else if (filter.contains('general')) {
+            statisticsState.selectedFolder = 'משובים – כללי';
+          }
+        } else if (filter == 'filter_by_role') {
+          // Can't automatically select role without knowing which one
+          // User needs to specify in voice command
+        } else if (filter.contains('settlement_')) {
+          // Extract settlement name
+          final settlement = filter.replaceFirst('settlement_', '');
+          statisticsState.selectedSettlement = settlement;
+        } else if (filter.contains('exercise_')) {
+          // Filter by exercise
+          final exercise = filter.replaceFirst('exercise_', '');
+          if (exercise == 'maagal_patuach') {
+            statisticsState.selectedExercise = 'מעגל פתוח';
+          } else if (exercise == 'maagal_poruz') {
+            statisticsState.selectedExercise = 'מעגל פרוץ';
+          } else if (exercise == 'sarikot') {
+            statisticsState.selectedExercise = 'סריקות רחוב';
+          }
+        }
+      });
+    });
+  }
+
+  void _handleExerciseAction(String action) {
+    // Navigate to exercises page first
+    setState(() => selectedIndex = 1);
+    debugPrint('Exercise action: $action');
+
+    // Wait for page to build, then open the specific exercise
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+
+      if (action == 'open_maagal_patuach') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FeedbackFormPage(exercise: 'מעגל פתוח'),
+          ),
+        );
+      } else if (action == 'open_maagal_poruz') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FeedbackFormPage(exercise: 'מעגל פרוץ'),
+          ),
+        );
+      } else if (action == 'open_sarikot') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FeedbackFormPage(exercise: 'סריקות רחוב'),
+          ),
+        );
+      } else if (action == 'open_instructor_selection') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const InstructorCourseFeedbackPage(),
+          ),
+        );
+      }
+    });
+  }
+
+  void _handleMaterialsAction(String action) {
+    // Navigate to materials page first
+    setState(() => selectedIndex = 4);
+    debugPrint('Materials action: $action');
+
+    // Wait for page to build, then open the specific material
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+
+      if (action == 'open_maagal_patuach') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MaagalPatuachPage()),
+        );
+      } else if (action == 'open_maagal_poruz') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MaagalPoruzPage()),
+        );
+      } else if (action == 'open_sarikot') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SarikotPage()),
+        );
+      } else if (action == 'open_sheva') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ShevaPrinciplesPage()),
+        );
+      } else if (action == 'open_saabal') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SaabalPage()),
+        );
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
-    _pages = const [
-      HomePage(),
-      ExercisesPage(),
-      FeedbacksPage(),
-      StatisticsPage(),
-      MaterialsPage(),
+    _pages = [
+      const HomePage(),
+      const ExercisesPage(),
+      const FeedbacksPage(),
+      StatisticsPage(key: _statisticsKey),
+      const MaterialsPage(),
     ];
     // Initial data load from Firestore to populate feedbackStorage
     Future.microtask(() async {
@@ -1148,19 +1308,42 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: _loadingData
-            ? const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 12),
-                    Text('טוען נתונים...'),
-                  ],
-                ),
-              )
-            : _pages[selectedIndex],
+      body: Stack(
+        children: [
+          SafeArea(
+            child: _loadingData
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 12),
+                        Text('טוען נתונים...'),
+                      ],
+                    ),
+                  )
+                : _pages[selectedIndex],
+          ),
+          // Voice Assistant Button - Fixed position bottom-left (safe zone)
+          Positioned(
+            bottom: 90,
+            left: 16,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.blueGrey.shade900,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: VoiceAssistantButton(onVoiceCommand: _handleVoiceCommand),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: selectedIndex,
@@ -1581,7 +1764,7 @@ class _HomePageState extends State<HomePage>
                 icon: const Icon(Icons.logout, size: 16),
                 label: const Text('יציאה'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent.withOpacity(0.8),
+                  backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -1606,7 +1789,12 @@ class ExercisesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final exercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+    final exercises = [
+      'מעגל פתוח',
+      'מעגל פרוץ',
+      'סריקות רחוב',
+      'מיונים לקורס מדריכים',
+    ];
 
     return Scaffold(
       appBar: AppBar(title: const Text('תרגילים')),
@@ -1614,10 +1802,11 @@ class ExercisesPage extends StatelessWidget {
         itemCount: exercises.length,
         itemBuilder: (ctx, i) {
           final ex = exercises[i];
-          return ListTile(
-            title: Text(ex),
-            trailing: ElevatedButton(
-              onPressed: () {
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            elevation: 2,
+            child: InkWell(
+              onTap: () {
                 debugPrint('⚡ פתח משוב עבור "$ex"');
                 // Allow Instructors and Admins to open feedback
                 if (currentUser == null ||
@@ -1630,14 +1819,43 @@ class ExercisesPage extends StatelessWidget {
                   );
                   return;
                 }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FeedbackFormPage(exercise: ex),
-                  ),
-                );
+
+                // Special handling for instructor course selection
+                if (ex == 'מיונים לקורס מדריכים') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const InstructorCourseFeedbackPage(),
+                    ),
+                  );
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FeedbackFormPage(exercise: ex),
+                    ),
+                  );
+                }
               },
-              child: const Text('פתח משוב'),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Icon(Icons.assignment, size: 32, color: Colors.blueAccent),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        ex,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                  ],
+                ),
+              ),
             ),
           );
         },
@@ -1676,6 +1894,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   String evaluatedName = '';
   String? selectedFolder; // תיקייה נבחרת (חובה)
   String scenario = ''; // תרחיש
+  String settlement = ''; // יישוב
 
   // available criteria (user-selectable)
   final List<String> availableCriteria = [
@@ -1870,6 +2089,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       'instructorRole': currentUser?.role ?? '',
       'folder': selectedFolder ?? '',
       'scenario': scenario.trim(),
+      'settlement': settlement.trim(),
     };
 
     try {
@@ -1963,6 +2183,11 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               onChanged: (v) => evaluatedName = v,
             ),
             const SizedBox(height: 12),
+            TextField(
+              decoration: const InputDecoration(labelText: 'יישוב'),
+              onChanged: (v) => setState(() => settlement = v),
+            ),
+            const SizedBox(height: 12),
             const Text('בחר תיקייה'),
             const SizedBox(height: 8),
             Builder(
@@ -1975,6 +2200,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                     border: OutlineInputBorder(),
                   ),
                   items: feedbackFolders
+                      .where((folder) => folder != 'מיונים לקורס מדריכים')
                       .map(
                         (folder) => DropdownMenuItem(
                           value: folder,
@@ -2237,24 +2463,44 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           .where((f) => f.folder == folder)
                           .length;
                     }
+                    final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
                     return Card(
                       elevation: isMobile ? 4 : 2,
-                      color: Colors.blueGrey.shade700,
+                      color: isInstructorCourse
+                          ? Colors.purple.shade700
+                          : Colors.blueGrey.shade700,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
                       ),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
-                        onTap: () => setState(() => _selectedFolder = folder),
+                        onTap: () {
+                          if (isInstructorCourse) {
+                            // ניווט ישיר למסך מיונים
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const InstructorCourseSelectionFeedbacksPage(),
+                              ),
+                            );
+                          } else {
+                            setState(() => _selectedFolder = folder);
+                          }
+                        },
                         child: Padding(
                           padding: EdgeInsets.all(isMobile ? 12.0 : 4.0),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                Icons.folder,
+                                isInstructorCourse
+                                    ? Icons.school
+                                    : Icons.folder,
                                 size: isMobile ? 48 : 20,
-                                color: Colors.orangeAccent,
+                                color: isInstructorCourse
+                                    ? Colors.white
+                                    : Colors.orangeAccent,
                               ),
                               SizedBox(height: isMobile ? 8 : 2),
                               Text(
@@ -2387,7 +2633,51 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     editCommandStatus = feedback.commandStatus;
   }
 
-  // Admin command editing removed (admin is view-only)
+  bool _isEditingCommand = false;
+  bool _isSaving = false;
+
+  Future<void> _saveCommandChanges() async {
+    if (feedback.id == null || feedback.id!.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('לא ניתן לעדכן משוב ללא מזהה')));
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({
+            'commandText': editCommandText,
+            'commandStatus': editCommandStatus,
+          });
+
+      setState(() {
+        feedback = feedback.copyWith(
+          commandText: editCommandText,
+          commandStatus: editCommandStatus,
+        );
+        _isEditingCommand = false;
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('הנחיה פיקודית עודכנה')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה בעדכון: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2395,6 +2685,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     final canViewCommand =
         currentUser != null &&
         (currentUser?.role == 'Admin' || currentUser?.role == 'Instructor');
+    final isAdmin = currentUser?.role == 'Admin';
     return Scaffold(
       appBar: AppBar(title: const Text('פרטי משוב')),
       body: Padding(
@@ -2508,22 +2799,94 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'הנחיה פיקודית',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'הנחיה פיקודית',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          if (isAdmin)
+                            IconButton(
+                              icon: Icon(
+                                _isEditingCommand ? Icons.close : Icons.edit,
+                              ),
+                              onPressed: _isSaving
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _isEditingCommand = !_isEditingCommand;
+                                        if (!_isEditingCommand) {
+                                          // Reset to original values on cancel
+                                          editCommandText =
+                                              feedback.commandText;
+                                          editCommandStatus =
+                                              feedback.commandStatus;
+                                        }
+                                      });
+                                    },
+                              tooltip: _isEditingCommand ? 'ביטול' : 'עריכה',
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        feedback.commandText.isNotEmpty
-                            ? feedback.commandText
-                            : '-',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'סטטוס: ${feedback.commandStatus}',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+                      if (_isEditingCommand) ...[
+                        TextField(
+                          controller:
+                              TextEditingController(text: editCommandText)
+                                ..selection = TextSelection.collapsed(
+                                  offset: editCommandText.length,
+                                ),
+                          decoration: const InputDecoration(
+                            labelText: 'טקסט הנחיה',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 3,
+                          onChanged: (v) => editCommandText = v,
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: editCommandStatus,
+                          decoration: const InputDecoration(
+                            labelText: 'סטטוס',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const ['פתוח', 'בטיפול', 'בוצע']
+                              .map(
+                                (s) =>
+                                    DropdownMenuItem(value: s, child: Text(s)),
+                              )
+                              .toList(),
+                          onChanged: (v) => setState(
+                            () => editCommandStatus = v ?? editCommandStatus,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: _isSaving ? null : _saveCommandChanges,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('שמור שינויים'),
+                        ),
+                      ] else ...[
+                        Text(
+                          feedback.commandText.isNotEmpty
+                              ? feedback.commandText
+                              : '-',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'סטטוס: ${feedback.commandStatus}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -2574,6 +2937,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
   String selectedRoleFilter = 'כל התפקידים';
   String selectedInstructor = 'כל המדריכים';
   String selectedExercise = 'כל התרגילים';
+  String selectedSettlement = 'כל היישובים'; // חדש!
+  String selectedFolder = 'כל התיקיות'; // חדש!
   String personFilter = '';
   DateTime? dateFrom;
   DateTime? dateTo;
@@ -2598,6 +2963,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
         return false;
       }
       if (selectedExercise != 'כל התרגילים' && f.exercise != selectedExercise) {
+        return false;
+      }
+      if (selectedSettlement != 'כל היישובים' &&
+          f.settlement != selectedSettlement) {
+        return false;
+      }
+      if (selectedFolder != 'כל התיקיות' && f.folder != selectedFolder) {
         return false;
       }
       if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
@@ -2724,7 +3096,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         children: [
                           // Role filter (admin only)
                           SizedBox(
-                            width: 220,
+                            width: 240,
                             child: Builder(
                               builder: (ctx) {
                                 final items = availableRoles.toSet().toList();
@@ -2733,9 +3105,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
                                     : null;
                                 return DropdownButtonFormField<String>(
                                   initialValue: value,
-                                  hint: const Text('בחר תפקיד'),
+                                  isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'תפקיד',
+                                    isDense: true,
                                   ),
                                   items: items
                                       .map(
@@ -2770,7 +3143,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
                           // Instructor filter
                           SizedBox(
-                            width: 220,
+                            width: 240,
                             child: Builder(
                               builder: (ctx) {
                                 final items = instructors.toSet().toList();
@@ -2779,9 +3152,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
                                     : null;
                                 return DropdownButtonFormField<String>(
                                   initialValue: value,
-                                  hint: const Text('בחר מדריך'),
+                                  isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'מדריך ממשב',
+                                    isDense: true,
                                   ),
                                   items: items
                                       .map(
@@ -2804,7 +3178,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
                           // Exercise filter
                           SizedBox(
-                            width: 220,
+                            width: 240,
                             child: Builder(
                               builder: (ctx) {
                                 final items = exercises.toSet().toList();
@@ -2813,9 +3187,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
                                     : null;
                                 return DropdownButtonFormField<String>(
                                   initialValue: value,
-                                  hint: const Text('בחר תרגיל'),
+                                  isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'תרגיל',
+                                    isDense: true,
                                   ),
                                   items: items
                                       .map(
@@ -2827,6 +3202,75 @@ class _StatisticsPageState extends State<StatisticsPage> {
                                       .toList(),
                                   onChanged: (v) => setState(
                                     () => selectedExercise = v ?? 'כל התרגילים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Settlement filter (for all users)
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final settlements = <String>{'כל היישובים'}
+                                  ..addAll(
+                                    feedbackStorage
+                                        .map((f) => f.settlement)
+                                        .where((s) => s.isNotEmpty),
+                                  );
+                                final items = settlements.toSet().toList();
+                                final value = items.contains(selectedSettlement)
+                                    ? selectedSettlement
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'יישוב',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () =>
+                                        selectedSettlement = v ?? 'כל היישובים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Folder filter (for all users)
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final folders = <String>{'כל התיקיות'}
+                                  ..addAll(feedbackFolders);
+                                final items = folders.toSet().toList();
+                                final value = items.contains(selectedFolder)
+                                    ? selectedFolder
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () => selectedFolder = v ?? 'כל התיקיות',
                                   ),
                                 );
                               },
@@ -2940,21 +3384,23 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              if (instrValues.isEmpty) const ListTile(title: Text('-')),
-              ...instrValues.entries.map((e) {
-                final a = avgOf(e.value);
-                return ListTile(
-                  dense: true,
-                  title: Text(
-                    e.key,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  trailing: Text(
-                    a.toStringAsFixed(1),
-                    style: const TextStyle(color: Colors.greenAccent),
-                  ),
-                );
-              }),
+              if (instrValues.isEmpty)
+                const ListTile(title: Text('-'))
+              else
+                ...instrValues.entries.map((e) {
+                  final a = avgOf(e.value);
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      e.key,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    trailing: Text(
+                      a.toStringAsFixed(1),
+                      style: const TextStyle(color: Colors.greenAccent),
+                    ),
+                  );
+                }),
 
               const SizedBox(height: 16),
               const Divider(),
