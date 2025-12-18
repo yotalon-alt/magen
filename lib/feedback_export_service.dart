@@ -75,13 +75,6 @@ class FeedbackExportService {
         });
       }
 
-      // הערה כללית
-      final generalNote = (data['notes'] as Map<String, dynamic>?)?['general'];
-      if (generalNote != null && generalNote.toString().isNotEmpty) {
-        rows.add(['']); // שורה ריקה
-        rows.add(['הערה כללית:', generalNote.toString()]);
-      }
-
       // שליחה ל-Google Apps Script
       final response = await http
           .post(
@@ -231,38 +224,6 @@ class FeedbackExportService {
       rows.add(['סיכום כללי', '', '', '', '', '', '', '']);
       rows.add(['סך הכל פגיעות/כדורים:', '$totalHits/$totalBullets']);
       rows.add(['אחוז פגיעה כללי:', '$overallPercentage%']);
-
-      // הוספת פירוט מקצים
-      rows.add([]); // שורה ריקה
-      rows.add(['פירוט מקצים', '', '', '', '', '', '', '']);
-      rows.add(['שם מקצה', 'פגיעות', 'כדורים', 'אחוז פגיעה']);
-
-      for (int i = 0; i < stations.length; i++) {
-        final station = stations[i];
-        final stationName = station['name'] ?? 'מקצה ${i + 1}';
-        final stationBullets = (station['bulletsCount'] as num?)?.toInt() ?? 0;
-
-        // חישוב סך פגיעות למקצה
-        int stationHits = 0;
-        for (final trainee in trainees) {
-          final hits = trainee['hits'] as Map<String, dynamic>?;
-          if (hits != null) {
-            stationHits += (hits['station_$i'] as num?)?.toInt() ?? 0;
-          }
-        }
-
-        // אחוז פגיעה למקצה
-        final stationPercentage = stationBullets > 0
-            ? ((stationHits / stationBullets) * 100).toStringAsFixed(1)
-            : '0.0';
-
-        rows.add([
-          stationName,
-          stationHits.toString(),
-          stationBullets.toString(),
-          '$stationPercentage%',
-        ]);
-      }
 
       // שליחה ל-Google Apps Script
       final response = await http
@@ -588,14 +549,6 @@ class FeedbackExportService {
                 final note = notes?[criterion] ?? '';
                 rows.add([criterion, score.toString(), note]);
               });
-            }
-
-            // הערה כללית
-            final generalNote =
-                (data['notes'] as Map<String, dynamic>?)?['general'];
-            if (generalNote != null && generalNote.toString().isNotEmpty) {
-              rows.add(['']); // שורה ריקה
-              rows.add(['הערה כללית:', generalNote.toString()]);
             }
           }
 

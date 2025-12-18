@@ -131,7 +131,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
             }),
             const SizedBox(height: 12),
             TextField(
-              decoration: const InputDecoration(labelText: 'הערה כללית'),
+              decoration: const InputDecoration(labelText: 'הערות נוספות'),
               maxLines: 3,
               onChanged: (v) => generalNote = v,
             ),

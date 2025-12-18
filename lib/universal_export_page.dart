@@ -445,11 +445,11 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                                       ),
                                       DropdownMenuItem(
                                         value: 'קצרים',
-                                        child: Text('טווחים קצרים'),
+                                        child: Text('טווח קצר'),
                                       ),
-                                      const DropdownMenuItem(
-                                        value: 'ארוכים',
-                                        child: Text('טווחים ארוכים'),
+                                      DropdownMenuItem(
+                                        value: 'טווח רחוק',
+                                        child: Text('טווח רחוק'),
                                       ),
                                       DropdownMenuItem(
                                         value: 'הפתעה',

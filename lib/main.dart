@@ -2631,12 +2631,6 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                 );
               }),
               const SizedBox(height: 12),
-              TextField(
-                decoration: const InputDecoration(labelText: 'הערה כללית'),
-                maxLines: 3,
-                onChanged: (v) => generalNote = v,
-              ),
-              const SizedBox(height: 12),
               // Admin command section
               if (currentUser?.role == 'Admin') ...[
                 Card(
@@ -3191,9 +3185,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   ),
                 );
               }),
-            Text(
-              'הערה כללית: ${feedback.notes['general'] ?? feedback.notes['__general__'] ?? ''}',
-            ),
             const SizedBox(height: 20),
 
             // סיכום ופירוט מקצים למשובי מטווחים
@@ -3330,12 +3321,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           }
                         }
 
-                        // אחוז פגיעה למקצה
-                        final stationPercentage = stationBullets > 0
-                            ? ((stationHits / stationBullets) * 100)
-                                  .toStringAsFixed(1)
-                            : '0.0';
-
                         return Card(
                           color: Colors.blueGrey.shade700,
                           margin: const EdgeInsets.only(bottom: 8),
@@ -3353,22 +3338,13 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                     ),
                                   ),
                                 ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '$stationHits/$stationBullets כדורים',
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                    Text(
-                                      '$stationPercentage%',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.orangeAccent,
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  '$stationHits/$stationBullets כדורים',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orangeAccent,
+                                  ),
                                 ),
                               ],
                             ),

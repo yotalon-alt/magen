@@ -173,9 +173,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // הכנת הנתונים לשמירה - אינטגרציה מלאה עם מערכת המשובים
       final String subFolder = widget.rangeType == 'קצרים'
-          ? 'טווחים קצרים'
+          ? 'טווח קצר'
           : widget.rangeType == 'ארוכים'
-          ? 'טווחים ארוכים'
+          ? 'טווח רחוק'
           : 'תרגילי הפתעה';
 
       final Map<String, dynamic> data = {
