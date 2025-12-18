@@ -386,6 +386,7 @@ class _InstructorCourseSelectionFeedbacksPageState
     String label,
     String value, {
     bool isHighlight = false,
+    Color? color,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -404,7 +405,7 @@ class _InstructorCourseSelectionFeedbacksPageState
             style: TextStyle(
               fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
               fontSize: isHighlight ? 18 : 14,
-              color: isHighlight ? Colors.orangeAccent : null,
+              color: color ?? (isHighlight ? Colors.orangeAccent : null),
             ),
           ),
         ],
@@ -431,7 +432,14 @@ class _InstructorCourseSelectionFeedbacksPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('מיונים לקורס מדריכים')),
+      appBar: AppBar(
+        title: const Text('מיונים לקורס מדריכים'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_forward),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'חזרה',
+        ),
+      ),
       body: _isLoading
           ? const Center(
               child: Column(

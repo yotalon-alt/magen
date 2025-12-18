@@ -173,9 +173,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // הכנת הנתונים לשמירה - אינטגרציה מלאה עם מערכת המשובים
       final String subFolder = widget.rangeType == 'קצרים'
-          ? 'טווח קצר'
+          ? 'דיווח קצר'
           : widget.rangeType == 'ארוכים'
-          ? 'טווח רחוק'
+          ? 'דיווח רחוק'
           : 'תרגילי הפתעה';
 
       final Map<String, dynamic> data = {
@@ -216,7 +216,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'name': selectedSettlement ?? '',
         'role': 'מטווח',
         'scores': {},
-        'notes': {'general': 'מטווח ${widget.rangeType} - $subFolder'},
+        'notes': {'general': '$subFolder'},
         'criteriaList': [],
       };
 
@@ -251,9 +251,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   @override
   Widget build(BuildContext context) {
+    // קביעת שם המטווח להצגה
+    final String rangeTitle = widget.rangeType == 'קצרים'
+        ? 'טווח קצר'
+        : widget.rangeType == 'ארוכים'
+        ? 'טווח רחוק'
+        : 'תרגילי הפתעה';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('מטווח ${widget.rangeType}'),
+        title: Text(rangeTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_forward),
           onPressed: () => Navigator.pop(context),
@@ -268,7 +275,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             children: [
               // כותרת
               Text(
-                'מטווח ${widget.rangeType}',
+                rangeTitle,
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,

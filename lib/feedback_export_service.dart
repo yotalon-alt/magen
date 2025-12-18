@@ -126,9 +126,17 @@ class FeedbackExportService {
       final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
       final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? now;
 
+      // קביעת שם סוג המטווח להצגה
       final rangeType = data['rangeType'] ?? 'לא ידוע';
+      final rangeDisplayName = rangeType == 'קצרים'
+          ? 'טווח קצר'
+          : rangeType == 'ארוכים'
+          ? 'טווח רחוק'
+          : rangeType == 'הפתעה'
+          ? 'תרגילי הפתעה'
+          : 'מטווח $rangeType';
       final sheetTitle =
-          'מטווח $rangeType - ${DateFormat('yyyy-MM-dd_HH-mm').format(createdAt)}';
+          '$rangeDisplayName - ${DateFormat('yyyy-MM-dd_HH-mm').format(createdAt)}';
 
       // קריאת נתוני מקצים וחניכים
       final stations =

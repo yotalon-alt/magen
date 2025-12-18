@@ -76,7 +76,14 @@ class SarikotPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('סריקות רחוב')),
+        appBar: AppBar(
+          title: const Text('סריקות רחוב'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -2408,7 +2415,14 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: Text('משוב - ${selectedExercise ?? ''}')),
+        appBar: AppBar(
+          title: Text('משוב - ${selectedExercise ?? ''}'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView(
@@ -3113,7 +3127,14 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         (currentUser?.role == 'Admin' || currentUser?.role == 'Instructor');
     final isAdmin = currentUser?.role == 'Admin';
     return Scaffold(
-      appBar: AppBar(title: const Text('פרטי משוב')),
+      appBar: AppBar(
+        title: const Text('פרטי משוב'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_forward),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'חזרה',
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(12.0),
         child: ListView(
@@ -3219,16 +3240,19 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
                   // חישוב סך הכל פגיעות וכדורים
                   int totalHits = 0;
-                  int totalBullets = 0;
 
+                  // סך כל הפגיעות - סכום כל פגיעות החניכים
                   for (final trainee in trainees) {
                     totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
                   }
 
+                  // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
+                  int totalBulletsPerTrainee = 0;
                   for (final station in stations) {
-                    totalBullets +=
+                    totalBulletsPerTrainee +=
                         (station['bulletsCount'] as num?)?.toInt() ?? 0;
                   }
+                  final totalBullets = trainees.length * totalBulletsPerTrainee;
 
                   // חישוב אחוז כללי
                   final percentage = totalBullets > 0
@@ -3308,7 +3332,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                         final station = entry.value;
                         final stationName =
                             station['name'] ?? 'מקצה ${index + 1}';
-                        final stationBullets =
+                        final stationBulletsPerTrainee =
                             (station['bulletsCount'] as num?)?.toInt() ?? 0;
 
                         // חישוב סך פגיעות למקצה
@@ -3321,30 +3345,80 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           }
                         }
 
+                        // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
+                        final totalStationBullets =
+                            trainees.length * stationBulletsPerTrainee;
+
+                        // חישוב אחוז פגיעות למקצה
+                        final stationPercentage = totalStationBullets > 0
+                            ? ((stationHits / totalStationBullets) * 100)
+                                  .toStringAsFixed(1)
+                            : '0.0';
+
                         return Card(
                           color: Colors.blueGrey.shade700,
                           margin: const EdgeInsets.only(bottom: 8),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    stationName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
+                                // שורה 1: שם המקצה
+                                Text(
+                                  stationName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
                                   ),
                                 ),
-                                Text(
-                                  '$stationHits/$stationBullets כדורים',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orangeAccent,
-                                  ),
+                                const SizedBox(height: 8),
+                                // שורה 2: סך כל כדורים
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('סך כל כדורים:'),
+                                    Text(
+                                      '$totalStationBullets',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                // שורה 3: סך כל פגיעות
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('סך כל פגיעות:'),
+                                    Text(
+                                      '$stationHits',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orangeAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                // שורה 4: אחוז פגיעות
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('אחוז פגיעות:'),
+                                    Text(
+                                      '$stationPercentage%',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.greenAccent,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -4298,7 +4372,14 @@ class MaagalPatuachPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('מעגל פתוח')),
+        appBar: AppBar(
+          title: const Text('מעגל פתוח'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(18.0),
@@ -4367,7 +4448,14 @@ class ShevaPrinciplesPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('שבע עקרונות לחימה')),
+        appBar: AppBar(
+          title: const Text('שבע עקרונות לחימה'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
@@ -4427,7 +4515,14 @@ class SaabalPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('סעב"ל – סדר עדיפויות בלחימה')),
+        appBar: AppBar(
+          title: const Text('סעב"ל – סדר עדיפויות בלחימה'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
           child: ListView(
@@ -4482,7 +4577,14 @@ class MaagalPoruzPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('מעגל פרוץ')),
+        appBar: AppBar(
+          title: const Text('מעגל פרוץ'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(

@@ -542,7 +542,14 @@ class _InstructorCourseFeedbackPageState
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('מיון לקורס מדריכים')),
+        appBar: AppBar(
+          title: const Text('מיון לקורס מדריכים'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'חזרה',
+          ),
+        ),
         body: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 100.0),
