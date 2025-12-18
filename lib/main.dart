@@ -2585,6 +2585,28 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                           );
                         }).toList(),
                       ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '1 – הציון הנמוך ביותר',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade400,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          Text(
+                            '5 – הציון הגבוה ביותר',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade400,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       TextField(
                         decoration: const InputDecoration(labelText: 'הערות'),
@@ -3012,6 +3034,30 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
             const Text(
               'קריטריונים:',
               style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '1 – הציון הנמוך ביותר',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade400,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  Text(
+                    '5 – הציון הגבוה ביותר',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade400,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             // show saved criteria names if present, otherwise fall back to scores map (only non-zero)
