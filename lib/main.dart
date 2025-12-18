@@ -10,6 +10,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'instructor_course_feedback_page.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
 import 'voice_assistant.dart';
+import 'range_selection_page.dart';
+import 'feedback_export_service.dart';
+import 'export_selection_page.dart';
+import 'universal_export_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -241,6 +245,7 @@ class FeedbackModel {
   final String folder; // תיקייה
   final String scenario; // תרחיש
   final String settlement; // יישוב
+  final int attendeesCount; // מספר חניכים/נוכחים (למטווחים)
 
   FeedbackModel({
     this.id,
@@ -258,6 +263,7 @@ class FeedbackModel {
     this.folder = '',
     this.scenario = '',
     this.settlement = '',
+    this.attendeesCount = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -276,6 +282,7 @@ class FeedbackModel {
       'instructorUsername': currentUser?.username ?? '',
       'folder': folder,
       'scenario': scenario,
+      'attendeesCount': attendeesCount,
       'settlement': settlement,
     };
   }
@@ -350,6 +357,7 @@ class FeedbackModel {
       folder: m['folder'] ?? '',
       scenario: m['scenario'] ?? '',
       settlement: m['settlement'] ?? '',
+      attendeesCount: (m['attendeesCount'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -368,6 +376,7 @@ class FeedbackModel {
     String? folder,
     String? scenario,
     String? settlement,
+    int? attendeesCount,
   }) {
     return FeedbackModel(
       role: role ?? this.role,
@@ -384,6 +393,7 @@ class FeedbackModel {
       folder: folder ?? this.folder,
       scenario: scenario ?? this.scenario,
       settlement: settlement ?? this.settlement,
+      attendeesCount: attendeesCount ?? this.attendeesCount,
     );
   }
 }
@@ -2042,6 +2052,7 @@ class ExercisesPage extends StatelessWidget {
       'מעגל פרוץ',
       'סריקות רחוב',
       'מיונים לקורס מדריכים',
+      'מטווחים',
     ];
 
     return Scaffold(
@@ -2074,6 +2085,13 @@ class ExercisesPage extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (_) => const InstructorCourseFeedbackPage(),
+                    ),
+                  );
+                } else if (ex == 'מטווחים') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RangeSelectionPage(),
                     ),
                   );
                 } else {
@@ -2730,6 +2748,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = currentUser?.role == 'Admin';
+
     // Show folders view
     if (_selectedFolder == null) {
       return Directionality(
@@ -2738,6 +2758,20 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           appBar: AppBar(
             title: const Text('משובים - תיקיות'),
             actions: [
+              // כפתור ייצוא משובים - רק לאדמין
+              if (isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.download),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const UniversalExportPage(),
+                      ),
+                    );
+                  },
+                  tooltip: 'ייצוא משובים',
+                ),
               IconButton(
                 icon: _isRefreshing
                     ? const SizedBox(
@@ -2857,6 +2891,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               .toList()
         : feedbackStorage.where((f) => f.folder == _selectedFolder).toList();
 
+    final isRangeFolder = _selectedFolder == 'מטווחי ירי';
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -2868,6 +2904,20 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
             tooltip: 'חזרה לתיקיות',
           ),
           actions: [
+            // כפתור ייצוא - רק לאדמין ורק בתיקייה "מטווחי ירי"
+            if (isAdmin && isRangeFolder)
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ExportSelectionPage(),
+                    ),
+                  );
+                },
+                tooltip: 'ייצוא ל-Google Sheets / Excel',
+              ),
             IconButton(
               icon: _isRefreshing
                   ? const SizedBox(
@@ -2949,6 +2999,74 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
   bool _isEditingCommand = false;
   bool _isSaving = false;
+  bool _isExporting = false;
+  String? _exportedSheetUrl;
+
+  Future<void> _exportToGoogleSheets() async {
+    if (feedback.id == null || feedback.id!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('לא ניתן לייצא משוב ללא מזהה')),
+      );
+      return;
+    }
+
+    setState(() => _isExporting = true);
+
+    try {
+      // שימוש בשירות הייצוא
+      final url = await FeedbackExportService.exportFeedback(
+        context: context,
+        feedbackId: feedback.id!,
+      );
+
+      if (url != null && url.isNotEmpty) {
+        setState(() => _exportedSheetUrl = url);
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('הקובץ נוצר בהצלחה!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
+  Future<void> _openGoogleSheet() async {
+    if (_exportedSheetUrl == null || _exportedSheetUrl!.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין קובץ לפתיחה')));
+      return;
+    }
+
+    try {
+      await FeedbackExportService.openGoogleSheet(_exportedSheetUrl!);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה: ${e.toString()}')));
+    }
+  }
 
   Future<void> _saveCommandChanges() async {
     if (feedback.id == null || feedback.id!.isEmpty) {
@@ -3020,6 +3138,17 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               Text('תרחיש: ${feedback.scenario}'),
               const SizedBox(height: 8),
             ],
+            if (feedback.folder == 'מטווחי ירי' &&
+                feedback.attendeesCount > 0) ...[
+              Text(
+                'מספר חניכים/נוכחים באימון: ${feedback.attendeesCount}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orangeAccent,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             Text('תפקיד: ${feedback.role}'),
             const SizedBox(height: 8),
             Text('שם: ${feedback.name}'),
@@ -3066,42 +3195,228 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               'הערה כללית: ${feedback.notes['general'] ?? feedback.notes['__general__'] ?? ''}',
             ),
             const SizedBox(height: 20),
-            // Average score card
-            Builder(
-              builder: (ctx) {
-                final scores = feedback.scores.values
-                    .where((v) => v > 0)
-                    .toList();
-                if (scores.isEmpty) return const SizedBox.shrink();
-                final avg = scores.reduce((a, b) => a + b) / scores.length;
-                return Card(
-                  color: Colors.blueGrey.shade800,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'ציון ממוצע',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+
+            // סיכום ופירוט מקצים למשובי מטווחים
+            if (feedback.folder == 'מטווחי ירי' &&
+                feedback.id != null &&
+                feedback.id!.isNotEmpty)
+              FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('feedbacks')
+                    .doc(feedback.id)
+                    .get(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData || !snapshot.data!.exists) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final data = snapshot.data!.data() as Map<String, dynamic>?;
+                  if (data == null) return const SizedBox.shrink();
+
+                  final stations =
+                      (data['stations'] as List?)
+                          ?.cast<Map<String, dynamic>>() ??
+                      [];
+                  final trainees =
+                      (data['trainees'] as List?)
+                          ?.cast<Map<String, dynamic>>() ??
+                      [];
+
+                  if (stations.isEmpty || trainees.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  // חישוב סך הכל פגיעות וכדורים
+                  int totalHits = 0;
+                  int totalBullets = 0;
+
+                  for (final trainee in trainees) {
+                    totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                  }
+
+                  for (final station in stations) {
+                    totalBullets +=
+                        (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                  }
+
+                  // חישוב אחוז כללי
+                  final percentage = totalBullets > 0
+                      ? ((totalHits / totalBullets) * 100).toStringAsFixed(1)
+                      : '0.0';
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // כרטיס סיכום כללי
+                      Card(
+                        color: Colors.blueGrey.shade800,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'סיכום כללי',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  Column(
+                                    children: [
+                                      const Text('סך פגיעות/כדורים'),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '$totalHits/$totalBullets',
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orangeAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    children: [
+                                      const Text('אחוז פגיעה כללי'),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '$percentage%',
+                                        style: const TextStyle(
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.greenAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${avg.toStringAsFixed(1)} / 5',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orangeAccent,
-                          ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // פירוט מקצים
+                      const Text(
+                        'פירוט מקצים',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      ...stations.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final station = entry.value;
+                        final stationName =
+                            station['name'] ?? 'מקצה ${index + 1}';
+                        final stationBullets =
+                            (station['bulletsCount'] as num?)?.toInt() ?? 0;
+
+                        // חישוב סך פגיעות למקצה
+                        int stationHits = 0;
+                        for (final trainee in trainees) {
+                          final hits = trainee['hits'] as Map<String, dynamic>?;
+                          if (hits != null) {
+                            stationHits +=
+                                (hits['station_$index'] as num?)?.toInt() ?? 0;
+                          }
+                        }
+
+                        // אחוז פגיעה למקצה
+                        final stationPercentage = stationBullets > 0
+                            ? ((stationHits / stationBullets) * 100)
+                                  .toStringAsFixed(1)
+                            : '0.0';
+
+                        return Card(
+                          color: Colors.blueGrey.shade700,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    stationName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '$stationHits/$stationBullets כדורים',
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                    Text(
+                                      '$stationPercentage%',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orangeAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                    ],
+                  );
+                },
+              )
+            // Average score card (משובים רגילים)
+            else
+              Builder(
+                builder: (ctx) {
+                  final scores = feedback.scores.values
+                      .where((v) => v > 0)
+                      .toList();
+                  if (scores.isEmpty) return const SizedBox.shrink();
+                  final avg = scores.reduce((a, b) => a + b) / scores.length;
+                  return Card(
+                    color: Colors.blueGrey.shade800,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'ציון ממוצע',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${avg.toStringAsFixed(1)} / 5',
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orangeAccent,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
             const SizedBox(height: 12),
             // Command box (visible to Admin + Instructors)
             if (canViewCommand) ...[
@@ -3205,6 +3520,64 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   ),
                 ),
               ),
+            ],
+
+            // כפתור ייצוא ל-Google Sheets (רק לאדמין)
+            if (isAdmin) ...[
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 12),
+              const Text(
+                'ייצוא נתונים',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isExporting ? null : _exportToGoogleSheets,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: Colors.green,
+                  ),
+                  icon: _isExporting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Icon(Icons.upload_file),
+                  label: Text(
+                    _isExporting ? 'מייצא...' : 'ייצוא ל-Google Sheets',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+              ),
+
+              // כפתור פתיחת הקובץ (מוצג רק אחרי ייצוא)
+              if (_exportedSheetUrl != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _openGoogleSheet,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: Colors.green, width: 2),
+                    ),
+                    icon: const Icon(Icons.open_in_new, color: Colors.green),
+                    label: const Text(
+                      'פתיחה ב-Google Sheets',
+                      style: TextStyle(fontSize: 18, color: Colors.green),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ],
         ),
