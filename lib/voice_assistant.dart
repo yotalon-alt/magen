@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'dart:async';
+import 'web_speech_stub.dart'
+    if (dart.library.html) 'web_speech.dart'
+    as web_speech;
 
 /// Global Voice Assistant Widget - Fixed microphone button in AppBar
 class VoiceAssistantButton extends StatefulWidget {
@@ -21,21 +26,25 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
   @override
   void initState() {
     super.initState();
-    _speech = stt.SpeechToText();
-    // אין אתחול אוטומטי - רק בעת לחיצה על הכפתור
+    if (!kIsWeb) {
+      _speech = stt.SpeechToText();
+    }
   }
 
   Future<void> _requestMicrophonePermission() async {
     debugPrint('mic button clicked');
 
+    if (kIsWeb) {
+      await _startListening();
+      return;
+    }
+
     if (_isInitialized) {
-      // כבר יש הרשאה - התחל האזנה ישירות
       await _startListening();
       return;
     }
 
     if (_permissionRequested) {
-      // נסיון חוזר אחרי דחייה
       debugPrint('⚠️ Permission previously denied - retrying initialization');
     }
 
@@ -43,7 +52,6 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
       debugPrint('microphone permission requested');
       _permissionRequested = true;
 
-      // speech_to_text מבקש הרשאה אוטומטית ב-initialize
       _isInitialized = await _speech.initialize(
         onError: (error) {
           debugPrint('❌ Voice Assistant Error: ${error.errorMsg}');
@@ -73,7 +81,6 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
       if (_isInitialized) {
         debugPrint('microphone permission granted');
         if (mounted) setState(() {});
-        // התחל האזנה מיד לאחר הענקת ההרשאה
         await _startListening();
       } else {
         debugPrint('⚠️ Microphone permission denied or not available');
@@ -106,9 +113,13 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
   }
 
   Future<void> _startListening() async {
+    if (kIsWeb) {
+      await _startWebSpeech();
+      return;
+    }
+
     if (!_isInitialized) {
       debugPrint('⚠️ Cannot start listening - not initialized');
-      // נסה לבקש הרשאה שוב
       await _requestMicrophonePermission();
       return;
     }
@@ -129,13 +140,12 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
             _currentText = result.recognizedWords;
           });
 
-          // If final result, process command
           if (result.finalResult) {
             _processCommand(_currentText);
             _stopListening();
           }
         },
-        localeId: 'he-IL', // Hebrew locale
+        localeId: 'he-IL',
         listenOptions: stt.SpeechListenOptions(
           listenMode: stt.ListenMode.confirmation,
           cancelOnError: true,
@@ -159,8 +169,53 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
     }
   }
 
+  Future<void> _startWebSpeech() async {
+    debugPrint('🌐 Starting Web Speech Recognition');
+    setState(() {
+      _isListening = true;
+      _currentText = '';
+    });
+
+    try {
+      final result = await web_speech.startWebSpeech(
+        (String text) {
+          debugPrint('📝 Web recognized: $text');
+        },
+        (String error) {
+          debugPrint('❌ Web speech error: $error');
+        },
+      );
+
+      if (mounted) {
+        _processCommand(result);
+        setState(() => _isListening = false);
+      }
+    } catch (e) {
+      debugPrint('❌ Web speech failed: $e');
+      if (mounted) {
+        setState(() => _isListening = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאה בזיהוי קולי: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _stopListening() async {
-    await _speech.stop();
+    if (kIsWeb) {
+      try {
+        web_speech.stopWebSpeech();
+      } catch (e) {
+        debugPrint('⚠️ Error stopping web speech: $e');
+      }
+    } else {
+      await _speech.stop();
+    }
     if (mounted) {
       setState(() => _isListening = false);
     }
@@ -197,6 +252,7 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
 
   @override
   Widget build(BuildContext context) {
+    final bool canListen = kIsWeb || _isInitialized;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       child: IconButton(
@@ -204,14 +260,12 @@ class _VoiceAssistantButtonState extends State<VoiceAssistantButton> {
           _isListening ? Icons.mic : Icons.mic_none,
           color: _isListening
               ? Colors.red
-              : (_isInitialized ? Colors.white : Colors.grey),
+              : (canListen ? Colors.white : Colors.grey),
           size: 28,
         ),
         tooltip: _isListening
             ? 'לחץ להפסקה'
-            : (_isInitialized
-                  ? 'לחץ לדיבור (עברית)'
-                  : 'לחץ לאישור גישה למיקרופון'),
+            : (canListen ? 'לחץ לדיבור (עברית)' : 'לחץ לאישור גישה למיקרופון'),
         onPressed: _isListening ? _stopListening : _requestMicrophonePermission,
       ),
     );

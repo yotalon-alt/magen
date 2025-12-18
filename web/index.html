@@ -61,6 +61,77 @@
   </script>
 </head>
 <body>
+  <script>
+    let recognition = null;
+    let currentCallback = null;
+    let currentErrorCallback = null;
+
+    window.startWebSpeechRecognition = function(callback, errorCallback) {
+      console.log('🎤 startWebSpeechRecognition called');
+      currentCallback = callback;
+      currentErrorCallback = errorCallback;
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        console.error('❌ Speech Recognition not supported');
+        if (errorCallback) errorCallback('Speech Recognition not supported');
+        return;
+      }
+
+      try {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'he-IL';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = function() {
+          console.log('🎤 Speech recognition started');
+        };
+
+        recognition.onresult = function(event) {
+          const transcript = event.results[0][0].transcript;
+          console.log('📝 Recognized:', transcript);
+          if (callback) callback(transcript);
+        };
+
+        recognition.onerror = function(event) {
+          console.error('❌ Speech recognition error:', event.error);
+          if (event.error === 'not-allowed') {
+            if (errorCallback) errorCallback('Microphone permission denied');
+          } else if (event.error === 'no-speech') {
+            if (errorCallback) errorCallback('No speech detected');
+          } else {
+            if (errorCallback) errorCallback(event.error);
+          }
+        };
+
+        recognition.onend = function() {
+          console.log('🔴 Speech recognition ended');
+          recognition = null;
+        };
+
+        recognition.start();
+        console.log('✅ Recognition started successfully');
+      } catch (error) {
+        console.error('❌ Failed to start recognition:', error);
+        if (errorCallback) errorCallback(error.message);
+      }
+    };
+
+    window.stopWebSpeechRecognition = function() {
+      console.log('🛑 stopWebSpeechRecognition called');
+      if (recognition) {
+        try {
+          recognition.stop();
+          recognition = null;
+        } catch (error) {
+          console.error('❌ Error stopping recognition:', error);
+        }
+      }
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
