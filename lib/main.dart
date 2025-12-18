@@ -2555,57 +2555,52 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
+                        runSpacing: 4,
+                        alignment: WrapAlignment.spaceEvenly,
                         children: scoreOptions.map((v) {
                           final selected = val == v;
-                          return ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: selected
-                                  ? Colors.blueAccent
-                                  : Colors.grey.shade300,
-                              foregroundColor: selected
-                                  ? Colors.white
-                                  : Colors.black,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: selected
+                                      ? Colors.blueAccent
+                                      : Colors.grey.shade300,
+                                  foregroundColor: selected
+                                      ? Colors.white
+                                      : Colors.black,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: selected ? 4 : 1,
+                                ),
+                                onPressed: () => setState(() => scores[c] = v),
+                                child: Text(
+                                  v.toString(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              elevation: selected ? 4 : 1,
-                            ),
-                            onPressed: () => setState(() => scores[c] = v),
-                            child: Text(
-                              v.toString(),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                              const SizedBox(height: 2),
+                              if (v == 1 || v == 5)
+                                Text(
+                                  v == 1 ? 'נמוך ביותר' : 'גבוה ביותר',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.grey.shade500,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                            ],
                           );
                         }).toList(),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '1 – הציון הנמוך ביותר',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade400,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                          Text(
-                            '5 – הציון הגבוה ביותר',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade400,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ],
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -3034,30 +3029,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
             const Text(
               'קריטריונים:',
               style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '1 – הציון הנמוך ביותר',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade400,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                  Text(
-                    '5 – הציון הגבוה ביותר',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade400,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
             ),
             const SizedBox(height: 8),
             // show saved criteria names if present, otherwise fall back to scores map (only non-zero)

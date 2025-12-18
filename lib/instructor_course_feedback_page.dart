@@ -344,57 +344,53 @@ class _InstructorCourseFeedbackPageState
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            alignment: WrapAlignment.spaceEvenly,
             children: [1, 2, 3, 4, 5].map((score) {
               final isSelected = currentScore == score;
-              return ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isSelected
-                      ? Colors.blueAccent
-                      : Colors.grey.shade300,
-                  foregroundColor: isSelected ? Colors.white : Colors.black,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isSelected
+                          ? Colors.blueAccent
+                          : Colors.grey.shade300,
+                      foregroundColor: isSelected ? Colors.white : Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      elevation: isSelected ? 4 : 1,
+                    ),
+                    onPressed: () =>
+                        setState(() => categories[category] = score),
+                    child: Text(
+                      score.toString(),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  elevation: isSelected ? 4 : 1,
-                ),
-                onPressed: () => setState(() => categories[category] = score),
-                child: Text(
-                  score.toString(),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                  const SizedBox(height: 2),
+                  if (score == 1 || score == 5)
+                    Text(
+                      score == 1 ? 'נמוך ביותר' : 'גבוה ביותר',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: Colors.grey.shade500,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                ],
               );
             }).toList(),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '1 – הציון הנמוך ביותר',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade400,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              Text(
-                '5 – הציון הגבוה ביותר',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade400,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
           ),
         ],
       ),
