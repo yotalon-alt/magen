@@ -204,16 +204,65 @@ class VoiceCommandHandler {
     Function(String) onStatisticsFilter,
     Function(String) onExerciseAction,
     Function(String) onMaterialsAction,
+    Function() onNavigateBack,
+    Function(int) onNavigateToPage,
   ) {
     final lowerCommand = command.toLowerCase().trim();
     debugPrint(
       '🎯 Handling command: "$lowerCommand" on page $currentPageIndex',
     );
 
-    // Page 0: Home - no voice commands
+    // ========================
+    // פקודות גלובליות (עובדות מכל דף)
+    // ========================
+
+    // חזור אחורה
+    if (_matchIntent(lowerCommand, ['חזור', 'אחורה', 'חזרה'])) {
+      debugPrint('🔙 Global: Navigate back');
+      onNavigateBack();
+      _showMessage(context, 'חוזר אחורה');
+      return;
+    }
+
+    // לך לדף הבית
+    if (_matchIntent(lowerCommand, ['דף הבית', 'בית', 'דף בית', 'לבית'])) {
+      debugPrint('🏠 Global: Navigate to Home');
+      onNavigateToPage(0);
+      _showMessage(context, 'עובר לדף הבית');
+      return;
+    }
+
+    // תראה לי את כל המשובים
+    if (_matchIntent(lowerCommand, ['משובים', 'תראה משובים', 'כל המשובים'])) {
+      debugPrint('📋 Global: Navigate to Feedbacks');
+      onNavigateToPage(2);
+      _showMessage(context, 'עובר לדף המשובים');
+      return;
+    }
+
+    // פתח סטטיסטיקה / לך לסטטיסטיקות
+    if (_matchIntent(lowerCommand, ['סטטיסטיקה', 'סטטיסטיקות', 'נתונים'])) {
+      debugPrint('📊 Global: Navigate to Statistics');
+      onNavigateToPage(3);
+      _showMessage(context, 'עובר לסטטיסטיקות');
+      return;
+    }
+
+    // חפש (גלובלי)
+    if (_matchIntent(lowerCommand, ['חפש', 'חיפוש'])) {
+      debugPrint('🔍 Global: Search command');
+      _showMessage(context, 'חיפוש זמין בדף המשובים');
+      return;
+    }
+
+    // ========================
+    // פקודות ספציפיות לדף
+    // ========================
+
+    // Page 0: Home - no specific commands
     if (currentPageIndex == 0) {
-      debugPrint('📍 Page 0 (Home) - no commands available');
-      _showMessage(context, 'אין פקודות קוליות זמינות בדף הבית');
+      debugPrint('📍 Page 0 (Home) - using global commands only');
+      _showMessage(context, 'נסה: "לך למשובים", "פתח סטטיסטיקה"');
       return;
     }
 
@@ -225,7 +274,12 @@ class VoiceCommandHandler {
 
     // Page 2: Feedbacks
     if (currentPageIndex == 2) {
-      _handleFeedbacksCommands(context, lowerCommand, onFeedbackFilter);
+      _handleFeedbacksCommands(
+        context,
+        lowerCommand,
+        onFeedbackFilter,
+        onNavigateBack,
+      );
       return;
     }
 
@@ -242,6 +296,25 @@ class VoiceCommandHandler {
     }
 
     _showMessage(context, 'לא זוהתה פקודה');
+  }
+
+  /// Helper: Intent matching based on keywords
+  static bool _matchIntent(String command, List<String> keywords) {
+    return keywords.any((keyword) => command.contains(keyword));
+  }
+
+  /// Helper: Extract name/text after keyword
+  static String? _extractParameter(String command, List<String> prefixes) {
+    for (final prefix in prefixes) {
+      final index = command.indexOf(prefix);
+      if (index != -1) {
+        final afterPrefix = command.substring(index + prefix.length).trim();
+        if (afterPrefix.isNotEmpty) {
+          return afterPrefix;
+        }
+      }
+    }
+    return null;
   }
 
   static void _handleExercisesCommands(
@@ -280,12 +353,64 @@ class VoiceCommandHandler {
     BuildContext context,
     String command,
     Function(String) onFilter,
+    Function() onNavigateBack,
   ) {
     debugPrint('📝 Processing feedbacks command: "$command"');
-    // Feedback filtering commands
+
+    // ========================
+    // דף משובים – ניווט וחיפוש
+    // ========================
+
+    // כנס למשוב / פתח משוב
+    if (_matchIntent(command, ['כנס למשוב', 'פתח משוב', 'כנס לפידבק'])) {
+      debugPrint('✅ Intent: Open feedback');
+      onFilter('action_open_feedback');
+      _showMessage(context, 'פותח משוב');
+      return;
+    }
+
+    // חפש משוב של {שם} / תראה לי משוב של {שם}
+    if (_matchIntent(command, ['חפש משוב', 'תראה משוב', 'משוב של'])) {
+      final name = _extractParameter(command, ['של ', 'משוב ']);
+      if (name != null) {
+        debugPrint('✅ Intent: Search feedback for: $name');
+        onFilter('search_feedback_$name');
+        _showMessage(context, 'מחפש משוב של $name');
+      } else {
+        debugPrint('⚠️ No name provided for feedback search');
+        _showMessage(context, 'אנא ציין שם לחיפוש, למשל: "חפש משוב של יוסי"');
+      }
+      return;
+    }
+
+    // כנס למשוב האחרון
+    if (_matchIntent(command, ['משוב אחרון', 'אחרון', 'למשוב האחרון'])) {
+      debugPrint('✅ Intent: Open last feedback');
+      onFilter('action_open_last_feedback');
+      _showMessage(context, 'פותח משוב אחרון');
+      return;
+    }
+
+    // כנס למשוב הראשון
+    if (_matchIntent(command, ['משוב ראשון', 'ראשון', 'למשוב הראשון'])) {
+      debugPrint('✅ Intent: Open first feedback');
+      onFilter('action_open_first_feedback');
+      _showMessage(context, 'פותח משוב ראשון');
+      return;
+    }
+
+    // סגור משוב
+    if (_matchIntent(command, ['סגור משוב', 'סגור', 'חזור מהמשוב'])) {
+      debugPrint('✅ Intent: Close feedback');
+      onNavigateBack();
+      _showMessage(context, 'סוגר משוב');
+      return;
+    }
+
+    // Existing filtering commands
     if (command.contains('סנן') ||
         command.contains('הצג') ||
-        command.contains('פתח')) {
+        command.contains('פתח תרגיל')) {
       if (command.contains('מעגל פתוח')) {
         debugPrint('✅ Filtering by מעגל פתוח');
         onFilter('filter_maagal_patuach');
@@ -311,8 +436,11 @@ class VoiceCommandHandler {
         _showMessage(context, 'לא זוהתה פקודת סינון. נסה: "סנן מעגל פתוח"');
       }
     } else {
-      debugPrint('⚠️ No action verb found');
-      _showMessage(context, 'הפקודה לא זמינה בדף זה. נסה: "סנן" או "הצג"');
+      debugPrint('⚠️ No recognized command');
+      _showMessage(
+        context,
+        'נסה: "כנס למשוב", "חפש משוב של שם", "סנן מעגל פתוח"',
+      );
     }
   }
 
@@ -322,7 +450,82 @@ class VoiceCommandHandler {
     Function(String) onFilter,
   ) {
     debugPrint('📊 Processing statistics command: "$command"');
-    // Statistics filtering commands
+
+    // ========================
+    // סטטיסטיקות – חישובים
+    // ========================
+
+    // כמה משובים יש (סך הכל)
+    if (_matchIntent(command, [
+      'כמה משובים',
+      'סך משובים',
+      'סך כל',
+      'כמות משובים',
+    ])) {
+      debugPrint('✅ Intent: Count all feedbacks');
+      onFilter('action_count_feedbacks');
+      _showMessage(context, 'מחשב סך משובים');
+      return;
+    }
+
+    // כמה משובים יש לקורס מדריכים
+    if (_matchIntent(command, ['כמה משובים']) &&
+        _matchIntent(command, ['מדריכים', 'קורס'])) {
+      debugPrint('✅ Intent: Count instructor course feedbacks');
+      onFilter('action_count_instructor_feedbacks');
+      _showMessage(context, 'מחשב משובי קורס מדריכים');
+      return;
+    }
+
+    // כמה משובים יש בתרגיל הזה
+    if (_matchIntent(command, ['כמה משובים']) &&
+        _matchIntent(command, ['תרגיל', 'תקריאה'])) {
+      debugPrint('✅ Intent: Count exercise feedbacks');
+      onFilter('action_count_exercise_feedbacks');
+      _showMessage(context, 'מחשב משובים לתרגיל הנוכחי');
+      return;
+    }
+
+    // ========================
+    // סטטיסטיקות – סינונים
+    // ========================
+
+    // אפס סינונים / תראה לי את כל הנתונים
+    if (_matchIntent(command, ['אפס', 'נקה סינון', 'כל הנתונים', 'הכל'])) {
+      debugPrint('✅ Intent: Clear all filters');
+      onFilter('action_clear_filters');
+      _showMessage(context, 'מאפס סינונים');
+      return;
+    }
+
+    // סנן לפי קורס / קורס מדריכים
+    if (_matchIntent(command, [
+      'סנן לפי קורס',
+      'קורס מדריכים',
+      'מיונים מדריכים',
+    ])) {
+      debugPrint('✅ Intent: Filter by instructor course');
+      onFilter('folder_mioonim_madrichim');
+      _showMessage(context, 'מסנן לפי קורס מדריכים');
+      return;
+    }
+
+    // סנן לפי תרגיל / תקריאה
+    if (_matchIntent(command, ['סנן לפי תרגיל', 'סנן לפי תקריאה', 'תרגיל'])) {
+      debugPrint('✅ Intent: Filter by exercise (need specific exercise name)');
+      _showMessage(context, 'אנא ציין תרגיל: מעגל פתוח, מעגל פרוץ, או סריקות');
+      return;
+    }
+
+    // סנן לפי תאריך
+    if (_matchIntent(command, ['סנן לפי תאריך', 'תאריך', 'תקופה'])) {
+      debugPrint('✅ Intent: Filter by date');
+      onFilter('action_filter_by_date');
+      _showMessage(context, 'פתח סינון תאריך');
+      return;
+    }
+
+    // Existing detailed filtering commands
     if (command.contains('סנן') ||
         command.contains('הצג') ||
         command.contains('סטטיסטיקה')) {
@@ -362,8 +565,13 @@ class VoiceCommandHandler {
           _showMessage(context, 'ציין שם תרגיל');
         }
       } else if (command.contains('יישוב')) {
-        // User needs to say the settlement name
-        _showMessage(context, 'אנא ציין שם יישוב');
+        final settlement = _extractParameter(command, ['יישוב ', 'ב', 'של ']);
+        if (settlement != null) {
+          onFilter('settlement_$settlement');
+          _showMessage(context, 'מסנן לפי יישוב: $settlement');
+        } else {
+          _showMessage(context, 'אנא ציין שם יישוב');
+        }
       } else if (command.contains('תפקיד')) {
         onFilter('filter_by_role');
         _showMessage(context, 'סינון לפי תפקיד');
@@ -371,7 +579,10 @@ class VoiceCommandHandler {
         _showMessage(context, 'לא זוהתה פקודת סינון');
       }
     } else {
-      _showMessage(context, 'הפקודה לא זמינה בדף זה');
+      _showMessage(
+        context,
+        'נסה: "כמה משובים יש", "סנן לפי קורס", "אפס סינונים"',
+      );
     }
   }
 
