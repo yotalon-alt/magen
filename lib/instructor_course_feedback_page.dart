@@ -36,17 +36,47 @@ class _InstructorCourseFeedbackPageState
   };
 
   // Calculate rating for level test based on hits and time
+  // Uses linear interpolation for precise scoring between extremes
   int _calculateLevelTestRating() {
     final hits = int.tryParse(_hitsController.text) ?? 0;
     final timeSeconds = int.tryParse(_timeSecondsController.text) ?? 0;
 
+    // No input = no score
     if (hits == 0 && timeSeconds == 0) return 0;
 
+    // Auto-fail conditions
+    if (hits < 6) {
+      return 1; // Less than 6 hits = always fail
+    }
+    if (timeSeconds > 15 && hits < 8) {
+      return 1; // Over 15 sec with <8 hits = fail
+    }
+
+    // Perfect score: 7 seconds, 10 hits
     if (timeSeconds <= 7 && hits >= 10) return 5;
-    if (timeSeconds <= 9 && hits >= 9) return 4;
-    if (timeSeconds <= 11 && hits >= 8) return 3;
-    if (timeSeconds <= 12 && hits >= 8) return 2;
-    return 1;
+
+    // Worst passing score: 15 seconds, 6 hits (barely passing)
+    if (timeSeconds >= 15 || hits <= 6) return 1;
+
+    // Linear interpolation between extremes
+    // Time factor: 7 sec (best) to 15 sec (worst) = 0 to 1
+    double timeFactor = (timeSeconds - 7) / (15 - 7); // 0 (best) to 1 (worst)
+    timeFactor = timeFactor.clamp(0.0, 1.0);
+
+    // Hits factor: 10 hits (best) to 6 hits (worst) = 0 to 1
+    double hitsFactor = (10 - hits) / (10 - 6); // 0 (best) to 1 (worst)
+    hitsFactor = hitsFactor.clamp(0.0, 1.0);
+
+    // Combined factor (average of both factors)
+    double combinedFactor = (timeFactor + hitsFactor) / 2;
+
+    // Convert to score: 0 factor = 5, 1 factor = 1
+    double rawScore = 5 - (combinedFactor * 4); // 5 down to 1
+
+    // Round to nearest integer and ensure within bounds
+    int finalScore = rawScore.round().clamp(1, 5);
+
+    return finalScore;
   }
 
   // Update level test rating when hits or time changes
@@ -69,20 +99,32 @@ class _InstructorCourseFeedbackPageState
   bool _isSaving = false;
 
   // Calculate weighted final score (1-5)
+  // This is a weighted average where each component (1-5) is multiplied by its weight
+  // Result is always between 1-5 (not a sum, not percentage)
   double get finalWeightedScore {
+    // Check if all categories have scores
+    bool allScored = true;
+    for (final category in _categoryWeights.keys) {
+      final score = categories[category] ?? 0;
+      if (score == 0) {
+        allScored = false;
+        break;
+      }
+    }
+
+    // Return 0 if not all categories are scored
+    if (!allScored) return 0.0;
+
+    // Calculate weighted average: sum of (score × weight)
+    // Since weights sum to 1.0 (100%), the result is naturally between 1-5
     double weightedSum = 0.0;
-    double totalWeight = 0.0;
 
     _categoryWeights.forEach((category, weight) {
       final score = categories[category] ?? 0;
-      if (score > 0) {
-        weightedSum += score * weight;
-        totalWeight += weight;
-      }
+      weightedSum += score * weight;
     });
 
-    if (totalWeight == 0) return 0.0;
-    return weightedSum / totalWeight * 5.0;
+    return weightedSum;
   }
 
   // Determine if candidate is suitable for instructor course
