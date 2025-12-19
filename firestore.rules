@@ -70,6 +70,26 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Nested screenings under courses/{courseId}/screenings/{screeningId}
+    match /courses/{courseId}/screenings/{screeningId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isOwner() {
+        return request.auth != null && resource.data.instructorId == request.auth.uid;
+      }
+
+      // Allow create for any signed-in user; do not require fields at create time
+      allow create: if isSignedIn();
+
+      // Read/update for owner; Admin can read/update all
+      allow read: if isOwner() || isAdmin();
+      allow update: if (isOwner() || isAdmin());
+
+      // No deletes
+      allow delete: if false;
+    }
+
     // Block everything else
     match /{document=**} {
       allow read, write: if false;
