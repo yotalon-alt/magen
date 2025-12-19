@@ -888,46 +888,10 @@ class FeedbackExportService {
     });
 
     await batch.commit();
-
-    // Attempt automatic completion if all fields are filled
-    await _autoCompleteScreeningIfReady(screeningId);
+    // אל תשנה סטטוס באופן אוטומטי. סיום משוב חייב להיות מפורש דרך UI.
   }
 
-  /// Helper: mark screening completed if all fields have non-null values
-  static Future<void> _autoCompleteScreeningIfReady(String screeningId) async {
-    final ref = FirebaseFirestore.instance
-        .collection('instructor_course_screenings')
-        .doc(screeningId);
-
-    final snap = await ref.get().timeout(const Duration(seconds: 10));
-    if (!snap.exists) return;
-
-    final data = snap.data();
-    if (data == null) return;
-
-    final bool isLocked = (data['isFinalLocked'] as bool?) ?? false;
-    final String status = (data['status'] as String?) ?? 'in_progress';
-    final Map<String, dynamic> fields =
-        (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
-
-    bool allFilled = true;
-    for (final entry in fields.entries) {
-      final m = (entry.value as Map?)?.cast<String, dynamic>() ?? {};
-      final v = m['value'];
-      if (v == null) {
-        allFilled = false;
-        break;
-      }
-    }
-
-    if ((isLocked || allFilled) && status != 'completed') {
-      await ref.set({
-        'status': 'completed',
-        'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    }
-  }
+  // Note: auto-completion removed to require explicit completion via UI.
 
   /// Admin: set screening lock and optionally status
   static Future<void> setScreeningLock({

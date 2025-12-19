@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import '../main.dart';
-import 'screenings_in_progress_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'screening_details_page.dart';
 
 class ScreeningsMenuPage extends StatelessWidget {
   const ScreeningsMenuPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = currentUser?.role == 'Admin';
-
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -25,51 +24,62 @@ class ScreeningsMenuPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Card(
-                elevation: 4,
-                child: ListTile(
-                  leading: const Icon(Icons.pending_actions),
-                  title: const Text('משובים בתהליך'),
-                  subtitle: const Text('מילוי שדות ריקים בלבד'),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ScreeningsInProgressPage(
-                        statusFilter: 'in_progress',
-                      ),
-                    ),
-                  ),
+              SizedBox(
+                height: 56,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('הוסף משוב'),
+                  onPressed: () async {
+                    // Create screening doc as draft, then navigate to fill
+                    final uid = FirebaseAuth.instance.currentUser?.uid;
+                    if (uid == null || uid.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('נדרשת התחברות')),
+                      );
+                      return;
+                    }
+                    try {
+                      final ref = FirebaseFirestore.instance
+                          .collection('instructor_course_screenings')
+                          .doc();
+                      await ref.set({
+                        'status': 'draft',
+                        'isFinalLocked': false,
+                        'createdAt': FieldValue.serverTimestamp(),
+                        'updatedAt': FieldValue.serverTimestamp(),
+                        'createdBy': uid,
+                        'createdByName':
+                            FirebaseAuth.instance.currentUser?.email ?? '',
+                        'title': 'מועמד חדש',
+                        'fields': {
+                          'ירי': {'value': null},
+                          'קבלת החלטות': {'value': null},
+                          'עמידה בלחץ': {'value': null},
+                        },
+                      });
+                      if (!context.mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ScreeningDetailsPage(screeningId: ref.id),
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('שגיאה ביצירה: ${e.toString()}'),
+                        ),
+                      );
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 12),
-              if (isAdmin)
-                Card(
-                  elevation: 4,
-                  child: ListTile(
-                    leading: const Icon(Icons.library_add_check),
-                    title: const Text('משובים סופיים'),
-                    subtitle: const Text('עבור אדמין בלבד'),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ScreeningsInProgressPage(
-                          statusFilter: 'completed',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              if (!isAdmin)
-                Card(
-                  elevation: 0,
-                  color: Colors.transparent,
-                  child: ListTile(
-                    leading: const Icon(Icons.lock, color: Colors.grey),
-                    title: const Text('משובים סופיים'),
-                    subtitle: const Text('זמין לאדמין בלבד'),
-                    enabled: false,
-                  ),
-                ),
+              const Text(
+                'יצירת משוב היא השלב הראשון. רשימות משובים נטענות רק במסך הייעודי.',
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),

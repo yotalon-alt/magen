@@ -259,25 +259,23 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            RadioListTile<String>(
-                              title: const Text('ייצוא משוב בודד'),
-                              subtitle: const Text(
-                                'בחר משוב אחד ספציפי לייצוא',
-                              ),
-                              value: 'single',
-                              groupValue: _exportType,
-                              onChanged: (v) =>
-                                  setState(() => _exportType = v!),
-                            ),
-                            RadioListTile<String>(
-                              title: const Text('ייצוא קבוצת משובים'),
-                              subtitle: const Text(
-                                'ייצוא מרובה עם אפשרות סינון',
-                              ),
-                              value: 'multiple',
-                              groupValue: _exportType,
-                              onChanged: (v) =>
-                                  setState(() => _exportType = v!),
+                            SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment<String>(
+                                  value: 'single',
+                                  label: Text('ייצוא משוב בודד'),
+                                ),
+                                ButtonSegment<String>(
+                                  value: 'multiple',
+                                  label: Text('ייצוא קבוצת משובים'),
+                                ),
+                              ],
+                              selected: {_exportType},
+                              onSelectionChanged: (selection) {
+                                if (selection.isNotEmpty) {
+                                  setState(() => _exportType = selection.first);
+                                }
+                              },
                             ),
                           ],
                         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
 import 'screening_details_page.dart';
 
@@ -19,11 +20,19 @@ class ScreeningsInProgressPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(title: const Text('משובים בתהליך – קורס מדריכים')),
         body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('instructor_course_screenings')
-              .where('status', isEqualTo: statusFilter)
-              .orderBy('updatedAt', descending: true)
-              .snapshots(),
+          stream: () {
+            Query<Map<String, dynamic>> q = FirebaseFirestore.instance
+                .collection('instructor_course_screenings')
+                .where('status', isEqualTo: statusFilter);
+            final uid =
+                currentUser?.uid ?? FirebaseAuth.instance.currentUser?.uid;
+            final isAdmin = currentUser?.role == 'Admin';
+            if (!isAdmin && uid != null && uid.isNotEmpty) {
+              q = q.where('createdBy', isEqualTo: uid);
+            }
+            q = q.orderBy('updatedAt', descending: true);
+            return q.snapshots();
+          }(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -61,7 +70,32 @@ class ScreeningsInProgressPage extends StatelessWidget {
                           ? 'נעול'
                           : (statusFilter == 'completed' ? 'סופי' : 'בתהליך'),
                     ),
-                    trailing: const Icon(Icons.chevron_left),
+                    trailing: statusFilter == 'in_progress'
+                        ? ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ScreeningDetailsPage(screeningId: doc.id),
+                                ),
+                              );
+                            },
+                            child: const Text('המשך מילוי'),
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.remove_red_eye),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ScreeningDetailsPage(screeningId: doc.id),
+                                ),
+                              );
+                            },
+                            tooltip: 'צפה',
+                          ),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -89,6 +123,8 @@ class ScreeningsInProgressPage extends StatelessWidget {
                     'isFinalLocked': false,
                     'createdAt': FieldValue.serverTimestamp(),
                     'updatedAt': FieldValue.serverTimestamp(),
+                    'createdBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+                    'createdByName': currentUser?.name ?? '',
                     'title': 'מועמד חדש',
                     'fields': {
                       'ירי': {'value': null},

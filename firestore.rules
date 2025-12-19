@@ -39,48 +39,28 @@ service cloud.firestore {
     }
 
     // Screening documents for instructor course (multi-day)
+    // Focused permissions per requirements
     match /instructor_course_screenings/{screeningId} {
-      // Read: Admin sees all; Instructor sees only in_progress
-      allow read: if isAdmin() || (isInstructor() && resource.data.status == 'in_progress');
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isOwner() {
+        return request.auth != null && resource.data.createdBy == request.auth.uid;
+      }
 
-      // Create: Admin only
-      allow create: if isAdmin();
+      // 1) allow create for any signed-in user (no required fields on create)
+      allow create: if isSignedIn();
 
-      // Update:
-      // - Admin: any update
-      // - Instructor: only fill empty fields when status in_progress and not locked
-      allow update: if isAdmin() || (
-        isInstructor() &&
-        resource.data.status == 'in_progress' &&
-        resource.data.isFinalLocked == false &&
-        request.resource.data.status == 'in_progress' &&
-        request.resource.data.isFinalLocked == false &&
-        // Permit update of exactly one of the known fields from null -> int
-        (
-          (
-            resource.data.fields.ירי.value == null &&
-            request.resource.data.fields.ירי.value is int &&
-            request.resource.data.fields.ירי.filledBy == request.auth.uid &&
-            request.resource.data.fields['קבלת החלטות'] == resource.data.fields['קבלת החלטות'] &&
-            request.resource.data.fields['עמידה בלחץ'] == resource.data.fields['עמידה בלחץ']
-          ) || (
-            resource.data.fields['קבלת החלטות'].value == null &&
-            request.resource.data.fields['קבלת החלטות'].value is int &&
-            request.resource.data.fields['קבלת החלטות'].filledBy == request.auth.uid &&
-            request.resource.data.fields.ירי == resource.data.fields.ירי &&
-            request.resource.data.fields['עמידה בלחץ'] == resource.data.fields['עמידה בלחץ']
-          ) || (
-            resource.data.fields['עמידה בלחץ'].value == null &&
-            request.resource.data.fields['עמידה בלחץ'].value is int &&
-            request.resource.data.fields['עמידה בלחץ'].filledBy == request.auth.uid &&
-            request.resource.data.fields.ירי == resource.data.fields.ירי &&
-            request.resource.data.fields['קבלת החלטות'] == resource.data.fields['קבלת החלטות']
-          )
-        )
+      // 2) allow read for owner only (works for queries and gets)
+      allow read: if isOwner();
+
+      // 3) allow update for owner when status is draft (and also 'in_progress' to match app flow)
+      allow update: if isOwner() && (
+        resource.data.status == 'draft' || resource.data.status == 'in_progress'
       );
 
-      // Delete: Admin only
-      allow delete: if isAdmin();
+      // 4) deny deletes explicitly
+      allow delete: if false;
     }
 
     // Candidate aggregate docs (if used)

@@ -8,7 +8,7 @@ import 'firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'instructor_course_feedback_page.dart';
-import 'instructor_course_selection_feedbacks_page.dart';
+// import 'instructor_course_selection_feedbacks_page.dart';
 import 'pages/screenings_menu_page.dart';
 import 'voice_assistant.dart';
 import 'range_selection_page.dart';
@@ -2838,8 +2838,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    const InstructorCourseSelectionFeedbacksPage(),
+                                builder: (_) => const ScreeningsMenuPage(),
                               ),
                             );
                           } else {
