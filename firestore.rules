@@ -3,6 +3,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isAdmin() {
+      return request.auth != null && userRole() == 'admin';
+    }
+    function isInstructor() {
+      return request.auth != null && userRole() == 'instructor';
+    }
+
     // ===== Production-safe rules =====
     // Users can only read/write their own document
     match /users/{userId} {
@@ -26,6 +36,58 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == request.resource.data.instructorId;
       allow update, delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
+    }
+
+    // Screening documents for instructor course (multi-day)
+    match /instructor_course_screenings/{screeningId} {
+      // Read: Admin sees all; Instructor sees only in_progress
+      allow read: if isAdmin() || (isInstructor() && resource.data.status == 'in_progress');
+
+      // Create: Admin only
+      allow create: if isAdmin();
+
+      // Update:
+      // - Admin: any update
+      // - Instructor: only fill empty fields when status in_progress and not locked
+      allow update: if isAdmin() || (
+        isInstructor() &&
+        resource.data.status == 'in_progress' &&
+        resource.data.isFinalLocked == false &&
+        request.resource.data.status == 'in_progress' &&
+        request.resource.data.isFinalLocked == false &&
+        // Permit update of exactly one of the known fields from null -> int
+        (
+          (
+            resource.data.fields.ירי.value == null &&
+            request.resource.data.fields.ירי.value is int &&
+            request.resource.data.fields.ירי.filledBy == request.auth.uid &&
+            request.resource.data.fields['קבלת החלטות'] == resource.data.fields['קבלת החלטות'] &&
+            request.resource.data.fields['עמידה בלחץ'] == resource.data.fields['עמידה בלחץ']
+          ) || (
+            resource.data.fields['קבלת החלטות'].value == null &&
+            request.resource.data.fields['קבלת החלטות'].value is int &&
+            request.resource.data.fields['קבלת החלטות'].filledBy == request.auth.uid &&
+            request.resource.data.fields.ירי == resource.data.fields.ירי &&
+            request.resource.data.fields['עמידה בלחץ'] == resource.data.fields['עמידה בלחץ']
+          ) || (
+            resource.data.fields['עמידה בלחץ'].value == null &&
+            request.resource.data.fields['עמידה בלחץ'].value is int &&
+            request.resource.data.fields['עמידה בלחץ'].filledBy == request.auth.uid &&
+            request.resource.data.fields.ירי == resource.data.fields.ירי &&
+            request.resource.data.fields['קבלת החלטות'] == resource.data.fields['קבלת החלטות']
+          )
+        )
+      );
+
+      // Delete: Admin only
+      allow delete: if isAdmin();
+    }
+
+    // Candidate aggregate docs (if used)
+    match /instructor_course_candidates/{candidateId} {
+      allow read: if isAdmin() || isInstructor();
+      // Admin can write freely
+      allow write: if isAdmin();
     }
 
     // Block everything else

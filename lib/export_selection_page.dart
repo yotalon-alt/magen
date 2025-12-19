@@ -78,7 +78,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
                 return ListTile(
                   title: Text('${f.name} - ${f.settlement}'),
                   subtitle: Text(
-                    '${f.createdAt.toLocal().toString().split('.').first}',
+                    f.createdAt.toLocal().toString().split('.').first,
                   ),
                   onTap: () => Navigator.pop(ctx, f),
                 );
@@ -101,7 +101,6 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
 
     try {
       final url = await FeedbackExportService.exportFeedback(
-        context: context,
         feedbackId: selected.id!,
       );
 
@@ -177,7 +176,6 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
 
     try {
       final url = await FeedbackExportService.exportMultipleFeedbacks(
-        context: context,
         feedbacks: feedbacksList,
       );
 
@@ -338,7 +336,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
 
                               // סוג מטווח
                               DropdownButtonFormField<String>(
-                                value: _selectedRangeType,
+                                initialValue: _selectedRangeType,
                                 hint: const Text('סוג מטווח (הכל)'),
                                 decoration: const InputDecoration(
                                   labelText: 'סוג מטווח',
@@ -370,7 +368,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
 
                               // מדריך
                               DropdownButtonFormField<String>(
-                                value: _selectedInstructor,
+                                initialValue: _selectedInstructor,
                                 hint: const Text('מדריך (הכל)'),
                                 decoration: const InputDecoration(
                                   labelText: 'מדריך',

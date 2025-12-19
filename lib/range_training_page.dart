@@ -216,7 +216,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'name': selectedSettlement ?? '',
         'role': 'מטווח',
         'scores': {},
-        'notes': {'general': '$subFolder'},
+        'notes': {'general': subFolder},
         'criteriaList': [],
       };
 

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// שירות ייצוא משובים ל-Google Sheets
 /// תומך גם במשובים כלליים וגם במשובי מטווחים
@@ -14,10 +15,15 @@ class FeedbackExportService {
 
   /// ייצוא משוב רגיל (לא מטווחים)
   static Future<String?> exportRegularFeedback({
-    required BuildContext context,
     required String feedbackId,
   }) async {
     try {
+      // Guard: ensure scriptUrl is configured
+      if (scriptUrl.isEmpty || scriptUrl.startsWith('YOUR_')) {
+        throw Exception(
+          'כתובת Google Apps Script אינה מוגדרת. עדכן את scriptUrl בקובץ השירות.',
+        );
+      }
       // טעינת המשוב מ-Firestore
       final doc = await FirebaseFirestore.instance
           .collection('feedbacks')
@@ -107,10 +113,15 @@ class FeedbackExportService {
 
   /// ייצוא משוב מטווחים
   static Future<String?> exportRangeFeedback({
-    required BuildContext context,
     required String feedbackId,
   }) async {
     try {
+      // Guard: ensure scriptUrl is configured
+      if (scriptUrl.isEmpty || scriptUrl.startsWith('YOUR_')) {
+        throw Exception(
+          'כתובת Google Apps Script אינה מוגדרת. עדכן את scriptUrl בקובץ השירות.',
+        );
+      }
       // טעינת המשוב מ-Firestore
       final doc = await FirebaseFirestore.instance
           .collection('feedbacks')
@@ -195,7 +206,7 @@ class FeedbackExportService {
         // חישוב סה"כ כדורים
         final totalBullets = stations.fold<int>(
           0,
-          (sum, station) => sum + ((station['bulletsCount'] as int?) ?? 0),
+          (acc, station) => acc + ((station['bulletsCount'] as int?) ?? 0),
         );
 
         row.add('$totalHits/$totalBullets');
@@ -212,7 +223,7 @@ class FeedbackExportService {
       // חישוב סה"כ כדורים
       final totalBullets = stations.fold<int>(
         0,
-        (sum, station) => sum + ((station['bulletsCount'] as int?) ?? 0),
+        (acc, station) => acc + ((station['bulletsCount'] as int?) ?? 0),
       );
 
       // חישוב סה"כ פגיעות
@@ -264,10 +275,7 @@ class FeedbackExportService {
   }
 
   /// פונקציה כללית לייצוא - מזהה אוטומטית את סוג המשוב
-  static Future<String?> exportFeedback({
-    required BuildContext context,
-    required String feedbackId,
-  }) async {
+  static Future<String?> exportFeedback({required String feedbackId}) async {
     try {
       // טעינת המשוב כדי לזהות את הסוג
       final doc = await FirebaseFirestore.instance
@@ -286,15 +294,9 @@ class FeedbackExportService {
       if (exercise == 'מטווחים' &&
           data.containsKey('stations') &&
           data.containsKey('trainees')) {
-        return await exportRangeFeedback(
-          context: context,
-          feedbackId: feedbackId,
-        );
+        return await exportRangeFeedback(feedbackId: feedbackId);
       } else {
-        return await exportRegularFeedback(
-          context: context,
-          feedbackId: feedbackId,
-        );
+        return await exportRegularFeedback(feedbackId: feedbackId);
       }
     } catch (e) {
       rethrow;
@@ -303,10 +305,15 @@ class FeedbackExportService {
 
   /// ייצוא מרובה של משובים (למשובי מטווחים בעיקר)
   static Future<String?> exportMultipleFeedbacks({
-    required BuildContext context,
     required List<dynamic> feedbacks, // List<FeedbackModel>
   }) async {
     try {
+      // Guard: ensure scriptUrl is configured
+      if (scriptUrl.isEmpty || scriptUrl.startsWith('YOUR_')) {
+        throw Exception(
+          'כתובת Google Apps Script אינה מוגדרת. עדכן את scriptUrl בקובץ השירות.',
+        );
+      }
       if (feedbacks.isEmpty) {
         throw Exception('אין משובים לייצוא');
       }
@@ -358,7 +365,7 @@ class FeedbackExportService {
           // חישוב סה"כ כדורים
           final totalBullets = stations.fold<int>(
             0,
-            (sum, station) => sum + ((station['bulletsCount'] as int?) ?? 0),
+            (acc, station) => acc + ((station['bulletsCount'] as int?) ?? 0),
           );
 
           // הוספת שורה לכל חניך
@@ -424,10 +431,15 @@ class FeedbackExportService {
   /// ייצוא מרובה משובים - כל משוב בגיליון/טאב נפרד
   /// מתאים לייצוא עם בחירה מרובה
   static Future<String?> exportMultipleFeedbacksToSeparateSheets({
-    required BuildContext context,
     required List<dynamic> feedbacks,
   }) async {
     try {
+      // Guard: ensure scriptUrl is configured
+      if (scriptUrl.isEmpty || scriptUrl.startsWith('YOUR_')) {
+        throw Exception(
+          'כתובת Google Apps Script אינה מוגדרת. עדכן את scriptUrl בקובץ השירות.',
+        );
+      }
       if (feedbacks.isEmpty) {
         throw Exception('לא נבחרו משובים לייצוא');
       }
@@ -510,7 +522,8 @@ class FeedbackExportService {
 
               // פגיעות לכל מקצה
               for (int i = 0; i < stations.length; i++) {
-                final stationHits = hits?[i.toString()] ?? 0;
+                // Use consistent key format: 'station_<index>'
+                final stationHits = hits?['station_$i'] ?? 0;
                 final bullets = stations[i]['bulletsCount'] ?? 0;
 
                 totalHits += (stationHits as num).toInt();
@@ -624,5 +637,329 @@ class FeedbackExportService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  /// שמירת הערכת מועמד לקורס מדריכים בפורמט דינמי
+  /// payload דוגמה:
+  /// {
+  ///   "courseType": "instructor",
+  ///   "candidateId": "12345",
+  ///   "fields": {
+  ///     "ירי": {"value": 4, "filledBy": "yotam", "filledAt": "2025-12-19T10:00:00Z"},
+  ///     "קבלת החלטות": {"value": 5, "filledBy": "chen", "filledAt": null}
+  ///   },
+  ///   "isFinalLocked": false
+  /// }
+  static Future<void> saveInstructorCandidateEvaluation(
+    Map<String, dynamic> payload,
+  ) async {
+    // Validate basic structure
+    final String courseType = (payload['courseType'] ?? '').toString();
+    if (courseType.toLowerCase() != 'instructor') {
+      throw Exception('courseType חייב להיות "instructor"');
+    }
+
+    final String candidateId = (payload['candidateId'] ?? '').toString();
+    if (candidateId.isEmpty) {
+      throw Exception('candidateId חסר או ריק');
+    }
+
+    final Map<String, dynamic> fields =
+        (payload['fields'] as Map?)?.cast<String, dynamic>() ?? {};
+
+    // Normalize fields: ensure value, filledBy, filledAt types are safe
+    final Map<String, dynamic> normalizedFields = {};
+    for (final entry in fields.entries) {
+      final key = entry.key;
+      final val = (entry.value as Map?)?.cast<String, dynamic>() ?? {};
+      final dynamic value = val['value'];
+      final String? filledBy = val['filledBy']?.toString();
+
+      // Normalize filledAt: allow String ISO, Timestamp, or null
+      Timestamp? filledAtTs;
+      final filledAt = val['filledAt'];
+      if (filledAt is Timestamp) {
+        filledAtTs = filledAt;
+      } else if (filledAt is String && filledAt.isNotEmpty) {
+        final parsed = DateTime.tryParse(filledAt);
+        if (parsed != null) {
+          filledAtTs = Timestamp.fromDate(parsed.toUtc());
+        }
+      }
+
+      normalizedFields[key] = {
+        'value': value,
+        'filledBy':
+            filledBy ??
+            FirebaseAuth.instance.currentUser?.email ??
+            FirebaseAuth.instance.currentUser?.uid ??
+            '',
+        'filledAt': filledAtTs ?? FieldValue.serverTimestamp(),
+      };
+    }
+
+    // Lock flag
+    final bool isFinalLocked = (payload['isFinalLocked'] as bool?) ?? false;
+
+    // Build document
+    final Map<String, dynamic> docData = {
+      'courseType': 'instructor',
+      'candidateId': candidateId,
+      'fields': normalizedFields,
+      'isFinalLocked': isFinalLocked,
+      'updatedBy':
+          FirebaseAuth.instance.currentUser?.email ??
+          FirebaseAuth.instance.currentUser?.uid ??
+          '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    // Persist under a dedicated collection keyed by candidateId
+    // Path: instructor_course_candidates/{candidateId}
+    await FirebaseFirestore.instance
+        .collection('instructor_course_candidates')
+        .doc(candidateId)
+        .set(docData, SetOptions(merge: true));
+  }
+
+  /// עדכון סטטוס נעילה סופי למועמד
+  static Future<void> setCandidateFinalLock(
+    String candidateId,
+    bool lock,
+  ) async {
+    if (candidateId.isEmpty) {
+      throw Exception('candidateId חסר או ריק');
+    }
+    await FirebaseFirestore.instance
+        .collection('instructor_course_candidates')
+        .doc(candidateId)
+        .set({
+          'isFinalLocked': lock,
+          'updatedBy':
+              FirebaseAuth.instance.currentUser?.email ??
+              FirebaseAuth.instance.currentUser?.uid ??
+              '',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+  }
+
+  /// עדכון שדה יחיד עבור מועמד (עם בדיקת נעילה)
+  static Future<void> updateCandidateField({
+    required String candidateId,
+    required String fieldName,
+    required int value,
+  }) async {
+    if (candidateId.isEmpty) {
+      throw Exception('candidateId חסר או ריק');
+    }
+    if (fieldName.isEmpty) {
+      throw Exception('fieldName חסר או ריק');
+    }
+
+    final docRef = FirebaseFirestore.instance
+        .collection('instructor_course_candidates')
+        .doc(candidateId);
+
+    // בדיקת נעילה לפני עדכון
+    final snap = await docRef.get().timeout(const Duration(seconds: 10));
+    final locked = (snap.data()?['isFinalLocked'] as bool?) ?? false;
+    if (locked) {
+      throw Exception('שגיאה: הטופס נעול לעריכה');
+    }
+
+    // עדכון נקודתי לשדה: value, filledBy, filledAt
+    final String userId =
+        FirebaseAuth.instance.currentUser?.email ??
+        FirebaseAuth.instance.currentUser?.uid ??
+        '';
+
+    await docRef.set({
+      'courseType': 'instructor',
+      'candidateId': candidateId,
+      'fields': {
+        fieldName: {
+          'value': value,
+          'filledBy': userId,
+          'filledAt': FieldValue.serverTimestamp(),
+        },
+      },
+      'updatedBy': userId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// שמירת שדה יחיד במיון לקורס מדריכים (collection: instructor_course_screenings)
+  static Future<void> saveScreeningField({
+    required String screeningId,
+    required String fieldName,
+    required int value,
+    required String instructorId,
+  }) async {
+    if (screeningId.isEmpty) {
+      throw Exception('screeningId חסר או ריק');
+    }
+    if (fieldName.isEmpty) {
+      throw Exception('fieldName חסר או ריק');
+    }
+
+    final ref = FirebaseFirestore.instance
+        .collection('instructor_course_screenings')
+        .doc(screeningId);
+
+    // צור את המסמך אם אינו קיים כדי למנוע שגיאת update
+    final snap = await ref.get().timeout(const Duration(seconds: 10));
+    if (!snap.exists) {
+      await ref.set({
+        'createdAt': FieldValue.serverTimestamp(),
+        'createdBy': instructorId,
+      }, SetOptions(merge: true));
+    }
+
+    // אם יש שדה נעילה במסמך, כבד אותו
+    final locked = (snap.data()?['isFinalLocked'] as bool?) ?? false;
+    if (locked) {
+      throw Exception('שגיאה: הטופס נעול לעריכה');
+    }
+
+    await ref.update({
+      'fields.$fieldName.value': value,
+      'fields.$fieldName.filledBy': instructorId,
+      'fields.$fieldName.filledAt': FieldValue.serverTimestamp(),
+      'updatedBy': instructorId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// עדכון שדה עם היסטוריה (Batch) עבור מסמך מיון
+  static Future<void> saveFieldWithHistory({
+    required String screeningId,
+    required String fieldName,
+    required int value,
+    required String instructorId,
+  }) async {
+    if (screeningId.isEmpty) {
+      throw Exception('screeningId חסר או ריק');
+    }
+    if (fieldName.isEmpty) {
+      throw Exception('fieldName חסר או ריק');
+    }
+
+    final ref = FirebaseFirestore.instance
+        .collection('instructor_course_screenings')
+        .doc(screeningId);
+
+    // Ensure document exists to avoid update failure
+    final snap = await ref.get().timeout(const Duration(seconds: 10));
+    if (!snap.exists) {
+      await ref.set({
+        'createdAt': FieldValue.serverTimestamp(),
+        'createdBy': instructorId,
+      }, SetOptions(merge: true));
+    }
+
+    // Respect lock if present
+    final locked = (snap.data()?['isFinalLocked'] as bool?) ?? false;
+    if (locked) {
+      throw Exception('שגיאה: הטופס נעול לעריכה');
+    }
+
+    final historyRef = ref.collection('history').doc();
+    final batch = FirebaseFirestore.instance.batch();
+
+    // Use set with merge to avoid failures if keys are missing
+    batch.set(ref, {
+      'fields': {
+        fieldName: {
+          'value': value,
+          'filledBy': instructorId,
+          'filledAt': FieldValue.serverTimestamp(),
+        },
+      },
+      'updatedBy': instructorId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    batch.set(historyRef, {
+      'field': fieldName,
+      'value': value,
+      'action': 'filled',
+      'by': instructorId,
+      'at': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    // Attempt automatic completion if all fields are filled
+    await _autoCompleteScreeningIfReady(screeningId);
+  }
+
+  /// Helper: mark screening completed if all fields have non-null values
+  static Future<void> _autoCompleteScreeningIfReady(String screeningId) async {
+    final ref = FirebaseFirestore.instance
+        .collection('instructor_course_screenings')
+        .doc(screeningId);
+
+    final snap = await ref.get().timeout(const Duration(seconds: 10));
+    if (!snap.exists) return;
+
+    final data = snap.data();
+    if (data == null) return;
+
+    final bool isLocked = (data['isFinalLocked'] as bool?) ?? false;
+    final String status = (data['status'] as String?) ?? 'in_progress';
+    final Map<String, dynamic> fields =
+        (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
+
+    bool allFilled = true;
+    for (final entry in fields.entries) {
+      final m = (entry.value as Map?)?.cast<String, dynamic>() ?? {};
+      final v = m['value'];
+      if (v == null) {
+        allFilled = false;
+        break;
+      }
+    }
+
+    if ((isLocked || allFilled) && status != 'completed') {
+      await ref.set({
+        'status': 'completed',
+        'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+  }
+
+  /// Admin: set screening lock and optionally status
+  static Future<void> setScreeningLock({
+    required String screeningId,
+    required bool lock,
+  }) async {
+    final ref = FirebaseFirestore.instance
+        .collection('instructor_course_screenings')
+        .doc(screeningId);
+    await ref.set({
+      'isFinalLocked': lock,
+      'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (lock) {
+      // If locked, ensure status completed
+      await ref.set({'status': 'completed'}, SetOptions(merge: true));
+    }
+  }
+
+  /// Admin: change screening status explicitly
+  static Future<void> setScreeningStatus({
+    required String screeningId,
+    required String status, // 'in_progress' | 'completed'
+  }) async {
+    final ref = FirebaseFirestore.instance
+        .collection('instructor_course_screenings')
+        .doc(screeningId);
+    await ref.set({
+      'status': status,
+      'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }

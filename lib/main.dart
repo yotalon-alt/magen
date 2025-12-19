@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'instructor_course_feedback_page.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
+import 'pages/screenings_menu_page.dart';
 import 'voice_assistant.dart';
 import 'range_selection_page.dart';
 import 'feedback_export_service.dart';
@@ -2088,10 +2089,11 @@ class ExercisesPage extends StatelessWidget {
 
                 // Special handling for instructor course selection
                 if (ex == 'מיונים לקורס מדריכים') {
+                  // Route to screenings menu (in-progress/completed views)
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const InstructorCourseFeedbackPage(),
+                      builder: (_) => const ScreeningsMenuPage(),
                     ),
                   );
                 } else if (ex == 'מטווחים') {
@@ -3023,7 +3025,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     try {
       // שימוש בשירות הייצוא
       final url = await FeedbackExportService.exportFeedback(
-        context: context,
         feedbackId: feedback.id!,
       );
 

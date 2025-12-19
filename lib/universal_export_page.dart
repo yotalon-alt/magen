@@ -189,7 +189,6 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
       // ייצוא לגיליונות נפרדים
       final url =
           await FeedbackExportService.exportMultipleFeedbacksToSeparateSheets(
-            context: context,
             feedbacks: selectedFeedbacks,
           );
 
@@ -379,7 +378,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
 
                             // סוג משוב
                             DropdownButtonFormField<String>(
-                              value: _feedbackType,
+                              initialValue: _feedbackType,
                               decoration: const InputDecoration(
                                 labelText: 'סוג משוב',
                                 border: OutlineInputBorder(),
@@ -405,7 +404,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
 
                             // תיקייה
                             DropdownButtonFormField<String>(
-                              value: _selectedFolder,
+                              initialValue: _selectedFolder,
                               decoration: const InputDecoration(
                                 labelText: 'תיקייה',
                                 border: OutlineInputBorder(),
@@ -433,7 +432,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                               Column(
                                 children: [
                                   DropdownButtonFormField<String>(
-                                    value: _rangeSubType,
+                                    initialValue: _rangeSubType,
                                     decoration: const InputDecoration(
                                       labelText: 'תת-קטגוריה',
                                       border: OutlineInputBorder(),
@@ -465,7 +464,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
 
                             // מדריך
                             DropdownButtonFormField<String>(
-                              value: _selectedInstructor,
+                              initialValue: _selectedInstructor,
                               decoration: const InputDecoration(
                                 labelText: 'מדריך',
                                 border: OutlineInputBorder(),
