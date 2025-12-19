@@ -87,6 +87,15 @@ class _ScreeningDetailsPageState extends State<ScreeningDetailsPage> {
             final locked = (data['isFinalLocked'] as bool?) ?? false;
             final fields =
                 (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
+            // all fields filled?
+            bool allFilled = true;
+            for (final e in fields.entries) {
+              final meta = (e.value as Map?)?.cast<String, dynamic>() ?? {};
+              if (meta['value'] == null) {
+                allFilled = false;
+                break;
+              }
+            }
 
             return Padding(
               padding: const EdgeInsets.all(12.0),
@@ -138,6 +147,42 @@ class _ScreeningDetailsPageState extends State<ScreeningDetailsPage> {
                     );
                   }),
                   const Divider(),
+                  // Instructor can finalize when all fields are filled and not locked
+                  if (isInstructor && !locked && status == 'in_progress')
+                    ElevatedButton.icon(
+                      onPressed: !_saving && allFilled
+                          ? () async {
+                              setState(() => _saving = true);
+                              final messenger = ScaffoldMessenger.of(context);
+                              try {
+                                await FeedbackExportService.finalizeScreeningAndCreateFeedback(
+                                  screeningId: widget.screeningId,
+                                );
+                                if (!context.mounted) return;
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text('המשוב הושלם ונשמר'),
+                                  ),
+                                );
+                                Navigator.pop(context);
+                              } catch (e) {
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'שגיאה בסיום: ${e.toString()}',
+                                    ),
+                                  ),
+                                );
+                              } finally {
+                                if (mounted) setState(() => _saving = false);
+                              }
+                            }
+                          : null,
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('סיום משוב'),
+                    ),
+
+                  const SizedBox(height: 8),
                   if (isAdmin && status == 'in_progress')
                     ElevatedButton.icon(
                       onPressed: _saving
@@ -146,9 +191,9 @@ class _ScreeningDetailsPageState extends State<ScreeningDetailsPage> {
                               setState(() => _saving = true);
                               final messenger = ScaffoldMessenger.of(context);
                               try {
-                                await FeedbackExportService.setScreeningStatus(
+                                // Admin explicit completion: also finalize and create feedback
+                                await FeedbackExportService.finalizeScreeningAndCreateFeedback(
                                   screeningId: widget.screeningId,
-                                  status: 'completed',
                                 );
                               } catch (e) {
                                 messenger.showSnackBar(
@@ -161,7 +206,7 @@ class _ScreeningDetailsPageState extends State<ScreeningDetailsPage> {
                               }
                             },
                       icon: const Icon(Icons.check_circle),
-                      label: const Text('סמן כסופי'),
+                      label: const Text('סמן כסופי (אדמין)'),
                     ),
                 ],
               ),

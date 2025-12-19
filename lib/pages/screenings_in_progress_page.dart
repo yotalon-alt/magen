@@ -6,8 +6,10 @@ import 'screening_details_page.dart';
 
 class ScreeningsInProgressPage extends StatelessWidget {
   final String statusFilter;
+  final String courseType;
   const ScreeningsInProgressPage({
     super.key,
+    required this.courseType,
     this.statusFilter = 'in_progress',
   });
 
@@ -23,6 +25,7 @@ class ScreeningsInProgressPage extends StatelessWidget {
           stream: () {
             Query<Map<String, dynamic>> q = FirebaseFirestore.instance
                 .collection('instructor_course_screenings')
+                .where('courseType', isEqualTo: courseType)
                 .where('status', isEqualTo: statusFilter);
             final uid =
                 currentUser?.uid ?? FirebaseAuth.instance.currentUser?.uid;
@@ -125,6 +128,7 @@ class ScreeningsInProgressPage extends StatelessWidget {
                     'updatedAt': FieldValue.serverTimestamp(),
                     'createdBy': FirebaseAuth.instance.currentUser?.uid ?? '',
                     'createdByName': currentUser?.name ?? '',
+                    'courseType': courseType,
                     'title': 'מועמד חדש',
                     'fields': {
                       'ירי': {'value': null},

@@ -926,4 +926,85 @@ class FeedbackExportService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  /// Finalize a screening: ensure all fields filled, mark completed, and
+  /// create a corresponding document under 'feedbacks' (regular list UI).
+  static Future<void> finalizeScreeningAndCreateFeedback({
+    required String screeningId,
+  }) async {
+    final ref = FirebaseFirestore.instance
+        .collection('instructor_course_screenings')
+        .doc(screeningId);
+
+    final snap = await ref.get().timeout(const Duration(seconds: 10));
+    if (!snap.exists) {
+      throw Exception('מסמך מיון לא נמצא');
+    }
+    final data = snap.data() as Map<String, dynamic>;
+
+    // Verify all fields have values
+    final fields = (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
+    bool allFilled = true;
+    final Map<String, int> scores = {};
+    for (final entry in fields.entries) {
+      final meta = (entry.value as Map?)?.cast<String, dynamic>() ?? {};
+      final v = meta['value'];
+      if (v == null) {
+        allFilled = false;
+        break;
+      }
+      final intVal = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
+      scores[entry.key] = intVal;
+    }
+    if (!allFilled) {
+      throw Exception('לא ניתן לסיים: לא כל השדות מולאו');
+    }
+
+    // Avoid duplicate finalization
+    if ((data['finalFeedbackId'] as String?)?.isNotEmpty == true) {
+      // Already finalized; just ensure status
+      await ref.set({
+        'status': 'completed',
+        'isFinalLocked': true,
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    // Build feedback payload for regular list
+    final nowUserName =
+        FirebaseAuth.instance.currentUser?.email ??
+        FirebaseAuth.instance.currentUser?.uid ??
+        '';
+    final feedbackPayload = {
+      'instructorName': nowUserName,
+      'instructorId': FirebaseAuth.instance.currentUser?.uid ?? '',
+      'instructorRole': '',
+      'role': 'מועמד',
+      'name': (data['title'] ?? data['candidateId'] ?? 'מועמד') as String,
+      'exercise': 'מיונים לקורס מדריכים',
+      'folder': 'מיונים לקורס מדריכים',
+      'scores': scores,
+      'notes': <String, String>{},
+      'criteriaList': scores.keys.toList(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'commandText': '',
+      'commandStatus': 'פתוח',
+      'scenario': '',
+      'settlement': '',
+      'attendeesCount': 0,
+    };
+
+    final fbRef = await FirebaseFirestore.instance
+        .collection('feedbacks')
+        .add(feedbackPayload);
+
+    // Mark screening completed and link final feedback id
+    await ref.set({
+      'status': 'completed',
+      'isFinalLocked': true,
+      'finalFeedbackId': fbRef.id,
+      'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
 }

@@ -2087,45 +2087,16 @@ class ExercisesPage extends StatelessWidget {
                   return;
                 }
 
-                // Special handling for instructor course selection
+                // מיונים לקורס מדריכים: זרימה חדשה למסך ניהול מיונים
                 if (ex == 'מיונים לקורס מדריכים') {
-                  // Create nested screening doc first, then navigate to regular form
-                  final uid = FirebaseAuth.instance.currentUser?.uid;
-                  if (uid == null || uid.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('נדרשת התחברות')),
-                    );
-                    return;
-                  }
-                  final ref = FirebaseFirestore.instance
-                      .collection('courses')
-                      .doc('miunim')
-                      .collection('screenings')
-                      .doc();
-                  ref
-                      .set({
-                        'status': 'in_progress',
-                        'instructorId': uid,
-                        'createdAt': FieldValue.serverTimestamp(),
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      })
-                      .then((_) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FeedbackFormPage(
-                              exercise: 'מיונים לקורס מדריכים',
-                            ),
-                          ),
-                        );
-                      })
-                      .catchError((e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('שגיאה ביצירה: ${e.toString()}'),
-                          ),
-                        );
-                      });
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ScreeningsMenuPage(
+                        courseType: 'מיונים_קורס_מדריכים',
+                      ),
+                    ),
+                  );
                 } else if (ex == 'מטווחים') {
                   Navigator.push(
                     context,
@@ -2852,6 +2823,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           .length;
                     }
                     final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
+                    final isMiunimCourse = folder == 'מיונים – כללי';
                     return Card(
                       elevation: isMobile ? 4 : 2,
                       color: isInstructorCourse
@@ -2864,11 +2836,23 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                         borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
                         onTap: () {
                           if (isInstructorCourse) {
-                            // ניווט ישיר למסך מיונים
+                            // ניווט למסך מיונים לקורס מדריכים
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const ScreeningsMenuPage(),
+                                builder: (_) => const ScreeningsMenuPage(
+                                  courseType: 'מיונים_קורס_מדריכים',
+                                ),
+                              ),
+                            );
+                          } else if (isMiunimCourse) {
+                            // ניווט למסך מיונים כללי
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ScreeningsMenuPage(
+                                  courseType: 'miunim',
+                                ),
                               ),
                             );
                           } else {
@@ -2881,11 +2865,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                isInstructorCourse
+                                isInstructorCourse || isMiunimCourse
                                     ? Icons.school
                                     : Icons.folder,
                                 size: isMobile ? 48 : 20,
-                                color: isInstructorCourse
+                                color: (isInstructorCourse || isMiunimCourse)
                                     ? Colors.white
                                     : Colors.orangeAccent,
                               ),
