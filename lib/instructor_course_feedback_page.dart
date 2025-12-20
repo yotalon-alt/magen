@@ -368,16 +368,18 @@ class _InstructorCourseFeedbackPageState
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '1 = נמוך ביותר | 5 = גבוה ביותר',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
+                  if (score == 1 || score == 5) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      score == 1 ? 'נמוך ביותר' : 'גבוה ביותר',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               );
             }).toList(),

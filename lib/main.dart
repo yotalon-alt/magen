@@ -3701,6 +3701,169 @@ class StatisticsPage extends StatefulWidget {
 }
 
 class _StatisticsPageState extends State<StatisticsPage> {
+  String selectedRoleFilter = 'כל התפקידים';
+  String selectedInstructor = 'כל המדריכים';
+  String selectedExercise = 'כל התרגילים';
+  String selectedSettlement = 'כל היישובים'; // חדש!
+  String selectedFolder = 'כל התיקיות'; // חדש!
+  String personFilter = '';
+  DateTime? dateFrom;
+  DateTime? dateTo;
+
+  List<FeedbackModel> getFiltered() {
+    final isAdmin = currentUser?.role == 'Admin';
+    return feedbackStorage.where((f) {
+      // instructor permission: non-admins (instructors) only see feedback they submitted
+      if (!isAdmin) {
+        if (currentUser == null) return false;
+        if (currentUser?.role == 'Instructor' &&
+            f.instructorName != (currentUser?.name ?? '')) {
+          return false;
+        }
+      }
+
+      if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
+        return false;
+      }
+      if (selectedInstructor != 'כל המדריכים' &&
+          f.instructorName != selectedInstructor) {
+        return false;
+      }
+      if (selectedExercise != 'כל התרגילים' && f.exercise != selectedExercise) {
+        return false;
+      }
+      if (selectedSettlement != 'כל היישובים' &&
+          f.settlement != selectedSettlement) {
+        return false;
+      }
+      if (selectedFolder != 'כל התיקיות' && f.folder != selectedFolder) {
+        return false;
+      }
+      if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
+        return false;
+      }
+      if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
+      if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
+      return true;
+    }).toList();
+  }
+
+  Future<void> pickFrom(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateFrom ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateFrom = r);
+  }
+
+  Future<void> pickTo(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateTo ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateTo = r);
+  }
+
+  double avgOf(List<int> vals) {
+    if (vals.isEmpty) return 0.0;
+    final sum = vals.reduce((a, b) => a + b);
+    return sum / vals.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('סטטיסטיקה')),
+        body: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Button for General Statistics
+              SizedBox(
+                width: double.infinity,
+                height: 80,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const GeneralStatisticsPage(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueGrey.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    textStyle: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: const Text('כל המשובים'),
+                ),
+              ),
+              const SizedBox(height: 32),
+              // Button for Range Statistics
+              SizedBox(
+                width: double.infinity,
+                height: 80,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RangeStatisticsPage(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueGrey.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    textStyle: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: const Text('משובי מטווחים'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class GeneralStatisticsPage extends StatefulWidget {
+  const GeneralStatisticsPage({super.key});
+
+  @override
+  State<GeneralStatisticsPage> createState() => _GeneralStatisticsPageState();
+}
+
+class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
   // topic display names (Hebrew)
   static const Map<String, String> topicMap = {
     'פוש': 'פוש',
@@ -3859,7 +4022,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('סטטיסטיקה')),
+        appBar: AppBar(title: const Text('סטטיסטיקת כל המשובים')),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView(
@@ -4159,24 +4322,53 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 final vals = topicValues[key] ?? [];
                 final a = avgOf(vals);
                 final pct = (a / 5.0).clamp(0.0, 1.0);
-                return ListTile(
-                  dense: true,
-                  title: Text(
-                    label,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  subtitle: Container(
-                    height: 10,
-                    color: Colors.white24,
-                    child: FractionallySizedBox(
-                      widthFactor: pct,
-                      alignment: Alignment.centerRight,
-                      child: Container(color: Colors.orangeAccent),
-                    ),
-                  ),
-                  trailing: Text(
-                    vals.isEmpty ? '-' : a.toStringAsFixed(1),
-                    style: const TextStyle(color: Colors.orangeAccent),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // שם הקריטריון מעל הפס
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: FractionallySizedBox(
+                                widthFactor: pct,
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.orangeAccent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            vals.isEmpty ? '-' : a.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: Colors.orangeAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 );
               }),
@@ -4192,24 +4384,53 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 final label = e.key;
                 final a = avgOf(e.value);
                 final pct = (a / 5.0).clamp(0.0, 1.0);
-                return ListTile(
-                  dense: true,
-                  title: Text(
-                    label,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  subtitle: Container(
-                    height: 10,
-                    color: Colors.white24,
-                    child: FractionallySizedBox(
-                      widthFactor: pct,
-                      alignment: Alignment.centerRight,
-                      child: Container(color: Colors.lightBlueAccent),
-                    ),
-                  ),
-                  trailing: Text(
-                    e.value.isEmpty ? '-' : a.toStringAsFixed(1),
-                    style: const TextStyle(color: Colors.lightBlueAccent),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // שם התפקיד מעל הפס
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: FractionallySizedBox(
+                                widthFactor: pct,
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.lightBlueAccent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: Colors.lightBlueAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 );
               }),
@@ -4230,7 +4451,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     dense: true,
                     title: Text(
                       e.key,
-                      style: const TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Colors.black87),
                     ),
                     trailing: Text(
                       a.toStringAsFixed(1),
@@ -4261,28 +4482,54 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   }
                   final entries = byDate.entries.toList()
                     ..sort((a, b) => a.key.compareTo(b.key));
-                  if (entries.isEmpty) return const ListTile(title: Text('-'));
+                  if (entries.isEmpty) return const Text('-');
                   return Column(
                     children: entries.map((en) {
                       final dayAvg = avgOf(en.value);
-                      return ListTile(
-                        dense: true,
-                        title: Text(
-                          en.key,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        subtitle: Container(
-                          height: 8,
-                          color: Colors.white24,
-                          child: FractionallySizedBox(
-                            widthFactor: (dayAvg / 5.0).clamp(0.0, 1.0),
-                            alignment: Alignment.centerRight,
-                            child: Container(color: Colors.purpleAccent),
-                          ),
-                        ),
-                        trailing: Text(
-                          dayAvg.toStringAsFixed(1),
-                          style: const TextStyle(color: Colors.purpleAccent),
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 120,
+                              child: Text(
+                                en.key,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Container(
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: FractionallySizedBox(
+                                  widthFactor: (dayAvg / 5.0).clamp(0.0, 1.0),
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.purpleAccent,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              dayAvg.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Colors.purpleAccent,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }).toList(),
@@ -4295,6 +4542,781 @@ class _StatisticsPageState extends State<StatisticsPage> {
               const SizedBox(height: 4),
               const Text(
                 'חישובים משתמשים בציונים 1/3/5; ממוצעים מעוגלים לאחת עשרונית.',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class RangeStatisticsPage extends StatefulWidget {
+  const RangeStatisticsPage({super.key});
+
+  @override
+  State<RangeStatisticsPage> createState() => _RangeStatisticsPageState();
+}
+
+class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
+  // topic display names (Hebrew)
+  static const Map<String, String> topicMap = {
+    'פוש': 'פוש',
+    'הכרזה': 'הכרזה',
+    'הפצה': 'הפצה',
+    'מיקום המפקד': 'מיקום המפקד',
+    'מיקום הכוח': 'מיקום הכוח',
+    'חיילות פרט': 'חיילות פרט',
+    'מקצועיות המחלקה': 'מקצועיות המחלקה',
+    'הבנת האירוע': 'הבנת האירוע',
+    'תפקוד באירוע': 'תפקוד באירוע',
+  };
+
+  // roles available for filtering (Hebrew)
+  static const List<String> availableRoles = [
+    'כל התפקידים',
+    'רבש"ץ',
+    'סגן רבש"ץ',
+    'מפקד מחלקה',
+    'סגן מפקד מחלקה',
+    'לוחם',
+  ];
+
+  String selectedRoleFilter = 'כל התפקידים';
+  String selectedInstructor = 'כל המדריכים';
+  String selectedExercise = 'כל התרגילים';
+  String selectedSettlement = 'כל היישובים';
+  String selectedStation = 'כל המקצים';
+  String personFilter = '';
+  DateTime? dateFrom;
+  DateTime? dateTo;
+
+  // Range-specific data
+  Map<String, Map<String, dynamic>> rangeData = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRangeData();
+  }
+
+  Future<void> _loadRangeData() async {
+    try {
+      final filtered = getFiltered();
+      for (final f in filtered) {
+        if (f.id != null && f.id!.isNotEmpty) {
+          final doc = await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(f.id)
+              .get();
+          if (doc.exists) {
+            final data = doc.data();
+            if (data != null) {
+              rangeData[f.id!] = data;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading range data: $e');
+    } finally {
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  List<FeedbackModel> getFiltered() {
+    final isAdmin = currentUser?.role == 'Admin';
+    return feedbackStorage.where((f) {
+      // Always filter for range feedbacks only
+      if (f.folder != 'מטווחי ירי') return false;
+
+      // instructor permission: non-admins (instructors) only see feedback they submitted
+      if (!isAdmin) {
+        if (currentUser == null) return false;
+        if (currentUser?.role == 'Instructor' &&
+            f.instructorName != (currentUser?.name ?? '')) {
+          return false;
+        }
+      }
+
+      if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
+        return false;
+      }
+      if (selectedInstructor != 'כל המדריכים' &&
+          f.instructorName != selectedInstructor) {
+        return false;
+      }
+      if (selectedExercise != 'כל התרגילים' && f.exercise != selectedExercise) {
+        return false;
+      }
+      if (selectedSettlement != 'כל היישובים' &&
+          f.settlement != selectedSettlement) {
+        return false;
+      }
+      if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
+        return false;
+      }
+      if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
+      if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
+      return true;
+    }).toList();
+  }
+
+  Future<void> pickFrom(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateFrom ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateFrom = r);
+  }
+
+  Future<void> pickTo(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateTo ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateTo = r);
+  }
+
+  double avgOf(List<int> vals) {
+    if (vals.isEmpty) return 0.0;
+    final sum = vals.reduce((a, b) => a + b);
+    return sum / vals.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = getFiltered();
+    final total = filtered.length;
+
+    final isAdmin = currentUser?.role == 'Admin';
+
+    // topic aggregates
+    final Map<String, List<int>> topicValues = {
+      for (final k in topicMap.keys) k: [],
+    };
+    for (final f in filtered) {
+      for (final t in topicMap.keys) {
+        final val = f.scores[t];
+        if (val != null && val != 0) topicValues[t]!.add(val);
+      }
+    }
+
+    // role aggregates
+    final Map<String, List<int>> roleValues = {};
+    for (final f in filtered) {
+      roleValues.putIfAbsent(f.role, () => []);
+      for (final v in f.scores.values) {
+        if (v != 0) {
+          final list = roleValues[f.role];
+          if (list == null) {
+            roleValues[f.role] = [v];
+          } else {
+            list.add(v);
+          }
+        }
+      }
+    }
+
+    // instructor aggregates
+    final Map<String, List<int>> instrValues = {};
+    for (final f in filtered) {
+      if (f.instructorName.isNotEmpty) {
+        instrValues.putIfAbsent(f.instructorName, () => []);
+        for (final v in f.scores.values) {
+          if (v != 0) {
+            final list = instrValues[f.instructorName];
+            if (list == null) {
+              instrValues[f.instructorName] = [v];
+            } else {
+              list.add(v);
+            }
+          }
+        }
+      }
+    }
+
+    // department aggregates (based on settlement)
+    final Map<String, List<int>> deptValues = {};
+    for (final f in filtered) {
+      if (f.settlement.isNotEmpty) {
+        deptValues.putIfAbsent(f.settlement, () => []);
+        for (final v in f.scores.values) {
+          if (v != 0) {
+            final list = deptValues[f.settlement];
+            if (list == null) {
+              deptValues[f.settlement] = [v];
+            } else {
+              list.add(v);
+            }
+          }
+        }
+      }
+    }
+
+    // lists for dropdowns
+    final exercises = <String>{'כל התרגילים'}
+      ..addAll(feedbackStorage.map((f) => f.exercise));
+    final instructors = <String>{'כל המדריכים'}
+      ..addAll(
+        feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
+      );
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('סטטיסטיקת משובי מטווחים')),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView(
+            children: [
+              // Filters
+              Card(
+                color: Colors.blueGrey.shade800,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'סינון',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          // Role filter (admin only)
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = availableRoles.toSet().toList();
+                                final value = items.contains(selectedRoleFilter)
+                                    ? selectedRoleFilter
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'תפקיד',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (r) => DropdownMenuItem(
+                                          value: r,
+                                          child: Text(r),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: isAdmin
+                                      ? (v) => setState(
+                                          () => selectedRoleFilter =
+                                              v ?? 'כל התפקידים',
+                                        )
+                                      : null,
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Person filter (free text)
+                          SizedBox(
+                            width: 200,
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                labelText: 'שם הנבדק',
+                              ),
+                              onChanged: (v) =>
+                                  setState(() => personFilter = v),
+                            ),
+                          ),
+
+                          // Instructor filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = instructors.toSet().toList();
+                                final value = items.contains(selectedInstructor)
+                                    ? selectedInstructor
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'מדריך ממשב',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: isAdmin
+                                      ? (v) => setState(
+                                          () => selectedInstructor =
+                                              v ?? 'כל המדריכים',
+                                        )
+                                      : null,
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Exercise filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = exercises.toSet().toList();
+                                final value = items.contains(selectedExercise)
+                                    ? selectedExercise
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'תרגיל',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () => selectedExercise = v ?? 'כל התרגילים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Settlement filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final settlements = <String>{'כל היישובים'}
+                                  ..addAll(
+                                    feedbackStorage
+                                        .map((f) => f.settlement)
+                                        .where((s) => s.isNotEmpty),
+                                  );
+                                final items = settlements.toSet().toList();
+                                final value = items.contains(selectedSettlement)
+                                    ? selectedSettlement
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'יישוב',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () =>
+                                        selectedSettlement = v ?? 'כל היישובים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Station filter
+
+                          // Date range
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () => pickFrom(context),
+                                child: Text(
+                                  dateFrom == null
+                                      ? 'מתאריך'
+                                      : '${dateFrom!.toLocal()}'.split(' ')[0],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () => pickTo(context),
+                                child: Text(
+                                  dateTo == null
+                                      ? 'עד תאריך'
+                                      : '${dateTo!.toLocal()}'.split(' ')[0],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+              Text(
+                'סה"כ משובי מטווחים: $total',
+                style: const TextStyle(fontSize: 14),
+              ),
+
+              const SizedBox(height: 12),
+              const Text(
+                'ממוצע לפי תפקיד',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...roleValues.entries.map((e) {
+                final label = e.key;
+                final a = avgOf(e.value);
+                final pct = (a / 5.0).clamp(0.0, 1.0);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // שם התפקיד מעל הפס
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: FractionallySizedBox(
+                                widthFactor: pct,
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.lightBlueAccent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: Colors.lightBlueAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'ממוצע לפי מדריך',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (instrValues.isEmpty)
+                const ListTile(title: Text('-'))
+              else
+                ...instrValues.entries.map((e) {
+                  final a = avgOf(e.value);
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      e.key,
+                      style: const TextStyle(color: Colors.black87),
+                    ),
+                    trailing: Text(
+                      a.toStringAsFixed(1),
+                      style: const TextStyle(color: Colors.greenAccent),
+                    ),
+                  );
+                }),
+
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'ממוצע לפי מחלקות',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...deptValues.entries.map((e) {
+                final label = e.key;
+                final a = avgOf(e.value);
+                final pct = (a / 5.0).clamp(0.0, 1.0);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // שם המחלקה מעל הפס
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: FractionallySizedBox(
+                                widthFactor: pct,
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.purpleAccent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: Colors.purpleAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'ממוצע לפי מקצה',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              // New graph for station averages
+              Builder(
+                builder: (ctx) {
+                  final Map<String, List<int>> stationValues = {};
+                  for (final data in rangeData.values) {
+                    final stations =
+                        (data['stations'] as List?)
+                            ?.cast<Map<String, dynamic>>() ??
+                        [];
+                    final trainees =
+                        (data['trainees'] as List?)
+                            ?.cast<Map<String, dynamic>>() ??
+                        [];
+                    for (var i = 0; i < stations.length; i++) {
+                      final station = stations[i];
+                      final stationName = station['name'] ?? 'מקצה ${i + 1}';
+                      stationValues.putIfAbsent(stationName, () => []);
+                      for (final trainee in trainees) {
+                        final hits = trainee['hits'] as Map<String, dynamic>?;
+                        if (hits != null) {
+                          final hit =
+                              (hits['station_$i'] as num?)?.toInt() ?? 0;
+                          stationValues[stationName]!.add(hit);
+                        }
+                      }
+                    }
+                  }
+                  final entries = stationValues.entries.toList();
+                  if (entries.isEmpty) return const Text('-');
+                  return Column(
+                    children: entries.map((en) {
+                      final stationName = en.key;
+                      final hits = en.value;
+                      final avg = hits.isEmpty
+                          ? 0.0
+                          : hits.reduce((a, b) => a + b) / hits.length;
+                      final pct = (avg / 50.0).clamp(
+                        0.0,
+                        1.0,
+                      ); // Assuming max 50 hits per station
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              stationName,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white24,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      widthFactor: pct,
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.greenAccent,
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  avg.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'מגמה לאורך זמן (ממוצעים לפי יום)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              // Simple trend: group by date and show average of all scores that day
+              Builder(
+                builder: (ctx) {
+                  final Map<String, List<int>> byDate = {};
+                  for (final f in filtered) {
+                    final d =
+                        '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
+                    byDate.putIfAbsent(d, () => []);
+                    for (final v in f.scores.values) {
+                      if (v != 0) byDate[d]!.add(v);
+                    }
+                  }
+                  final entries = byDate.entries.toList()
+                    ..sort((a, b) => a.key.compareTo(b.key));
+                  if (entries.isEmpty) return const Text('-');
+                  return Column(
+                    children: entries.map((en) {
+                      final dayAvg = avgOf(en.value);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 120,
+                              child: Text(
+                                en.key,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Container(
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: FractionallySizedBox(
+                                  widthFactor: (dayAvg / 5.0).clamp(0.0, 1.0),
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.purpleAccent,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              dayAvg.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Colors.purpleAccent,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
             ],
           ),

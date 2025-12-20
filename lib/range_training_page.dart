@@ -37,6 +37,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   String instructorName = '';
   int attendeesCount = 0;
 
+  String _settlementDisplayText = '';
+
   // רשימת מקצים - כל מקצה מכיל שם + מספר כדורים
   List<RangeStation> stations = [];
 
@@ -50,8 +52,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   void initState() {
     super.initState();
     instructorName = currentUser?.name ?? '';
+    _settlementDisplayText = selectedSettlement ?? '';
     // מקצה ברירת מחדל אחד
     stations.add(RangeStation(name: '', bulletsCount: 0));
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   void _openSettlementSelectorSheet() {
@@ -105,7 +113,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           style: const TextStyle(color: Colors.white),
                         ),
                         onTap: () {
-                          setState(() => selectedSettlement = s);
+                          setState(() {
+                            selectedSettlement = s;
+                            _settlementDisplayText = s;
+                          });
                           Navigator.pop(ctx);
                         },
                       );
@@ -399,29 +410,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               const SizedBox(height: 24),
 
               // יישוב/מחלקה
-              Stack(
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedSettlement,
-                    hint: const Text('יישוב / מחלקה'),
-                    decoration: const InputDecoration(
-                      labelText: 'יישוב / מחלקה',
-                      border: OutlineInputBorder(),
-                    ),
-                    // מציג ערך בלבד; בחירה תתבצע בבוטום-שיט
-                    items: const [],
-                    onChanged: null,
-                  ),
-                  Positioned.fill(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _openSettlementSelectorSheet,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                ],
+              TextField(
+                controller: TextEditingController(text: _settlementDisplayText),
+                decoration: InputDecoration(
+                  labelText: 'יישוב / מחלקה',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: const Icon(Icons.arrow_drop_down),
+                ),
+                readOnly: true,
+                onTap: _openSettlementSelectorSheet,
               ),
               const SizedBox(height: 16),
 
@@ -683,38 +680,116 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Widget _buildTraineesTable() {
+    if (trainees.isEmpty) {
+      return const Center(child: Text('אין חניכים להצגה'));
+    }
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade400, width: 1),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Header row
+            Row(
               children: [
                 const SizedBox(
-                  width: 110,
+                  width: 120,
                   child: Text(
                     'חניך',
                     style: TextStyle(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(height: 8),
-                ...trainees.asMap().entries.map((entry) {
-                  final trainee = entry.value;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: SizedBox(
-                      width: 110,
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ...stations.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final station = entry.value;
+                          return SizedBox(
+                            width: 80,
+                            child: Column(
+                              children: [
+                                Text(
+                                  station.name.isEmpty
+                                      ? 'מקצה ${index + 1}'
+                                      : station.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                Text(
+                                  '(${station.bulletsCount})',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        const SizedBox(
+                          width: 100,
+                          child: Text(
+                            'פגיעות/כדורים',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 100,
+                          child: Text(
+                            'אחוז פגיעות',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(),
+            // Trainee rows
+            ...trainees.asMap().entries.map((entry) {
+              final traineeIndex = entry.key;
+              final trainee = entry.value;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 120,
                       child: TextField(
                         decoration: const InputDecoration(
-                          hintText: 'שם',
+                          hintText: 'שם חניך',
                           isDense: true,
                           border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 12,
+                          ),
                         ),
+                        textAlign: TextAlign.center,
                         onChanged: (v) {
                           setState(() {
                             trainee.name = v;
@@ -722,128 +797,55 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         },
                       ),
                     ),
-                  );
-                }),
-              ],
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        ...stations.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final station = entry.value;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6.0),
-                            child: SizedBox(
-                              width: 70,
-                              child: Column(
-                                children: [
-                                  Text(
-                                    station.name.isEmpty
-                                        ? 'מקצה ${index + 1}'
-                                        : station.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '(${station.bulletsCount} כדורים)',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                        const SizedBox(
-                          width: 90,
-                          child: Text(
-                            'פגיעות/כדורים',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 90,
-                          child: Text(
-                            'אחוז פגיעות',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ...trainees.asMap().entries.map((entry) {
-                      final traineeIndex = entry.key;
-                      final trainee = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
                             ...stations.asMap().entries.map((stationEntry) {
                               final stationIndex = stationEntry.key;
                               final station = stationEntry.value;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 6.0),
-                                child: SizedBox(
-                                  width: 70,
-                                  child: TextField(
-                                    decoration: const InputDecoration(
-                                      isDense: true,
-                                      border: OutlineInputBorder(),
-                                      hintText: '0',
+                              return SizedBox(
+                                width: 80,
+                                child: TextField(
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    border: OutlineInputBorder(),
+                                    hintText: '0',
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 12,
                                     ),
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    textAlign: TextAlign.center,
-                                    onChanged: (v) {
-                                      final hits = int.tryParse(v) ?? 0;
-                                      if (hits > station.bulletsCount) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                            ),
-                                            duration: const Duration(
-                                              seconds: 1,
-                                            ),
-                                          ),
-                                        );
-                                        return;
-                                      }
-                                      setState(() {
-                                        trainee.hits[stationIndex] = hits;
-                                      });
-                                    },
                                   ),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  textAlign: TextAlign.center,
+                                  onChanged: (v) {
+                                    final hits = int.tryParse(v) ?? 0;
+                                    if (hits > station.bulletsCount) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                          ),
+                                          duration: const Duration(seconds: 1),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    setState(() {
+                                      trainee.hits[stationIndex] = hits;
+                                    });
+                                  },
                                 ),
                               );
                             }),
                             SizedBox(
-                              width: 90,
+                              width: 100,
                               child: Text(
                                 '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
                                 style: const TextStyle(
@@ -854,7 +856,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ),
                             ),
                             SizedBox(
-                              width: 90,
+                              width: 100,
                               child: Builder(
                                 builder: (_) {
                                   final totalHits = _getTraineeTotalHits(
@@ -881,98 +883,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             ),
                           ],
                         ),
-                      );
-                    }),
-                    // Add labels under 1 and 5
-                    Row(
-                      children: [
-                        ...stations.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6.0),
-                            child: SizedBox(
-                              width: 70,
-                              child: Column(
-                                children: [
-                                  // Add label for low score
-                                  Builder(
-                                    builder: (context) {
-                                      final hits = trainees
-                                          .map(
-                                            (trainee) =>
-                                                trainee.hits[index] ?? 0,
-                                          )
-                                          .toList();
-                                      final minHits = hits.isNotEmpty
-                                          ? hits.reduce((a, b) => a < b ? a : b)
-                                          : 0;
-                                      return minHits < 1
-                                          ? Text(
-                                              'נמוך מאוד',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.red,
-                                              ),
-                                            )
-                                          : Container();
-                                    },
-                                  ),
-                                  // Add label for high score
-                                  Builder(
-                                    builder: (context) {
-                                      final hits = trainees
-                                          .map(
-                                            (trainee) =>
-                                                trainee.hits[index] ?? 0,
-                                          )
-                                          .toList();
-                                      final maxHits = hits.isNotEmpty
-                                          ? hits.reduce((a, b) => a > b ? a : b)
-                                          : 0;
-                                      return maxHits > 4
-                                          ? Text(
-                                              'גבוה מאוד',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.green,
-                                              ),
-                                            )
-                                          : Container();
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                        const SizedBox(
-                          width: 90,
-                          child: Text(
-                            'פגיעות/כדורים',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 90,
-                          child: Text(
-                            'אחוז פגיעות',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ),
+              );
+            }),
           ],
         ),
       ),
