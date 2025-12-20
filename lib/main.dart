@@ -2573,6 +2573,17 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
 /* ================== FEEDBACKS LIST + DETAILS ================== */
 
+const List<String> rangeStations = [
+  'כל המקצים',
+  'רמות',
+  'שלשות',
+  'עפדיו',
+  'חץ',
+  'קשת',
+  'חרב',
+  'מגן',
+];
+
 class FeedbacksPage extends StatefulWidget {
   const FeedbacksPage({super.key});
 
@@ -2584,6 +2595,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   bool _isRefreshing = false;
   String?
   _selectedFolder; // null = show folders, non-null = show feedbacks from that folder
+  String selectedStation = 'כל המקצים';
 
   Future<void> _refreshFeedbacks() async {
     if (_isRefreshing) return;
@@ -2769,6 +2781,18 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
     final isRangeFolder = _selectedFolder == 'מטווחי ירי';
 
+    // Apply station filter for range feedbacks
+    List<FeedbackModel> finalFilteredFeedbacks = filteredFeedbacks;
+    if (isRangeFolder) {
+      finalFilteredFeedbacks = filteredFeedbacks
+          .where(
+            (f) =>
+                selectedStation == 'כל המקצים' ||
+                f.scenario.contains(selectedStation),
+          )
+          .toList();
+    }
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -2807,7 +2831,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
             ),
           ],
         ),
-        body: filteredFeedbacks.isEmpty
+        body: finalFilteredFeedbacks.isEmpty
             ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -2824,28 +2848,77 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   ],
                 ),
               )
-            : ListView.builder(
-                itemCount: filteredFeedbacks.length,
-                itemBuilder: (_, i) {
-                  final f = filteredFeedbacks[i];
-                  final date = f.createdAt
-                      .toLocal()
-                      .toString()
-                      .split('.')
-                      .first;
-                  return ListTile(
-                    title: Text('${f.role} — ${f.name}'),
-                    subtitle: Text(
-                      '${f.exercise} • ${f.instructorName.isNotEmpty ? '${f.instructorName} • ' : ''}$date',
-                    ),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => FeedbackDetailsPage(feedback: f),
+            : Column(
+                children: [
+                  if (isRangeFolder)
+                    Card(
+                      color: Colors.blueGrey.shade800,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            SizedBox(
+                              width: 240,
+                              child: Builder(
+                                builder: (ctx) {
+                                  final items = rangeStations.toSet().toList();
+                                  final value = items.contains(selectedStation)
+                                      ? selectedStation
+                                      : null;
+                                  return DropdownButtonFormField<String>(
+                                    initialValue: value,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'מקצה',
+                                      isDense: true,
+                                    ),
+                                    items: items
+                                        .map(
+                                          (i) => DropdownMenuItem(
+                                            value: i,
+                                            child: Text(i),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) => setState(
+                                      () => selectedStation = v ?? 'כל המקצים',
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  );
-                },
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: finalFilteredFeedbacks.length,
+                      itemBuilder: (_, i) {
+                        final f = finalFilteredFeedbacks[i];
+                        final date = f.createdAt
+                            .toLocal()
+                            .toString()
+                            .split('.')
+                            .first;
+                        return ListTile(
+                          title: Text('${f.role} — ${f.name}'),
+                          subtitle: Text(
+                            '${f.exercise} • ${f.instructorName.isNotEmpty ? '${f.instructorName} • ' : ''}$date',
+                          ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => FeedbackDetailsPage(feedback: f),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
       ),
     );
@@ -3160,7 +3233,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
             ],
             Text('תפקיד: ${feedback.role}'),
             const SizedBox(height: 8),
-            Text('שם: ${feedback.name}'),
+            feedback.folder == 'מטווחי ירי'
+                ? Text('יישוב: ${feedback.settlement}')
+                : Text('שם: ${feedback.name}'),
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 8),
@@ -4584,7 +4659,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
   String selectedRoleFilter = 'כל התפקידים';
   String selectedInstructor = 'כל המדריכים';
-  String selectedExercise = 'כל התרגילים';
   String selectedSettlement = 'כל היישובים';
   String selectedStation = 'כל המקצים';
   String personFilter = '';
@@ -4641,18 +4715,16 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
         }
       }
 
-      if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
-        return false;
-      }
       if (selectedInstructor != 'כל המדריכים' &&
           f.instructorName != selectedInstructor) {
         return false;
       }
-      if (selectedExercise != 'כל התרגילים' && f.exercise != selectedExercise) {
-        return false;
-      }
       if (selectedSettlement != 'כל היישובים' &&
           f.settlement != selectedSettlement) {
+        return false;
+      }
+      if (selectedStation != 'כל המקצים' &&
+          !f.scenario.contains(selectedStation)) {
         return false;
       }
       if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
@@ -4712,61 +4784,40 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       }
     }
 
-    // role aggregates
-    final Map<String, List<int>> roleValues = {};
-    for (final f in filtered) {
-      roleValues.putIfAbsent(f.role, () => []);
-      for (final v in f.scores.values) {
-        if (v != 0) {
-          final list = roleValues[f.role];
-          if (list == null) {
-            roleValues[f.role] = [v];
-          } else {
-            list.add(v);
-          }
-        }
-      }
-    }
-
-    // instructor aggregates
-    final Map<String, List<int>> instrValues = {};
-    for (final f in filtered) {
-      if (f.instructorName.isNotEmpty) {
-        instrValues.putIfAbsent(f.instructorName, () => []);
-        for (final v in f.scores.values) {
-          if (v != 0) {
-            final list = instrValues[f.instructorName];
-            if (list == null) {
-              instrValues[f.instructorName] = [v];
-            } else {
-              list.add(v);
-            }
-          }
-        }
-      }
-    }
-
-    // department aggregates (based on settlement)
+    // department aggregates (based on settlement) - average total hits
     final Map<String, List<int>> deptValues = {};
     for (final f in filtered) {
-      if (f.settlement.isNotEmpty) {
-        deptValues.putIfAbsent(f.settlement, () => []);
-        for (final v in f.scores.values) {
-          if (v != 0) {
-            final list = deptValues[f.settlement];
-            if (list == null) {
-              deptValues[f.settlement] = [v];
-            } else {
-              list.add(v);
-            }
-          }
+      if (f.settlement.isNotEmpty && rangeData.containsKey(f.id)) {
+        final data = rangeData[f.id];
+        final trainees =
+            (data?['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        int totalHits = 0;
+        for (final trainee in trainees) {
+          totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
         }
+        deptValues.putIfAbsent(f.settlement, () => []).add(totalHits);
+      }
+    }
+
+    // total bullets per settlement
+    final Map<String, int> totalBulletsPerSettlement = {};
+    for (final f in filtered) {
+      if (f.settlement.isNotEmpty && rangeData.containsKey(f.id)) {
+        final data = rangeData[f.id];
+        final stations =
+            (data?['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        int feedbackTotalBullets = 0;
+        for (final station in stations) {
+          feedbackTotalBullets +=
+              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+        }
+        totalBulletsPerSettlement[f.settlement] =
+            (totalBulletsPerSettlement[f.settlement] ?? 0) +
+            feedbackTotalBullets;
       }
     }
 
     // lists for dropdowns
-    final exercises = <String>{'כל התרגילים'}
-      ..addAll(feedbackStorage.map((f) => f.exercise));
     final instructors = <String>{'כל המדריכים'}
       ..addAll(
         feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
@@ -4882,38 +4933,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                             ),
                           ),
 
-                          // Exercise filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = exercises.toSet().toList();
-                                final value = items.contains(selectedExercise)
-                                    ? selectedExercise
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תרגיל',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () => selectedExercise = v ?? 'כל התרגילים',
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-
                           // Settlement filter
                           SizedBox(
                             width: 240,
@@ -4954,6 +4973,36 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           ),
 
                           // Station filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = rangeStations.toSet().toList();
+                                final value = items.contains(selectedStation)
+                                    ? selectedStation
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'מקצה',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () => selectedStation = v ?? 'כל המקצים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
 
                           // Date range
                           Row(
@@ -4993,108 +5042,21 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
               const SizedBox(height: 12),
               const Text(
-                'ממוצע לפי תפקיד',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              ...roleValues.entries.map((e) {
-                final label = e.key;
-                final a = avgOf(e.value);
-                final pct = (a / 5.0).clamp(0.0, 1.0);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // שם התפקיד מעל הפס
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: FractionallySizedBox(
-                                widthFactor: pct,
-                                alignment: Alignment.centerRight,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.lightBlueAccent,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            e.value.isEmpty ? '-' : a.toStringAsFixed(1),
-                            style: const TextStyle(
-                              color: Colors.lightBlueAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              }),
-
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                'ממוצע לפי מדריך',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              if (instrValues.isEmpty)
-                const ListTile(title: Text('-'))
-              else
-                ...instrValues.entries.map((e) {
-                  final a = avgOf(e.value);
-                  return ListTile(
-                    dense: true,
-                    title: Text(
-                      e.key,
-                      style: const TextStyle(color: Colors.black87),
-                    ),
-                    trailing: Text(
-                      a.toStringAsFixed(1),
-                      style: const TextStyle(color: Colors.greenAccent),
-                    ),
-                  );
-                }),
-
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                'ממוצע לפי מחלקות',
+                'ממוצע לפי יישוב',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               ...deptValues.entries.map((e) {
                 final label = e.key;
                 final a = avgOf(e.value);
-                final pct = (a / 5.0).clamp(0.0, 1.0);
+                final pct = (a / 50.0).clamp(0.0, 1.0);
+                final totalBullets = totalBulletsPerSettlement[e.key] ?? 0;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // שם המחלקה מעל הפס
+                      // שם היישוב מעל הפס
                       Text(
                         label,
                         style: const TextStyle(
@@ -5127,7 +5089,9 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                            e.value.isEmpty
+                                ? '-'
+                                : '${a.toStringAsFixed(1)} מתוך $totalBullets כדורים',
                             style: const TextStyle(
                               color: Colors.purpleAccent,
                               fontWeight: FontWeight.bold,
@@ -5175,6 +5139,21 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                       }
                     }
                   }
+                  final Map<String, int> totalBulletsPerStation = {};
+                  for (final data in rangeData.values) {
+                    final stations =
+                        (data['stations'] as List?)
+                            ?.cast<Map<String, dynamic>>() ??
+                        [];
+                    for (var i = 0; i < stations.length; i++) {
+                      final station = stations[i];
+                      final stationName = station['name'] ?? 'מקצה ${i + 1}';
+                      final bullets =
+                          (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                      totalBulletsPerStation[stationName] =
+                          (totalBulletsPerStation[stationName] ?? 0) + bullets;
+                    }
+                  }
                   final entries = stationValues.entries.toList();
                   if (entries.isEmpty) return const Text('-');
                   return Column(
@@ -5188,6 +5167,8 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                         0.0,
                         1.0,
                       ); // Assuming max 50 hits per station
+                      final totalBullets =
+                          totalBulletsPerStation[stationName] ?? 0;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Column(
@@ -5227,7 +5208,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  avg.toStringAsFixed(1),
+                                  '${avg.toStringAsFixed(1)} מתוך $totalBullets כדורים',
                                   style: const TextStyle(
                                     color: Colors.greenAccent,
                                     fontWeight: FontWeight.bold,
