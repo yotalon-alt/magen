@@ -20,7 +20,9 @@ class ExercisesPage extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => FeedbackFormPage(exercise: ex)),
+                  MaterialPageRoute(
+                    builder: (_) => FeedbackFormPage(exercise: ex),
+                  ),
                 );
               },
               child: const Text('פתח משוב'),

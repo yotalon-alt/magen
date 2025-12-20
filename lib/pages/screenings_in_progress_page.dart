@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
-import 'screening_details_page.dart';
+import '../instructor_course_feedback_page.dart';
 
 class ScreeningsInProgressPage extends StatelessWidget {
   final String statusFilter;
@@ -10,41 +10,63 @@ class ScreeningsInProgressPage extends StatelessWidget {
   const ScreeningsInProgressPage({
     super.key,
     required this.courseType,
-    this.statusFilter = 'in_progress',
+    this.statusFilter = 'draft',
   });
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = currentUser?.role == 'Admin';
-
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(title: const Text('משובים בתהליך – קורס מדריכים')),
         body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: () {
-            Query<Map<String, dynamic>> q = FirebaseFirestore.instance
-                .collection('instructor_course_screenings')
-                .where('courseType', isEqualTo: courseType)
-                .where('status', isEqualTo: statusFilter);
             final uid =
                 currentUser?.uid ?? FirebaseAuth.instance.currentUser?.uid;
-            final isAdmin = currentUser?.role == 'Admin';
-            if (!isAdmin && uid != null && uid.isNotEmpty) {
-              q = q.where('createdBy', isEqualTo: uid);
+            if (uid == null || uid.isEmpty) {
+              return Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
             }
-            q = q.orderBy('updatedAt', descending: true);
-            return q.snapshots();
+            // Safe stream: single filter; filter client-side to avoid composite index
+            return FirebaseFirestore.instance
+                .collection('instructor_course_screenings')
+                .where('createdBy', isEqualTo: uid)
+                .snapshots();
           }(),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Text(
+                    'שגיאה בטעינה (ייתכן שחסר אינדקס). מציג נתוני משתמש בלבד.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            if (snapshot.hasError) {
-              return Center(child: Text('שגיאה: ${snapshot.error}'));
-            }
             final docs = snapshot.data?.docs ?? [];
-            if (docs.isEmpty) {
+            // Client-side filter by courseType + status
+            final filtered = docs.where((d) {
+              final m = d.data();
+              final matchesCourse = m['courseType'] == courseType;
+              final matchesStatus = m['status'] == statusFilter;
+              return matchesCourse && matchesStatus;
+            }).toList();
+            // Sort by updatedAt desc
+            filtered.sort((a, b) {
+              final ta = a.data()['updatedAt'] as Timestamp?;
+              final tb = b.data()['updatedAt'] as Timestamp?;
+              final da = ta?.toDate();
+              final db = tb?.toDate();
+              if (da == null && db == null) return 0;
+              if (da == null) return 1;
+              if (db == null) return -1;
+              return db.compareTo(da);
+            });
+            if (filtered.isEmpty) {
               return Center(
                 child: Text(
                   statusFilter == 'completed'
@@ -54,9 +76,9 @@ class ScreeningsInProgressPage extends StatelessWidget {
               );
             }
             return ListView.builder(
-              itemCount: docs.length,
+              itemCount: filtered.length,
               itemBuilder: (ctx, i) {
-                final doc = docs[i];
+                final doc = filtered[i];
                 final data = doc.data();
                 final title =
                     (data['title'] as String?) ?? data['candidateId'] ?? doc.id;
@@ -71,16 +93,17 @@ class ScreeningsInProgressPage extends StatelessWidget {
                     subtitle: Text(
                       locked
                           ? 'נעול'
-                          : (statusFilter == 'completed' ? 'סופי' : 'בתהליך'),
+                          : (statusFilter == 'completed' ? 'סופי' : 'טיוטה'),
                     ),
-                    trailing: statusFilter == 'in_progress'
+                    trailing: statusFilter == 'draft'
                         ? ElevatedButton(
                             onPressed: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                      ScreeningDetailsPage(screeningId: doc.id),
+                                  builder: (_) => InstructorCourseFeedbackPage(
+                                    screeningId: doc.id,
+                                  ),
                                 ),
                               );
                             },
@@ -92,8 +115,9 @@ class ScreeningsInProgressPage extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                      ScreeningDetailsPage(screeningId: doc.id),
+                                  builder: (_) => InstructorCourseFeedbackPage(
+                                    screeningId: doc.id,
+                                  ),
                                 ),
                               );
                             },
@@ -104,7 +128,7 @@ class ScreeningsInProgressPage extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) =>
-                              ScreeningDetailsPage(screeningId: doc.id),
+                              InstructorCourseFeedbackPage(screeningId: doc.id),
                         ),
                       );
                     },
@@ -114,33 +138,7 @@ class ScreeningsInProgressPage extends StatelessWidget {
             );
           },
         ),
-        floatingActionButton: isAdmin
-            ? FloatingActionButton.extended(
-                onPressed: () async {
-                  // Admin could create a new screening shell
-                  final ref = FirebaseFirestore.instance
-                      .collection('instructor_course_screenings')
-                      .doc();
-                  await ref.set({
-                    'status': 'in_progress',
-                    'isFinalLocked': false,
-                    'createdAt': FieldValue.serverTimestamp(),
-                    'updatedAt': FieldValue.serverTimestamp(),
-                    'createdBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-                    'createdByName': currentUser?.name ?? '',
-                    'courseType': courseType,
-                    'title': 'מועמד חדש',
-                    'fields': {
-                      'ירי': {'value': null},
-                      'קבלת החלטות': {'value': null},
-                      'עמידה בלחץ': {'value': null},
-                    },
-                  });
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('צור משוב'),
-              )
-            : null,
+        floatingActionButton: null,
       ),
     );
   }

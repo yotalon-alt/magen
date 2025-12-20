@@ -39,17 +39,54 @@ AppUser? currentUser;
 
 // Global folders used by FeedbacksPage and filters
 const List<String> feedbackFolders = <String>[
-  'משובים – כללי',
+  'מטווחי ירי',
+  'מחלקות ההגנה – חטיבה 474',
   'מיונים – כללי',
   'מיונים לקורס מדריכים',
-  'מטווחי ירי',
+  'משובים – כללי',
   'עבודה במבנה',
-  'מחלקות ההגנה – חטיבה 474',
 ];
 
 // Settlements list for dropdown (can be extended; empty list is valid)
 const List<String> golanSettlements = <String>[
-  // Add actual settlements as needed; kept minimal to avoid undefined symbol
+  'אורטל',
+  'אבני איתן',
+  'אודם',
+  'אלוני הבשן',
+  'אליעד',
+  'אל-רום',
+  'אניעם',
+  'אפיק',
+  'בני יהודה',
+  'גבעת יואב',
+  'גשור',
+  'חד-נס',
+  'חיספין',
+  'יונתן',
+  'כפר חרוב',
+  'כנף',
+  'מבוא חמה',
+  'מיצר',
+  'מעלה גמלא',
+  'מרום גולן',
+  'מצוק עורבים',
+  'נטור',
+  'נאות גולן',
+  'נוב',
+  'נווה אטיב',
+  'עין זיוון',
+  'קלע אלון',
+  'קשת',
+  'קדמת צבי',
+  'רמת מגשימים',
+  'רמת טראמפ',
+  'רמות',
+  'שעל',
+  'קצרין',
+  'מסעדה',
+  'בוקעתא',
+  'מג\'דל שמס',
+  'עין קינייה',
 ];
 
 // Feedback model used throughout the app
@@ -76,6 +113,7 @@ class FeedbackModel {
     required this.role,
     required this.name,
     required this.exercise,
+
     required this.scores,
     required this.notes,
     required this.criteriaList,
@@ -406,9 +444,48 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'מערכת משובים',
-      theme: ThemeData.dark().copyWith(
+      theme: ThemeData(
+        brightness: Brightness.light,
         primaryColor: Colors.blueGrey[900],
-        scaffoldBackgroundColor: Colors.black,
+        scaffoldBackgroundColor: Colors.grey[50],
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.blueGrey,
+          foregroundColor: Colors.white,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          labelStyle: const TextStyle(
+            color: Colors.black87,
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+          hintStyle: const TextStyle(
+            color: Colors.grey,
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          border: const OutlineInputBorder(),
+          enabledBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.grey, width: 1.0),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.blue, width: 2.0),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          alignLabelWithHint: true,
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.black87),
+          bodyMedium: TextStyle(color: Colors.black87),
+          bodySmall: TextStyle(color: Colors.black87),
+          headlineLarge: TextStyle(color: Colors.black87),
+          headlineMedium: TextStyle(color: Colors.black87),
+          headlineSmall: TextStyle(color: Colors.black87),
+        ),
       ),
       home: const AuthGate(),
       routes: {'/main': (_) => const MainScreen()},
@@ -1227,6 +1304,9 @@ class _MainScreenState extends State<MainScreen> {
           } else if (exercise == 'sarikot') {
             statisticsState.selectedExercise = 'סריקות רחוב';
           }
+        } else if (filter.contains('mioonim')) {
+          // מיונים – כללי בוטל; לא מבצעים פעולה
+          // השארנו במכוון ללא שינוי כדי להסיר רפרנס
         }
       });
     });
@@ -2068,17 +2148,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('אנא בחר תפקיד')));
-      return;
-    }
-
-    if (selectedExercise == null) {
-      setState(() {
-        _isSaving = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('אנא בחר תרגיל')));
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר תפקיד')));
       return;
     }
 
@@ -2088,134 +2158,72 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('אנא בחר תיקייה')));
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר תיקייה')));
       return;
     }
 
-    // include general note under special key
-    final notesCopy = Map<String, String>.from(notes);
-    notesCopy['general'] = generalNote.trim();
-
-    // only consider active criteria: require each active criterion to have a non-zero score
-    final activeKeys = availableCriteria
-        .where((c) => activeCriteria[c] == true)
-        .toList();
-    if (activeKeys.isEmpty) {
-      setState(() {
-        _isSaving = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('אנא בחר לפחות קריטריון אחד להערכה')),
-      );
-      return;
+    // Build final scores and notes only for active criteria
+    final Map<String, int> finalScores = {};
+    final Map<String, String> finalNotes = {};
+    final List<String> criteriaList = [];
+    for (final c in availableCriteria) {
+      if (activeCriteria[c] == true) {
+        criteriaList.add(c);
+        finalScores[c] = scores[c] ?? 0;
+        finalNotes[c] = notes[c] ?? '';
+      }
     }
-    for (final k in activeKeys) {
-      final v = scores[k] ?? 0;
-      if (v == 0) {
+
+    try {
+      final now = DateTime.now();
+      final Map<String, dynamic> doc = {
+        'role': selectedRole,
+        'name': evaluatedName.trim(),
+        'exercise': selectedExercise ?? '',
+        'scores': finalScores,
+        'notes': finalNotes,
+        'criteriaList': criteriaList,
+        'createdAt': now,
+        'instructorName': instructorNameDisplay,
+        'instructorRole': instructorRoleDisplay,
+        'commandText': adminCommandText,
+        'commandStatus': adminCommandStatus,
+        'folder': selectedFolder ?? '',
+        'scenario': scenario,
+        'settlement': settlement,
+        'attendeesCount': 0,
+        'instructorId': currentUser?.uid ?? '',
+      };
+
+      final ref = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .add(doc);
+
+      // Update local cache (optional but useful for immediate UI refresh)
+      final model = FeedbackModel.fromMap(doc, id: ref.id);
+      if (model != null) {
+        feedbackStorage.insert(0, model);
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('המשוב נשמר בהצלחה')));
+      Navigator.pop(context);
+    } catch (e) {
+      debugPrint('❌ save feedback error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
+      }
+    } finally {
+      if (mounted) {
         setState(() {
           _isSaving = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('אנא דרג את כל הקריטריונים שנבחרו')),
-        );
-        return;
       }
-    }
-
-    // build filtered scores and criteria objects only from active criteria
-    final filteredScores = <String, int>{};
-    final List<Map<String, dynamic>> criteriaObjs = [];
-    for (final k in activeKeys) {
-      final v = scores[k] ?? 0;
-      if (v != 0) {
-        filteredScores[k] = v;
-        final note = notes[k] ?? '';
-        criteriaObjs.add({'name': k, 'score': v, 'note': note});
-      }
-    }
-
-    // build Firestore payload per requirements (store both legacy and new keys)
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) {
-      debugPrint('❌ _save: uid is empty, cannot save');
-      setState(() {
-        _isSaving = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('שגיאה: לא ניתן לזהות את המדריך')));
-      return;
-    }
-    final Map<String, String> commentsMap = {
-      for (final k in filteredScores.keys) k: notes[k] ?? '',
-    };
-    if (generalNote.trim().isNotEmpty) {
-      commentsMap['general'] = generalNote.trim();
-    }
-    final payload = {
-      'instructorName': currentUser?.name ?? '',
-      'instructorId': uid,
-      'roleEvaluated': selectedRole ?? '',
-      'evaluatedName': evaluatedName.trim(),
-      'exerciseName': selectedExercise ?? '',
-      // canonical field names for UI/query compatibility
-      'role': selectedRole ?? '',
-      'name': evaluatedName.trim(),
-      'exercise': selectedExercise ?? '',
-      'selectedCriteria': activeKeys,
-      'criteriaList': activeKeys,
-      'scores': filteredScores,
-      'comments': Map<String, String>.from(commentsMap),
-      'notes': Map<String, String>.from(commentsMap),
-      'createdAt': FieldValue.serverTimestamp(),
-      'instructorRole': currentUser?.role ?? '',
-      'folder': selectedFolder ?? '',
-      'scenario': scenario.trim(),
-      'settlement': settlement.trim(),
-    };
-
-    try {
-      debugPrint('\n💾 ===== SAVING FEEDBACK =====');
-      debugPrint('   instructorId: $uid');
-      debugPrint('   instructorName: ${currentUser?.name}');
-      debugPrint('   evaluatedName: $evaluatedName');
-      debugPrint(
-        '   ⚠️ CRITICAL: instructorId MUST equal auth.currentUser.uid',
-      );
-      debugPrint('   Payload: $payload');
-
-      final docRef = await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .add(payload);
-      debugPrint('\n✅ Feedback saved successfully with ID: ${docRef.id}');
-      debugPrint('   Document can be verified at: feedbacks/${docRef.id}');
-      debugPrint('   Saved instructorId value: "$uid"');
-      debugPrint(
-        '   🔍 Go to Firebase Console and verify instructorId matches exactly!',
-      );
-
-      debugPrint('\n🔄 ===== RELOADING FEEDBACK LIST =====');
-      final isAdmin = currentUser?.role == 'Admin';
-      debugPrint('   Current role: ${currentUser?.role} (isAdmin: $isAdmin)');
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
-      if (!mounted) return;
-      debugPrint('📋 feedbacks reloaded after save');
-      setState(() {
-        _isSaving = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('משוב נשמר')));
-      Navigator.pop(context);
-    } catch (e) {
-      debugPrint('❌ save error: $e');
-      if (!mounted) return;
-      setState(() {
-        _isSaving = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: ${e.toString()}')));
     }
   }
 
@@ -2277,11 +2285,45 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                           ),
                         )
                         .toList(),
-                    onChanged: (v) => setState(() => selectedFolder = v),
+                    onChanged: (v) => setState(() {
+                      selectedFolder = v;
+                      // איפוס יישוב אם התיקייה השתנתה מ"מחלקות ההגנה – חטיבה 474"
+                      if (selectedFolder != 'מחלקות ההגנה – חטיבה 474') {
+                        settlement = '';
+                      }
+                    }),
                   );
                 },
               ),
               const SizedBox(height: 12),
+
+              // יישוב (מוצג רק כאשר נבחרה המחלקה "מחלקות ההגנה – חטיבה 474")
+              if (selectedFolder == 'מחלקות ההגנה – חטיבה 474') ...[
+                const Text(
+                  'יישוב',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      settlement.isNotEmpty &&
+                          golanSettlements.contains(settlement)
+                      ? settlement
+                      : null,
+                  hint: const Text('בחר יישוב'),
+                  decoration: const InputDecoration(
+                    labelText: 'יישוב',
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(color: Colors.black87, fontSize: 16),
+                  dropdownColor: Colors.white,
+                  items: golanSettlements
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) => setState(() => settlement = v ?? ''),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // 2. תפקיד
               const Text(
@@ -2400,6 +2442,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                         alignment: WrapAlignment.spaceEvenly,
                         children: scoreOptions.map((v) {
                           final selected = val == v;
+                          final isEdgeValue = v == 1 || v == 5;
                           return Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -2430,16 +2473,18 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '1 = נמוך ביותר | 5 = גבוה ביותר',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
+                              if (isEdgeValue) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  v == 1 ? 'נמוך מאוד' : 'גבוה מאוד',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                           );
                         }).toList(),
@@ -2523,6 +2568,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     );
   }
 }
+
+// helper removed: statuses are not editable in UI (read-only for admin)
 
 /* ================== FEEDBACKS LIST + DETAILS ================== */
 
@@ -2915,125 +2962,107 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
           textDirection: TextDirection.rtl,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.list_alt, color: Colors.white70),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'פרטי מקצה — $stationName',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.list_alt, color: Colors.white70),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'פרטי מקצה — $stationName',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white70),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.blueGrey.shade800,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      headingRowColor: MaterialStateProperty.all(
-                        Colors.blueGrey.shade700,
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                        onPressed: () => Navigator.pop(ctx),
                       ),
-                      columns: const [
-                        DataColumn(
-                          label: Text(
-                            'חניך',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.shade800,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(
+                          Colors.blueGrey.shade700,
                         ),
-                        DataColumn(
-                          label: Text(
-                            'מספר פגיעות',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Text(
-                            'סך כדורים',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Text(
-                            'אחוז פגיעות',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                      rows: trainees.map((t) {
-                        final name = (t['name'] ?? '').toString();
-                        final hitsMap =
-                            (t['hits'] as Map?)?.cast<String, dynamic>() ?? {};
-                        final hits =
-                            (hitsMap['station_$stationIndex'] as num?)
-                                ?.toInt() ??
-                            0;
-                        final bullets = bulletsPerTrainee;
-                        final pct = bullets > 0
-                            ? ((hits / bullets) * 100).toStringAsFixed(1)
-                            : '0.0';
-                        return DataRow(
-                          cells: [
-                            DataCell(
-                              Text(
-                                name,
-                                style: const TextStyle(color: Colors.white),
+                        columns: const [
+                          DataColumn(
+                            label: Text(
+                              'חניך',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
                               ),
                             ),
-                            DataCell(
-                              Text(
-                                '$hits',
-                                style: const TextStyle(color: Colors.white),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'תוצאות',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
                               ),
                             ),
-                            DataCell(
-                              Text(
-                                '$bullets',
-                                style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
+                        rows: trainees.map((t) {
+                          final name = (t['name'] ?? '').toString();
+                          final hitsMap =
+                              (t['hits'] as Map?)?.cast<String, dynamic>() ??
+                              {};
+                          final hits =
+                              (hitsMap['station_$stationIndex'] as num?)
+                                  ?.toInt() ??
+                              0;
+                          final bullets = bulletsPerTrainee;
+                          final pct = bullets > 0
+                              ? ((hits / bullets) * 100).toStringAsFixed(1)
+                              : '0.0';
+                          return DataRow(
+                            cells: [
+                              DataCell(
+                                Text(
+                                  name,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
                               ),
-                            ),
-                            DataCell(
-                              Text(
-                                '$pct%',
-                                style: const TextStyle(color: Colors.white),
+                              DataCell(
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '$hits מתוך $bullets • $pct%',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
+                            ],
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -3174,289 +3203,323 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
             const SizedBox(height: 20),
 
             // סיכום ופירוט מקצים למשובי מטווחים
-            ((feedback.folder == 'מטווחי ירי' &&
+            ...feedback.folder == 'מטווחי ירי' &&
                     feedback.id != null &&
-                    (feedback.id?.isNotEmpty ?? false)))
-                ? FutureBuilder<DocumentSnapshot>(
-                    future: FirebaseFirestore.instance
-                        .collection('feedbacks')
-                        .doc(feedback.id)
-                        .get(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData || !snapshot.data!.exists) {
-                        return const SizedBox.shrink();
-                      }
+                    feedback.id!.isNotEmpty
+                ? <Widget>[
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('feedbacks')
+                          .doc(feedback.id)
+                          .get(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData || !snapshot.data!.exists) {
+                          return const SizedBox.shrink();
+                        }
 
-                      final data =
-                          snapshot.data!.data() as Map<String, dynamic>?;
-                      if (data == null) return const SizedBox.shrink();
+                        final data =
+                            snapshot.data!.data() as Map<String, dynamic>?;
+                        if (data == null) {
+                          return const SizedBox.shrink();
+                        }
 
-                      final stations =
-                          (data['stations'] as List?)
-                              ?.cast<Map<String, dynamic>>() ??
-                          [];
-                      final trainees =
-                          (data['trainees'] as List?)
-                              ?.cast<Map<String, dynamic>>() ??
-                          [];
+                        final stations =
+                            (data['stations'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+                        final trainees =
+                            (data['trainees'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
 
-                      if (stations.isEmpty || trainees.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
+                        if (stations.isEmpty || trainees.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
 
-                      // חישוב סך הכל פגיעות וכדורים
-                      int totalHits = 0;
+                        // חישוב סך הכל פגיעות וכדורים
+                        int totalHits = 0;
 
-                      // סך כל הפגיעות - סכום כל פגיעות החניכים
-                      for (final trainee in trainees) {
-                        totalHits +=
-                            (trainee['totalHits'] as num?)?.toInt() ?? 0;
-                      }
+                        // סך כל הפגיעות - סכום כל פגיעות החניכים
+                        for (final trainee in trainees) {
+                          totalHits +=
+                              (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                        }
 
-                      // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
-                      int totalBulletsPerTrainee = 0;
-                      for (final station in stations) {
-                        totalBulletsPerTrainee +=
-                            (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                      }
-                      final totalBullets =
-                          trainees.length * totalBulletsPerTrainee;
+                        // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
+                        int totalBulletsPerTrainee = 0;
+                        for (final station in stations) {
+                          totalBulletsPerTrainee +=
+                              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                        }
+                        final totalBullets =
+                            trainees.length * totalBulletsPerTrainee;
 
-                      // חישוב אחוז כללי
-                      final percentage = totalBullets > 0
-                          ? ((totalHits / totalBullets) * 100).toStringAsFixed(
-                              1,
-                            )
-                          : '0.0';
+                        // חישוב אחוז כללי
+                        final percentage = totalBullets > 0
+                            ? ((totalHits / totalBullets) * 100)
+                                  .toStringAsFixed(1)
+                            : '0.0';
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // כרטיס סיכום כללי
-                          Card(
-                            color: Colors.blueGrey.shade800,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                children: [
-                                  const Text(
-                                    'סיכום כללי',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // כרטיס סיכום כללי
+                            Card(
+                              color: Colors.blueGrey.shade800,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  children: [
+                                    const Text(
+                                      'סיכום כללי',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceAround,
+                                      children: [
+                                        Column(
+                                          children: [
+                                            const Text('סך פגיעות/כדורים'),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$totalHits/$totalBullets',
+                                              style: const TextStyle(
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.orangeAccent,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Column(
+                                          children: [
+                                            const Text('אחוז פגיעה כללי'),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$percentage%',
+                                              style: const TextStyle(
+                                                fontSize: 32,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.greenAccent,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // פירוט מקצים
+                            const Text(
+                              'פירוט מקצים',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            ...stations.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final station = entry.value;
+                              final stationName =
+                                  station['name'] ?? 'מקצה ${index + 1}';
+                              final stationBulletsPerTrainee =
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+
+                              // חישוב סך פגיעות למקצה
+                              int stationHits = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null) {
+                                  stationHits +=
+                                      (hits['station_$index'] as num?)
+                                          ?.toInt() ??
+                                      0;
+                                }
+                              }
+
+                              // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
+                              final totalStationBullets =
+                                  trainees.length * stationBulletsPerTrainee;
+
+                              // חישוב אחוז פגיעות למקצה
+                              final stationPercentage = totalStationBullets > 0
+                                  ? ((stationHits / totalStationBullets) * 100)
+                                        .toStringAsFixed(1)
+                                  : '0.0';
+
+                              return InkWell(
+                                onTap: () {
+                                  _showStationDetailsModal(
+                                    context,
+                                    index,
+                                    stationName.toString(),
+                                    stationBulletsPerTrainee,
+                                    trainees,
+                                  );
+                                },
+                                child: Card(
+                                  color: Colors.blueGrey.shade700,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // שורה 1: שם המקצה
+                                        Text(
+                                          stationName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        // מדדים מרוכזים בשורה אחת
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceEvenly,
+                                          children: [
+                                            // סך כל כדורים
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$totalStationBullets',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white70,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  'סך כל כדורים',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            // סך כל פגיעות
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$stationHits',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.orangeAccent,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  'סך כל פגיעות',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            // אחוז פגיעות
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$stationPercentage%',
+                                                  style: const TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.greenAccent,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  'אחוז פגיעות',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        const Text(
+                                          'לחץ לפרטי החניכים במקצה',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceAround,
-                                    children: [
-                                      Column(
-                                        children: [
-                                          const Text('סך פגיעות/כדורים'),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '$totalHits/$totalBullets',
-                                            style: const TextStyle(
-                                              fontSize: 24,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.orangeAccent,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      Column(
-                                        children: [
-                                          const Text('אחוז פגיעה כללי'),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '$percentage%',
-                                            style: const TextStyle(
-                                              fontSize: 32,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.greenAccent,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // פירוט מקצים
-                          const Text(
-                            'פירוט מקצים',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-
-                          ...stations.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final station = entry.value;
-                            final stationName =
-                                station['name'] ?? 'מקצה ${index + 1}';
-                            final stationBulletsPerTrainee =
-                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
-
-                            // חישוב סך פגיעות למקצה
-                            int stationHits = 0;
-                            for (final trainee in trainees) {
-                              final hits =
-                                  trainee['hits'] as Map<String, dynamic>?;
-                              if (hits != null) {
-                                stationHits +=
-                                    (hits['station_$index'] as num?)?.toInt() ??
-                                    0;
-                              }
-                            }
-
-                            // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
-                            final totalStationBullets =
-                                trainees.length * stationBulletsPerTrainee;
-
-                            // חישוב אחוז פגיעות למקצה
-                            final stationPercentage = totalStationBullets > 0
-                                ? ((stationHits / totalStationBullets) * 100)
-                                      .toStringAsFixed(1)
-                                : '0.0';
-
-                            return InkWell(
-                              onTap: () {
-                                _showStationDetailsModal(
-                                  context,
-                                  index,
-                                  stationName.toString(),
-                                  stationBulletsPerTrainee,
-                                  trainees,
-                                );
-                              },
-                              child: Card(
-                                color: Colors.blueGrey.shade700,
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // שורה 1: שם המקצה
-                                      Text(
-                                        stationName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // שורה 2: סך כל כדורים
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('סך כל כדורים:'),
-                                          Text(
-                                            '$totalStationBullets',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white70,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      // שורה 3: סך כל פגיעות
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('סך כל פגיעות:'),
-                                          Text(
-                                            '$stationHits',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.orangeAccent,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      // שורה 4: אחוז פגיעות
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('אחוז פגיעות:'),
-                                          Text(
-                                            '$stationPercentage%',
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.greenAccent,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      const Text(
-                                        'לחץ לפרטי החניכים במקצה',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
-                                    ],
+                                ),
+                              );
+                            }),
+                          ],
+                        );
+                      },
+                    ),
+                  ]
+                : <Widget>[
+                    Builder(
+                      builder: (ctx) {
+                        final scores = feedback.scores.values
+                            .where((v) => v > 0)
+                            .toList();
+                        if (scores.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        final avg =
+                            scores.reduce((a, b) => a + b) / scores.length;
+                        return Card(
+                          color: Colors.blueGrey.shade800,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'ציון ממוצע',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              ),
-                            );
-                          }),
-                        ],
-                      );
-                    },
-                  )
-                : Builder(
-                    builder: (ctx) {
-                      final scores = feedback.scores.values
-                          .where((v) => v > 0)
-                          .toList();
-                      if (scores.isEmpty) return const SizedBox.shrink();
-                      final avg =
-                          scores.reduce((a, b) => a + b) / scores.length;
-                      return Card(
-                        color: Colors.blueGrey.shade800,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            children: [
-                              const Text(
-                                'ציון ממוצע',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${avg.toStringAsFixed(1)} / 5',
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orangeAccent,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${avg.toStringAsFixed(1)} / 5',
-                                style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orangeAccent,
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
+                        );
+                      },
+                    ),
+                  ],
             const SizedBox(height: 12),
             // Command box (visible to Admin + Instructors)
             if (canViewCommand) ...[
@@ -3996,13 +4059,60 @@ class _StatisticsPageState extends State<StatisticsPage> {
                                         ),
                                       )
                                       .toList(),
-                                  onChanged: (v) => setState(
-                                    () => selectedFolder = v ?? 'כל התיקיות',
-                                  ),
+                                  onChanged: (v) => setState(() {
+                                    selectedFolder = v ?? 'כל התיקיות';
+                                    // איפוס יישוב אם התיקייה השתנתה מ"מחלקות ההגנה – חטיבה 474"
+                                    if (selectedFolder !=
+                                        'מחלקות ההגנה – חטיבה 474') {
+                                      selectedSettlement = 'כל היישובים';
+                                    }
+                                  }),
                                 );
                               },
                             ),
                           ),
+
+                          // Settlement filter (only when folder is "מחלקות ההגנה – חטיבה 474")
+                          if (selectedFolder == 'מחלקות ההגנה – חטיבה 474')
+                            SizedBox(
+                              width: 240,
+                              child: Builder(
+                                builder: (ctx) {
+                                  final settlements = <String>{'כל היישובים'}
+                                    ..addAll(golanSettlements);
+                                  final items = settlements.toSet().toList();
+                                  final value =
+                                      items.contains(selectedSettlement)
+                                      ? selectedSettlement
+                                      : null;
+                                  return DropdownButtonFormField<String>(
+                                    initialValue: value,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'יישוב',
+                                      isDense: true,
+                                    ),
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 16,
+                                    ),
+                                    dropdownColor: Colors.white,
+                                    items: items
+                                        .map(
+                                          (i) => DropdownMenuItem(
+                                            value: i,
+                                            child: Text(i),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) => setState(
+                                      () => selectedSettlement =
+                                          v ?? 'כל היישובים',
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
 
                           // Date range
                           Row(
@@ -4378,37 +4488,37 @@ class MaagalPatuachPage extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Text(
+              children: const [
+                Text(
                   'מעגל פתוח',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: 32),
                 // Vertical flow with arrows
-                const Text(
+                Text(
                   'מגע',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 8),
-                const Icon(Icons.arrow_downward, size: 32),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8),
+                Icon(Icons.arrow_downward, size: 32),
+                SizedBox(height: 8),
+                Text(
                   'סריקות',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 8),
-                const Icon(Icons.arrow_downward, size: 32),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8),
+                Icon(Icons.arrow_downward, size: 32),
+                SizedBox(height: 8),
+                Text(
                   'זיכוי',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 24),
-                const Text(
+                SizedBox(height: 24),
+                Text(
                   'נלחמים לפי עקרונות לחימה',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16),
@@ -4530,7 +4640,7 @@ class SaabalPage extends StatelessWidget {
               const SizedBox(height: 12),
               _buildStep('2. התייחסות לגירוי'),
               const SizedBox(height: 12),
-              _buildStep('3. וידוא נטרול'),
+              _buildStep('3. וידוא ניטרול'),
               const SizedBox(height: 12),
               _buildStep('4. המשך חיפוש לחימה'),
             ],

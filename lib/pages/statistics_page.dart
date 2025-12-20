@@ -7,10 +7,7 @@ class StatisticsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: Text(
-          'סטטיסטיקה (בהמשך)',
-          style: TextStyle(fontSize: 22),
-        ),
+        child: Text('סטטיסטיקה (בהמשך)', style: TextStyle(fontSize: 22)),
       ),
     );
   }

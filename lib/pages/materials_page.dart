@@ -6,12 +6,7 @@ class MaterialsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(
-        child: Text(
-          'חומר עיוני',
-          style: TextStyle(fontSize: 22),
-        ),
-      ),
+      body: Center(child: Text('חומר עיוני', style: TextStyle(fontSize: 22))),
     );
   }
 }

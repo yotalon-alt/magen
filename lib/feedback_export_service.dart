@@ -907,7 +907,7 @@ class FeedbackExportService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     if (lock) {
-      // If locked, ensure status completed
+      // If locked, ensure status completed (transitional state before classification)
       await ref.set({'status': 'completed'}, SetOptions(merge: true));
     }
   }
@@ -928,7 +928,7 @@ class FeedbackExportService {
   }
 
   /// Finalize a screening: ensure all fields filled, mark completed, and
-  /// create a corresponding document under 'feedbacks' (regular list UI).
+  /// save ONLY under Resources collections for Instructor Course selection.
   static Future<void> finalizeScreeningAndCreateFeedback({
     required String screeningId,
   }) async {
@@ -962,47 +962,83 @@ class FeedbackExportService {
 
     // Avoid duplicate finalization
     if ((data['finalFeedbackId'] as String?)?.isNotEmpty == true) {
-      // Already finalized; just ensure status
-      await ref.set({
-        'status': 'completed',
-        'isFinalLocked': true,
-      }, SetOptions(merge: true));
+      // Already finalized; ensure classified status remains consistent
       return;
     }
 
-    // Build feedback payload for regular list
-    final nowUserName =
+    // Map Hebrew category names to canonical keys expected by resources pages
+    int levelTest = scores['בוחן רמה'] ?? 0;
+    int goodInstruction = scores['הדרכה טובה'] ?? 0;
+    int structureInstruction = scores['הדרכת מבנה'] ?? 0;
+    int dryPractice = scores['יבשים'] ?? 0;
+    int surpriseExercise = scores['תרגיל הפתעה'] ?? 0;
+
+    // Compute weighted average score consistent with form page
+    const Map<String, double> weights = {
+      'levelTest': 0.15,
+      'surpriseExercise': 0.25,
+      'dryPractice': 0.20,
+      'goodInstruction': 0.20,
+      'structureInstruction': 0.20,
+    };
+    double weightedSum = 0.0;
+    weightedSum += (levelTest.toDouble()) * (weights['levelTest'] ?? 0.0);
+    weightedSum +=
+        (surpriseExercise.toDouble()) * (weights['surpriseExercise'] ?? 0.0);
+    weightedSum += (dryPractice.toDouble()) * (weights['dryPractice'] ?? 0.0);
+    weightedSum +=
+        (goodInstruction.toDouble()) * (weights['goodInstruction'] ?? 0.0);
+    weightedSum +=
+        (structureInstruction.toDouble()) *
+        (weights['structureInstruction'] ?? 0.0);
+
+    final averageScore = weightedSum; // 1..5 range
+    final isSuitable = averageScore >= 3.6;
+
+    // Build payload for Resources collections
+    final instructorName =
+        (data['createdByName'] as String?) ??
         FirebaseAuth.instance.currentUser?.email ??
         FirebaseAuth.instance.currentUser?.uid ??
         '';
-    final feedbackPayload = {
-      'instructorName': nowUserName,
-      'instructorId': FirebaseAuth.instance.currentUser?.uid ?? '',
-      'instructorRole': '',
-      'role': 'מועמד',
-      'name': (data['title'] ?? data['candidateId'] ?? 'מועמד') as String,
-      'exercise': 'מיונים לקורס מדריכים',
-      'folder': 'מיונים לקורס מדריכים',
-      'scores': scores,
-      'notes': <String, String>{},
-      'criteriaList': scores.keys.toList(),
+    final resourcePayload = {
       'createdAt': FieldValue.serverTimestamp(),
-      'commandText': '',
-      'commandStatus': 'פתוח',
-      'scenario': '',
-      'settlement': '',
-      'attendeesCount': 0,
+      'instructorName': instructorName,
+      'instructorId': FirebaseAuth.instance.currentUser?.uid ?? '',
+      'candidateName':
+          (data['candidateName'] as String?) ??
+          (data['title'] as String?) ??
+          'מועמד',
+      'candidateNumber': (data['candidateNumber'] as num?)?.toInt(),
+      'command': (data['command'] as String?) ?? '',
+      'brigade': (data['brigade'] as String?) ?? '',
+      'averageScore': averageScore,
+      'isSuitable': isSuitable,
+      'screeningId': screeningId,
+      'scores': {
+        'levelTest': levelTest,
+        'goodInstruction': goodInstruction,
+        'structureInstruction': structureInstruction,
+        'dryPractice': dryPractice,
+        'surpriseExercise': surpriseExercise,
+      },
     };
 
-    final fbRef = await FirebaseFirestore.instance
-        .collection('feedbacks')
-        .add(feedbackPayload);
+    final collectionPath = isSuitable
+        ? 'instructor_course_selection_suitable'
+        : 'instructor_course_selection_not_suitable';
 
-    // Mark screening completed and link final feedback id
+    final resRef = await FirebaseFirestore.instance
+        .collection(collectionPath)
+        .add(resourcePayload);
+
+    // Mark screening completed and link the final resource doc id + category
     await ref.set({
-      'status': 'completed',
+      // Set unified classified status after writing to Resources
+      'status': isSuitable ? 'classified_fit' : 'classified_unfit',
       'isFinalLocked': true,
-      'finalFeedbackId': fbRef.id,
+      'finalFeedbackId': resRef.id,
+      'finalCategory': isSuitable ? 'suitable' : 'not_suitable',
       'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

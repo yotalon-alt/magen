@@ -22,6 +22,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
   String? _rangeSubType; // 'קצרים' / 'ארוכים' / 'הפתעה'
   String? _selectedInstructor;
   String? _selectedFolder;
+  String? _selectedSettlement;
   String _searchText = '';
 
   bool _isExporting = false;
@@ -421,10 +422,45 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                                   ),
                                 ),
                               ],
-                              onChanged: (v) =>
-                                  setState(() => _selectedFolder = v),
+                              onChanged: (v) => setState(() {
+                                _selectedFolder = v;
+                                // איפוס יישוב אם התיקייה השתנתה מ"מחלקות ההגנה – חטיבה 474"
+                                if (_selectedFolder !=
+                                    'מחלקות ההגנה – חטיבה 474') {
+                                  _selectedSettlement = null;
+                                }
+                              }),
                             ),
                             const SizedBox(height: 12),
+
+                            // יישוב (רק כשנבחר "מחלקות ההגנה – חטיבה 474")
+                            if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474')
+                              DropdownButtonFormField<String>(
+                                initialValue: _selectedSettlement,
+                                decoration: const InputDecoration(
+                                  labelText: 'יישוב',
+                                  border: OutlineInputBorder(),
+                                ),
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16,
+                                ),
+                                dropdownColor: Colors.white,
+                                items: [
+                                  const DropdownMenuItem(
+                                    value: null,
+                                    child: Text('כל היישובים'),
+                                  ),
+                                  ...golanSettlements.map(
+                                    (s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (v) =>
+                                    setState(() => _selectedSettlement = v),
+                              ),
 
                             // תת-קטגוריה (רק למטווחים)
                             if (_feedbackType == 'מטווחים' ||

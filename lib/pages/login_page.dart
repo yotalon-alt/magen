@@ -24,9 +24,9 @@ class _LoginPageState extends State<LoginPage> {
     if (user.isNotEmpty && pass.isNotEmpty) {
       Navigator.of(context).pushReplacementNamed('/main');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אנא מלא שם משתמש וסיסמה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא מלא שם משתמש וסיסמה')));
     }
   }
 

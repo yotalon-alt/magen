@@ -7,10 +7,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: Text(
-          'ברוך הבא למערכת המשובים',
-          style: TextStyle(fontSize: 24),
-        ),
+        child: Text('ברוך הבא למערכת המשובים', style: TextStyle(fontSize: 24)),
       ),
     );
   }

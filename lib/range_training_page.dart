@@ -26,6 +26,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     'מעבר קרובות',
     'מניפה',
     'ירי למטרה הישגית',
+    'עמידה כריעה 50 מטר',
+    'עמידה כריעה 100 מטר',
+    'עמידה כריעה 150 מטר',
+    'בוחן רמה',
+    'מקצה ידני',
   ];
 
   String? selectedSettlement;
@@ -49,6 +54,72 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     stations.add(RangeStation(name: '', bulletsCount: 0));
   }
 
+  void _openSettlementSelectorSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.blueGrey.shade900,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.location_city, color: Colors.white70),
+                    SizedBox(width: 8),
+                    Text(
+                      'בחר יישוב',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 240,
+                  child: ListView.separated(
+                    itemCount: golanSettlements.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final s = golanSettlements[i];
+                      return ListTile(
+                        title: Text(
+                          s,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          setState(() => selectedSettlement = s);
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _updateAttendeesCount(int count) {
     setState(() {
       attendeesCount = count;
@@ -68,7 +139,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   void _addStation() {
     setState(() {
-      stations.add(RangeStation(name: '', bulletsCount: 0));
+      stations.add(
+        RangeStation(
+          name: '',
+          bulletsCount: 0,
+          timeSeconds: null,
+          hits: null,
+          isManual: false,
+          isLevelTester: false,
+          selectedRubrics: ['זמן', 'פגיעות'],
+        ),
+      );
     });
   }
 
@@ -145,11 +226,34 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ).showSnackBar(SnackBar(content: Text('אנא הזן שם למקצה ${i + 1}')));
         return;
       }
-      if (stations[i].bulletsCount <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('אנא הזן מספר כדורים למקצה ${i + 1}')),
-        );
-        return;
+
+      // בדיקת תקינות לפי סוג המקצה
+      if (stations[i].isLevelTester) {
+        // בוחן רמה - חייב זמן ופגיעות
+        if (stations[i].timeSeconds == null || stations[i].timeSeconds! <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('אנא הזן זמן תקין למקצה ${i + 1} (בוחן רמה)'),
+            ),
+          );
+          return;
+        }
+        if (stations[i].hits == null || stations[i].hits! < 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('אנא הזן פגיעות תקינות למקצה ${i + 1} (בוחן רמה)'),
+            ),
+          );
+          return;
+        }
+      } else {
+        // מקצים רגילים - חייב כדורים
+        if (stations[i].bulletsCount <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('אנא הזן מספר כדורים למקצה ${i + 1}')),
+          );
+          return;
+        }
       }
     }
 
@@ -196,7 +300,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         // תוכן מקצועי
         'stations': stations
-            .map((s) => {'name': s.name, 'bulletsCount': s.bulletsCount})
+            .map(
+              (s) => {
+                'name': s.name,
+                'bulletsCount': s.bulletsCount,
+                'timeSeconds': s.timeSeconds,
+                'hits': s.hits,
+                'isManual': s.isManual,
+                'isLevelTester': s.isLevelTester,
+                'selectedRubrics': s.selectedRubrics,
+              },
+            )
             .toList(),
 
         'trainees': trainees.asMap().entries.map((entry) {
@@ -285,17 +399,29 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               const SizedBox(height: 24),
 
               // יישוב/מחלקה
-              DropdownButtonFormField<String>(
-                initialValue: selectedSettlement,
-                hint: const Text('יישוב / מחלקה'),
-                decoration: const InputDecoration(
-                  labelText: 'יישוב / מחלקה',
-                  border: OutlineInputBorder(),
-                ),
-                items: golanSettlements
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: (v) => setState(() => selectedSettlement = v),
+              Stack(
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedSettlement,
+                    hint: const Text('יישוב / מחלקה'),
+                    decoration: const InputDecoration(
+                      labelText: 'יישוב / מחלקה',
+                      border: OutlineInputBorder(),
+                    ),
+                    // מציג ערך בלבד; בחירה תתבצע בבוטום-שיט
+                    items: const [],
+                    onChanged: null,
+                  ),
+                  Positioned.fill(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _openSettlementSelectorSheet,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
 
@@ -377,45 +503,122 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: station.name.isEmpty
-                              ? null
-                              : station.name,
-                          hint: const Text('בחר מקצה'),
-                          decoration: const InputDecoration(
-                            labelText: 'שם המקצה',
-                            border: OutlineInputBorder(),
-                            isDense: true,
+                        // שדה שם המקצה - דרופדאון או טקסט לפי סוג
+                        if (station.isManual) ...[
+                          TextField(
+                            decoration: const InputDecoration(
+                              labelText: 'שם המקצה (ידני)',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            onChanged: (v) {
+                              setState(() {
+                                station.name = v;
+                              });
+                            },
                           ),
-                          items: availableStations
-                              .map(
-                                (s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            setState(() {
-                              station.name = v ?? '';
-                            });
-                          },
-                        ),
+                        ] else ...[
+                          DropdownButtonFormField<String>(
+                            initialValue: station.name.isEmpty
+                                ? null
+                                : station.name,
+                            hint: const Text('בחר מקצה'),
+                            decoration: const InputDecoration(
+                              labelText: 'שם המקצה',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            items: availableStations
+                                .map(
+                                  (s) => DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              setState(() {
+                                station.name = v ?? '';
+                                // עדכון סוג המקצה לפי השם
+                                if (v == 'בוחן רמה') {
+                                  station.isLevelTester = true;
+                                  station.isManual = false;
+                                } else if (v == 'מקצה ידני') {
+                                  station.isManual = true;
+                                  station.isLevelTester = false;
+                                } else {
+                                  station.isLevelTester = false;
+                                  station.isManual = false;
+                                }
+                              });
+                            },
+                          ),
+                        ],
                         const SizedBox(height: 8),
-                        TextField(
-                          decoration: const InputDecoration(
-                            labelText: 'מספר כדורים',
-                            border: OutlineInputBorder(),
-                            isDense: true,
+                        // שדות לפי סוג המקצה
+                        if (station.isLevelTester) ...[
+                          // בוחן רמה - זמן ושניות
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  decoration: const InputDecoration(
+                                    labelText: 'זמן (שניות)',
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  onChanged: (v) {
+                                    setState(() {
+                                      station.timeSeconds =
+                                          int.tryParse(v) ?? 0;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  decoration: const InputDecoration(
+                                    labelText: 'פגיעות',
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  onChanged: (v) {
+                                    setState(() {
+                                      station.hits = int.tryParse(v) ?? 0;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          onChanged: (v) {
-                            setState(() {
-                              station.bulletsCount = int.tryParse(v) ?? 0;
-                            });
-                          },
-                        ),
+                        ] else ...[
+                          // מקצים רגילים - כדורים
+                          TextField(
+                            decoration: const InputDecoration(
+                              labelText: 'מספר כדורים',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: (v) {
+                              setState(() {
+                                station.bulletsCount = int.tryParse(v) ?? 0;
+                              });
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -424,7 +627,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
               const SizedBox(height: 32),
 
-              // טבלת חניכים - מוצגת רק אם יש נוכחים
+              // טבלת חניכים מלאה לעריכה - מוצגת רק אם יש נוכחים
               if (attendeesCount > 0) ...[
                 const Text(
                   'טבלת חניכים',
@@ -480,163 +683,298 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Widget _buildTraineesTable() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        border: TableBorder.all(color: Colors.grey.shade400, width: 1),
-        columns: [
-          // עמודת שם החניך
-          const DataColumn(
-            label: Text('חניך', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-
-          // עמודות המקצים
-          ...stations.asMap().entries.map((entry) {
-            final index = entry.key;
-            final station = entry.value;
-
-            return DataColumn(
-              label: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    station.name.isEmpty ? 'מקצה ${index + 1}' : station.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '(${station.bulletsCount} כדורים)',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            );
-          }),
-
-          // עמודת סיכום פגיעות
-          const DataColumn(
-            label: Text(
-              'פגיעות/כדורים',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
-            ),
-          ),
-
-          // עמודת אחוז פגיעות
-          const DataColumn(
-            label: Text(
-              'אחוז פגיעות',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-            ),
-          ),
-        ],
-
-        rows: trainees.asMap().entries.map((entry) {
-          final traineeIndex = entry.key;
-          final trainee = entry.value;
-
-          return DataRow(
-            cells: [
-              // שם החניך
-              DataCell(
-                SizedBox(
-                  width: 100,
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      hintText: 'שם',
-                      isDense: true,
-                      border: InputBorder.none,
-                    ),
-                    onChanged: (v) {
-                      setState(() {
-                        trainee.name = v;
-                      });
-                    },
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(
+                  width: 110,
+                  child: Text(
+                    'חניך',
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
-
-              // תאי פגיעות למקצים
-              ...stations.asMap().entries.map((stationEntry) {
-                final stationIndex = stationEntry.key;
-                final station = stationEntry.value;
-
-                return DataCell(
-                  SizedBox(
-                    width: 60,
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: '0',
+                const SizedBox(height: 8),
+                ...trainees.asMap().entries.map((entry) {
+                  final trainee = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: SizedBox(
+                      width: 110,
+                      child: TextField(
+                        decoration: const InputDecoration(
+                          hintText: 'שם',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            trainee.name = v;
+                          });
+                        },
                       ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      textAlign: TextAlign.center,
-                      onChanged: (v) {
-                        final hits = int.tryParse(v) ?? 0;
-
-                        // בדיקה שהפגיעות לא עולות על מספר הכדורים
-                        if (hits > station.bulletsCount) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                    ),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        ...stations.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final station = entry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6.0),
+                            child: SizedBox(
+                              width: 70,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    station.name.isEmpty
+                                        ? 'מקצה ${index + 1}'
+                                        : station.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '(${station.bulletsCount} כדורים)',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
                               ),
-                              duration: const Duration(seconds: 1),
                             ),
                           );
-                          return;
-                        }
-
-                        setState(() {
-                          trainee.hits[stationIndex] = hits;
-                        });
-                      },
+                        }),
+                        const SizedBox(
+                          width: 90,
+                          child: Text(
+                            'פגיעות/כדורים',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 90,
+                          child: Text(
+                            'אחוז פגיעות',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                );
-              }),
-
-              // סיכום פגיעות/כדורים החניך
-              DataCell(
-                Text(
-                  '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
+                    const SizedBox(height: 8),
+                    ...trainees.asMap().entries.map((entry) {
+                      final traineeIndex = entry.key;
+                      final trainee = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            ...stations.asMap().entries.map((stationEntry) {
+                              final stationIndex = stationEntry.key;
+                              final station = stationEntry.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6.0),
+                                child: SizedBox(
+                                  width: 70,
+                                  child: TextField(
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      border: OutlineInputBorder(),
+                                      hintText: '0',
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    textAlign: TextAlign.center,
+                                    onChanged: (v) {
+                                      final hits = int.tryParse(v) ?? 0;
+                                      if (hits > station.bulletsCount) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                            ),
+                                            duration: const Duration(
+                                              seconds: 1,
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      setState(() {
+                                        trainee.hits[stationIndex] = hits;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              );
+                            }),
+                            SizedBox(
+                              width: 90,
+                              child: Text(
+                                '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 90,
+                              child: Builder(
+                                builder: (_) {
+                                  final totalHits = _getTraineeTotalHits(
+                                    traineeIndex,
+                                  );
+                                  final totalBullets = _getTotalBullets();
+                                  final percentage = totalBullets > 0
+                                      ? (totalHits / totalBullets * 100)
+                                      : 0.0;
+                                  return Text(
+                                    '${percentage.toStringAsFixed(1)}%',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: percentage >= 70
+                                          ? Colors.green
+                                          : percentage >= 50
+                                          ? Colors.orange
+                                          : Colors.red,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    // Add labels under 1 and 5
+                    Row(
+                      children: [
+                        ...stations.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6.0),
+                            child: SizedBox(
+                              width: 70,
+                              child: Column(
+                                children: [
+                                  // Add label for low score
+                                  Builder(
+                                    builder: (context) {
+                                      final hits = trainees
+                                          .map(
+                                            (trainee) =>
+                                                trainee.hits[index] ?? 0,
+                                          )
+                                          .toList();
+                                      final minHits = hits.isNotEmpty
+                                          ? hits.reduce((a, b) => a < b ? a : b)
+                                          : 0;
+                                      return minHits < 1
+                                          ? Text(
+                                              'נמוך מאוד',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.red,
+                                              ),
+                                            )
+                                          : Container();
+                                    },
+                                  ),
+                                  // Add label for high score
+                                  Builder(
+                                    builder: (context) {
+                                      final hits = trainees
+                                          .map(
+                                            (trainee) =>
+                                                trainee.hits[index] ?? 0,
+                                          )
+                                          .toList();
+                                      final maxHits = hits.isNotEmpty
+                                          ? hits.reduce((a, b) => a > b ? a : b)
+                                          : 0;
+                                      return maxHits > 4
+                                          ? Text(
+                                              'גבוה מאוד',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.green,
+                                              ),
+                                            )
+                                          : Container();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        const SizedBox(
+                          width: 90,
+                          child: Text(
+                            'פגיעות/כדורים',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 90,
+                          child: Text(
+                            'אחוז פגיעות',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-
-              // אחוז פגיעות (חישוב אוטומטי)
-              DataCell(
-                Builder(
-                  builder: (_) {
-                    final totalHits = _getTraineeTotalHits(traineeIndex);
-                    final totalBullets = _getTotalBullets();
-                    final percentage = totalBullets > 0
-                        ? (totalHits / totalBullets * 100)
-                        : 0.0;
-                    return Text(
-                      '${percentage.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: percentage >= 70
-                            ? Colors.green
-                            : percentage >= 50
-                            ? Colors.orange
-                            : Colors.red,
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          );
-        }).toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -646,8 +984,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 class RangeStation {
   String name;
   int bulletsCount;
+  int? timeSeconds; // זמן בשניות - עבור "בוחן רמה"
+  int? hits; // פגיעות - עבור "בוחן רמה"
+  bool isManual; // האם מקצה ידני
+  bool isLevelTester; // האם מקצה "בוחן רמה"
+  List<String> selectedRubrics; // רובליקות נבחרות למקצה ידני
 
-  RangeStation({required this.name, required this.bulletsCount});
+  RangeStation({
+    required this.name,
+    required this.bulletsCount,
+    this.timeSeconds,
+    this.hits,
+    this.isManual = false,
+    this.isLevelTester = false,
+    List<String>? selectedRubrics,
+  }) : selectedRubrics = selectedRubrics ?? ['זמן', 'פגיעות'];
+
+  // בדיקה אם המקצה הוא "בוחן רמה"
+  bool get isLevelTest => name == 'בוחן רמה';
+
+  // בדיקה אם המקצה ידני
+  bool get isManualStation => name == 'מקצה ידני' || isManual;
 }
 
 /// מודל חניך

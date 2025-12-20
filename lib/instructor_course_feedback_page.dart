@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart';
+import 'feedback_export_service.dart';
 
 class InstructorCourseFeedbackPage extends StatefulWidget {
-  const InstructorCourseFeedbackPage({super.key});
+  final String? screeningId;
+  const InstructorCourseFeedbackPage({super.key, this.screeningId});
 
   @override
   State<InstructorCourseFeedbackPage> createState() =>
@@ -13,7 +15,8 @@ class InstructorCourseFeedbackPage extends StatefulWidget {
 
 class _InstructorCourseFeedbackPageState
     extends State<InstructorCourseFeedbackPage> {
-  // Fixed fields
+  String? _existingScreeningId;
+  bool _loadingExisting = false;
   String? _selectedPikud;
   final List<String> _pikudOptions = ['פיקוד צפון', 'פיקוד מרכז', 'פיקוד דרום'];
 
@@ -22,11 +25,9 @@ class _InstructorCourseFeedbackPageState
       TextEditingController();
   int? _candidateNumber;
 
-  // Level test specific fields
   final TextEditingController _hitsController = TextEditingController();
   final TextEditingController _timeSecondsController = TextEditingController();
 
-  // Categories with scores (1-5)
   final Map<String, int> categories = {
     'בוחן רמה': 0,
     'הדרכה טובה': 0,
@@ -35,114 +36,60 @@ class _InstructorCourseFeedbackPageState
     'תרגיל הפתעה': 0,
   };
 
-  // Calculate rating for level test based on hits and time
-  // Uses linear interpolation for precise scoring between extremes
   int _calculateLevelTestRating() {
     final hits = int.tryParse(_hitsController.text) ?? 0;
     final timeSeconds = int.tryParse(_timeSecondsController.text) ?? 0;
-
-    // No input = no score
     if (hits == 0 && timeSeconds == 0) return 0;
-
-    // Auto-fail conditions
-    if (hits < 6) {
-      return 1; // Less than 6 hits = always fail
-    }
-    if (timeSeconds > 15 && hits < 8) {
-      return 1; // Over 15 sec with <8 hits = fail
-    }
-
-    // Perfect score: 7 seconds, 10 hits
+    if (hits < 6) return 1;
+    if (timeSeconds > 15 && hits < 8) return 1;
     if (timeSeconds <= 7 && hits >= 10) return 5;
-
-    // Worst passing score: 15 seconds, 6 hits (barely passing)
     if (timeSeconds >= 15 || hits <= 6) return 1;
-
-    // Linear interpolation between extremes
-    // Time factor: 7 sec (best) to 15 sec (worst) = 0 to 1
-    double timeFactor = (timeSeconds - 7) / (15 - 7); // 0 (best) to 1 (worst)
+    double timeFactor = (timeSeconds - 7) / (15 - 7);
     timeFactor = timeFactor.clamp(0.0, 1.0);
-
-    // Hits factor: 10 hits (best) to 6 hits (worst) = 0 to 1
-    double hitsFactor = (10 - hits) / (10 - 6); // 0 (best) to 1 (worst)
+    double hitsFactor = (10 - hits) / (10 - 6);
     hitsFactor = hitsFactor.clamp(0.0, 1.0);
-
-    // Combined factor (average of both factors)
     double combinedFactor = (timeFactor + hitsFactor) / 2;
-
-    // Convert to score: 0 factor = 5, 1 factor = 1
-    double rawScore = 5 - (combinedFactor * 4); // 5 down to 1
-
-    // Round to nearest integer and ensure within bounds
-    int finalScore = rawScore.round().clamp(1, 5);
-
-    return finalScore;
+    double rawScore = 5 - (combinedFactor * 4);
+    return rawScore.round().clamp(1, 5);
   }
 
-  // Update level test rating when hits or time changes
   void _updateLevelTestRating() {
     setState(() {
       categories['בוחן רמה'] = _calculateLevelTestRating();
     });
   }
 
-  // Weights for weighted average calculation
   static const Map<String, double> _categoryWeights = {
-    'בוחן רמה': 0.15, // levelTest = 15%
-    'תרגיל הפתעה': 0.25, // surpriseExercise = 25%
-    'יבשים': 0.20, // dryStructure = 20%
-    'הדרכה טובה': 0.20, // goodInstruction = 20%
-    'הדרכת מבנה': 0.20, // otherComponent = 20%
+    'בוחן רמה': 0.15,
+    'תרגיל הפתעה': 0.25,
+    'יבשים': 0.20,
+    'הדרכה טובה': 0.20,
+    'הדרכת מבנה': 0.20,
   };
 
-  // Saving state
   bool _isSaving = false;
 
-  // Calculate weighted final score (1-5)
-  // This is a weighted average where each component (1-5) is multiplied by its weight
-  // Result is always between 1-5 (not a sum, not percentage)
   double get finalWeightedScore {
-    // Check if all categories have scores
-    bool allScored = true;
     for (final category in _categoryWeights.keys) {
       final score = categories[category] ?? 0;
-      if (score == 0) {
-        allScored = false;
-        break;
-      }
+      if (score == 0) return 0.0;
     }
-
-    // Return 0 if not all categories are scored
-    if (!allScored) return 0.0;
-
-    // Calculate weighted average: sum of (score × weight)
-    // Since weights sum to 1.0 (100%), the result is naturally between 1-5
     double weightedSum = 0.0;
-
     _categoryWeights.forEach((category, weight) {
       final score = categories[category] ?? 0;
       weightedSum += score * weight;
     });
-
     return weightedSum;
   }
 
-  // Determine if candidate is suitable for instructor course
-  bool get isSuitableForInstructorCourse {
-    return finalWeightedScore >= 3.6;
-  }
+  bool get isSuitableForInstructorCourse => finalWeightedScore >= 3.6;
+  bool get isFormValid => categories.values.every((score) => score > 0);
 
-  // Calculate average score in real-time (kept for compatibility)
-  double get averageScore {
-    final scores = categories.values.where((score) => score > 0).toList();
-    if (scores.isEmpty) return 0.0;
-    final sum = scores.reduce((a, b) => a + b);
-    return sum / scores.length;
-  }
-
-  // Validate all categories are scored
-  bool get isFormValid {
-    return categories.values.every((score) => score > 0);
+  bool get hasRequiredDetails {
+    final pikud = (_selectedPikud ?? '').trim();
+    final name = _candidateNameController.text.trim();
+    final number = _candidateNumber;
+    return pikud.isNotEmpty && name.isNotEmpty && number != null;
   }
 
   @override
@@ -154,163 +101,170 @@ class _InstructorCourseFeedbackPageState
     super.dispose();
   }
 
-  Future<void> _saveFeedback() async {
-    // Prevent double submission
+  @override
+  void initState() {
+    super.initState();
+    _existingScreeningId = widget.screeningId;
+    if (_existingScreeningId != null && _existingScreeningId!.isNotEmpty) {
+      _loadExistingScreening(_existingScreeningId!);
+    }
+  }
+
+  Future<void> _loadExistingScreening(String id) async {
+    setState(() => _loadingExisting = true);
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('instructor_course_screenings')
+          .doc(id)
+          .get()
+          .timeout(const Duration(seconds: 10));
+      if (!snap.exists) {
+        setState(() => _loadingExisting = false);
+        return;
+      }
+      final data = snap.data() as Map<String, dynamic>;
+      final cmd = (data['command'] as String?) ?? '';
+      final brigade = (data['brigade'] as String?) ?? '';
+      final candName = (data['candidateName'] as String?) ?? '';
+      final candNumber = (data['candidateNumber'] as num?)?.toInt();
+      setState(() {
+        _selectedPikud = cmd.isNotEmpty ? cmd : _selectedPikud;
+        _hativaController.text = brigade;
+        _candidateNameController.text = candName;
+        _candidateNumber = candNumber;
+      });
+      final fields = (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
+      final Map<String, int> newCats = Map<String, int>.from(categories);
+      for (final entry in fields.entries) {
+        final name = entry.key;
+        final meta = (entry.value as Map?)?.cast<String, dynamic>() ?? {};
+        final v = meta['value'];
+        final intVal = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
+        if (newCats.containsKey(name)) newCats[name] = intVal;
+        if (name == 'בוחן רמה') {
+          final hits = meta['hits'];
+          final time = meta['timeSeconds'];
+          if (hits != null) _hitsController.text = hits.toString();
+          if (time != null) _timeSecondsController.text = time.toString();
+        }
+      }
+      setState(() {
+        newCats.forEach((k, v) => categories[k] = v);
+      });
+      _updateLevelTestRating();
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingExisting = false);
+    }
+  }
+
+  Future<bool> _saveFeedback({bool allowAutoFinalize = true}) async {
     if (_isSaving) {
       debugPrint('⚠️ Save already in progress');
-      return;
+      return false;
     }
-
-    // Validate required fields
-    if (_selectedPikud == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('אנא בחר פיקוד'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return;
-    }
-
-    if (_hativaController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('אנא מלא חטיבה'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return;
-    }
-
-    if (_candidateNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('אנא מלא שם מועמד'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return;
-    }
-
-    if (_candidateNumber == null ||
-        _candidateNumber! < 1 ||
-        _candidateNumber! > 100) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('אנא בחר מספר מועמד (1-100)'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return;
-    }
-
-    // Validate all categories are scored
-    if (!isFormValid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('אנא דרג את כל הקטגוריות'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
-
     try {
-      // ✅ Correct collection path - determined automatically by weighted score
-      final String collectionPath = isSuitableForInstructorCourse
-          ? 'instructor_course_selection_suitable'
-          : 'instructor_course_selection_not_suitable';
-
-      debugPrint('📝 Saving to: $collectionPath');
-      debugPrint(
-        '   finalWeightedScore: ${finalWeightedScore.toStringAsFixed(1)}',
-      );
-      debugPrint(
-        '   isSuitable: $isSuitableForInstructorCourse (auto-determined)',
-      );
-      debugPrint('   averageScore: ${averageScore.toStringAsFixed(2)}');
-
-      // Prepare scores map with weighted final score
-      final scores = {
-        'levelTest': categories['בוחן רמה'] ?? 0,
-        'levelTestHits': int.tryParse(_hitsController.text) ?? 0,
-        'levelTestTimeSeconds': int.tryParse(_timeSecondsController.text) ?? 0,
-        'goodInstruction': categories['הדרכה טובה'] ?? 0,
-        'structureInstruction': categories['הדרכת מבנה'] ?? 0,
-        'dryPractice': categories['יבשים'] ?? 0,
-        'surpriseExercise': categories['תרגיל הפתעה'] ?? 0,
-        'finalScore': finalWeightedScore,
-        'isFitForInstructorCourse': isSuitableForInstructorCourse,
-      };
-
-      // Get current user's UID
+      if (!hasRequiredDetails) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('יש למלא את כל פרטי המיון לפני שמירה'),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            ),
+          );
+        }
+        setState(() => _isSaving = false);
+        return false;
+      }
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null || uid.isEmpty) {
-        throw Exception('User not authenticated');
+        throw Exception('נדרשת התחברות');
       }
-
-      // Prepare document data (isSuitable determined automatically)
-      final feedbackData = {
+      final coll = FirebaseFirestore.instance.collection(
+        'instructor_course_screenings',
+      );
+      final ref =
+          (_existingScreeningId != null && _existingScreeningId!.isNotEmpty)
+          ? coll.doc(_existingScreeningId)
+          : coll.doc();
+      final Map<String, dynamic> fields = {};
+      categories.forEach((name, score) {
+        if (score > 0) {
+          final Map<String, dynamic> meta = {
+            'value': score,
+            'filledBy': uid,
+            'filledAt': FieldValue.serverTimestamp(),
+          };
+          if (name == 'בוחן רמה') {
+            final hits = int.tryParse(_hitsController.text);
+            final time = int.tryParse(_timeSecondsController.text);
+            if (hits != null) meta['hits'] = hits;
+            if (time != null) meta['timeSeconds'] = time;
+          }
+          fields[name] = meta;
+        }
+      });
+      final payload = {
+        'status': 'draft',
+        'courseType': 'miunim',
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': uid,
+        'createdBy': uid,
+        'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
         'command': _selectedPikud ?? '',
         'brigade': _hativaController.text.trim(),
         'candidateName': _candidateNameController.text.trim(),
         'candidateNumber': _candidateNumber ?? 0,
-        'instructorName': currentUser?.name ?? 'לא ידוע',
-        'instructorId': uid, // Add instructorId for security rules
-        'scores': scores,
-        'averageScore': averageScore,
-        'finalWeightedScore': finalWeightedScore,
-        'isSuitable': isSuitableForInstructorCourse,
-        'createdAt': FieldValue.serverTimestamp(),
+        'title': _candidateNameController.text.trim().isNotEmpty
+            ? _candidateNameController.text.trim()
+            : 'מועמד',
+        if (fields.isNotEmpty) 'fields': fields,
       };
-
-      // Save to top-level collection
-      final docRef = await FirebaseFirestore.instance
-          .collection(collectionPath)
-          .add(feedbackData);
-
-      debugPrint('✅ Feedback saved successfully!');
-      debugPrint('   Collection: $collectionPath');
-      debugPrint('   Document ID: ${docRef.id}');
-
-      if (!mounted) return;
-
-      // Show success message with automatic determination
+      if (_existingScreeningId == null || _existingScreeningId!.isEmpty) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+      }
+      await ref.set(payload, SetOptions(merge: true));
+      _existingScreeningId ??= ref.id;
+      if (allowAutoFinalize && isFormValid) {
+        try {
+          await FeedbackExportService.finalizeScreeningAndCreateFeedback(
+            screeningId: _existingScreeningId!,
+          );
+          if (!mounted) return true;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('המשוב נסגר והועבר אוטומטית לדף המשובים'),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            ),
+          );
+          Navigator.pop(context);
+          return true;
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('שגיאה בסגירת המשוב: ${e.toString()}'),
+                behavior: SnackBarBehavior.floating,
+                margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+              ),
+            );
+          }
+        }
+      }
+      if (!mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isSuitableForInstructorCourse
-                ? 'משוב נשמר! ציון משוקלל: ${finalWeightedScore.toStringAsFixed(1)} - מתאים לקורס מדריכים'
-                : 'משוב נשמר! ציון משוקלל: ${finalWeightedScore.toStringAsFixed(1)} - לא מתאים לקורס מדריכים',
-          ),
-          backgroundColor: isSuitableForInstructorCourse
-              ? Colors.green
-              : Colors.orange,
+        const SnackBar(
+          content: Text('נשמר כמשוב בתהליך (draft)'),
           behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
-          duration: const Duration(seconds: 4),
+          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
         ),
       );
-
-      // Navigate back
-      Navigator.pop(context);
+      return true;
     } catch (e) {
-      debugPrint('❌ Error saving feedback: $e');
-
-      if (!mounted) return;
-
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('שגיאה בשמירה: ${e.toString()}'),
@@ -319,21 +273,56 @@ class _InstructorCourseFeedbackPageState
           margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
         ),
       );
+      return false;
     } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _finalizeIfComplete() async {
+    if (_existingScreeningId == null || _existingScreeningId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('לא ניתן לסיים ללא מזהה משוב')),
+      );
+      return;
+    }
+    if (!hasRequiredDetails) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('יש למלא את כל פרטי המיון לפני שמירה')),
+      );
+      return;
+    }
+    if (!isFormValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('יש להשלים את כל הרובריקות לפני סיום')),
+      );
+      return;
+    }
+    try {
+      final saved = await _saveFeedback(allowAutoFinalize: false);
+      if (!saved) return;
+      setState(() => _isSaving = true);
+      await FeedbackExportService.finalizeScreeningAndCreateFeedback(
+        screeningId: _existingScreeningId!,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('המשוב נסגר והסיווג בוצע אוטומטית')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה בסיום המשוב: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Widget _buildCategoryRow(String category) {
-    // Special handling for level test
-    if (category == 'בוחן רמה') {
-      return _buildLevelTestRow();
-    }
-
+    if (category == 'בוחן רמה') return _buildLevelTestRow();
     final currentScore = categories[category] ?? 0;
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
       child: Column(
@@ -352,6 +341,7 @@ class _InstructorCourseFeedbackPageState
               final isSelected = currentScore == score;
               return Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -378,16 +368,16 @@ class _InstructorCourseFeedbackPageState
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  if (score == 1 || score == 5)
-                    Text(
-                      score == 1 ? 'נמוך ביותר' : 'גבוה ביותר',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.grey.shade500,
-                        fontStyle: FontStyle.italic,
-                      ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '1 = נמוך ביותר | 5 = גבוה ביותר',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
                     ),
+                  ),
                 ],
               );
             }).toList(),
@@ -399,11 +389,10 @@ class _InstructorCourseFeedbackPageState
 
   Widget _buildLevelTestRow() {
     final currentRating = categories['בוחן רמה'] ?? 0;
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
       child: Card(
-        color: Colors.purple.shade50,
+        color: Colors.white,
         elevation: 3,
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -412,14 +401,14 @@ class _InstructorCourseFeedbackPageState
             children: [
               Row(
                 children: [
-                  const Icon(Icons.access_time, color: Colors.purple),
+                  const Icon(Icons.access_time, color: Colors.black87),
                   const SizedBox(width: 8),
                   const Text(
                     'בוחן רמה',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.purple,
+                      color: Colors.black87,
                     ),
                   ),
                   const Spacer(),
@@ -456,10 +445,11 @@ class _InstructorCourseFeedbackPageState
                       decoration: const InputDecoration(
                         labelText: 'מספר פגיעות',
                         hintText: 'הזן מספר',
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
                         prefixIcon: Icon(Icons.my_location),
+                      ),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 16,
                       ),
                       onChanged: (_) => _updateLevelTestRating(),
                     ),
@@ -472,10 +462,11 @@ class _InstructorCourseFeedbackPageState
                       decoration: const InputDecoration(
                         labelText: 'זמן (שניות)',
                         hintText: 'הזן שניות',
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
                         prefixIcon: Icon(Icons.timer),
+                      ),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 16,
                       ),
                       onChanged: (_) => _updateLevelTestRating(),
                     ),
@@ -520,12 +511,12 @@ class _InstructorCourseFeedbackPageState
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'חישוב אוטומטי: ${_hitsController.text} פגיעות ב-${_timeSecondsController.text} שניות',
+                const Text(
+                  'חישוב אוטומטי: נתוני פגיעות/זמן מעודכנים',
                   style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontStyle: FontStyle.italic,
+                    fontSize: 13,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -556,7 +547,12 @@ class _InstructorCourseFeedbackPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Fixed fields section
+                if (_loadingExisting) ...[
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12.0),
+                    child: LinearProgressIndicator(),
+                  ),
+                ],
                 Card(
                   color: Colors.blueGrey.shade700,
                   child: Padding(
@@ -602,24 +598,22 @@ class _InstructorCourseFeedbackPageState
                         const SizedBox(height: 12),
                         TextField(
                           controller: _hativaController,
-                          decoration: const InputDecoration(
-                            labelText: 'חטיבה',
-                            border: OutlineInputBorder(),
-                            filled: true,
-                            fillColor: Colors.white,
+                          decoration: const InputDecoration(labelText: 'חטיבה'),
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontSize: 16,
                           ),
-                          style: const TextStyle(color: Colors.black),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _candidateNameController,
                           decoration: const InputDecoration(
                             labelText: 'שם מועמד',
-                            border: OutlineInputBorder(),
-                            filled: true,
-                            fillColor: Colors.white,
                           ),
-                          style: const TextStyle(color: Colors.black),
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontSize: 16,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<int>(
@@ -663,8 +657,9 @@ class _InstructorCourseFeedbackPageState
                               const Text(
                                 'שם המדריך הממשב',
                                 style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
+                                  color: Colors.black87,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -682,24 +677,17 @@ class _InstructorCourseFeedbackPageState
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                // Categories
                 const Text(
                   'דרג את המועמד בכל קטגוריה (1-5):',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-
                 ...categories.keys.map(
                   (category) => _buildCategoryRow(category),
                 ),
-
                 const SizedBox(height: 24),
                 const Divider(),
-
-                // Weighted Final Score Display with Auto-Determination
                 Card(
                   elevation: 8,
                   color: isSuitableForInstructorCourse
@@ -792,14 +780,15 @@ class _InstructorCourseFeedbackPageState
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 32),
-
-                // Save Button
                 SizedBox(
                   height: 56,
                   child: ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _saveFeedback,
+                    onPressed: _isSaving
+                        ? null
+                        : () async {
+                            await _saveFeedback();
+                          },
                     icon: _isSaving
                         ? const SizedBox(
                             width: 20,
@@ -832,21 +821,33 @@ class _InstructorCourseFeedbackPageState
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
-                // Info text
-                Text(
-                  isSuitableForInstructorCourse
-                      ? 'המשוב יישמר ב: instructor_course_selection_suitable'
-                      : 'המשוב יישמר ב: instructor_course_selection_not_suitable',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade400,
-                    fontStyle: FontStyle.italic,
+                SizedBox(
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: _isSaving || !isFormValid
+                        ? null
+                        : _finalizeIfComplete,
+                    icon: const Icon(Icons.done_all),
+                    label: const Text(
+                      'סיים משוב',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 4,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 8),
               ],
             ),
           ),

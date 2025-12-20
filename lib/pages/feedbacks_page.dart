@@ -12,7 +12,8 @@ class FeedbacksPage extends StatelessWidget {
         itemCount: FeedbackStore.feedbacks.length,
         itemBuilder: (_, i) {
           final f = FeedbackStore.feedbacks[i];
-          final title = '${f['exercise'] ?? ''} ${f['role'] ?? ''} - ${f['name'] ?? ''}';
+          final title =
+              '${f['exercise'] ?? ''} ${f['role'] ?? ''} - ${f['name'] ?? ''}';
           return ListTile(
             title: Text(title),
             subtitle: Text(f['comment'] ?? ''),
