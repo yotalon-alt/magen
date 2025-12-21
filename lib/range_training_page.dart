@@ -684,214 +684,576 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       return const Center(child: Text('אין חניכים להצגה'));
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade400, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          children: [
-            // Header row
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        if (isMobile) {
+          // Mobile layout: Horizontal scroll with sticky trainee names
+          return Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade400, width: 1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
               children: [
-                const SizedBox(
-                  width: 120,
-                  child: Text(
-                    'חניך',
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(8.0),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(8),
+                      topRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'הזנת פגיעות - החלק ימינה לגלילה',
                     style: TextStyle(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                 ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        ...stations.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final station = entry.value;
-                          return SizedBox(
-                            width: 80,
-                            child: Column(
-                              children: [
-                                Text(
-                                  station.name.isEmpty
-                                      ? 'מקצה ${index + 1}'
-                                      : station.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                Text(
-                                  '(${station.bulletsCount})',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                        const SizedBox(
-                          width: 100,
-                          child: Text(
-                            'פגיעות/כדורים',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
+                  child: Row(
+                    children: [
+                      // Sticky trainee names column (right side)
+                      Container(
+                        width: 120,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            right: BorderSide(color: Colors.grey.shade300),
                           ),
                         ),
-                        const SizedBox(
-                          width: 100,
-                          child: Text(
-                            'אחוז פגיעות',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const Divider(),
-            // Trainee rows
-            ...trainees.asMap().entries.map((entry) {
-              final traineeIndex = entry.key;
-              final trainee = entry.value;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 120,
-                      child: TextField(
-                        decoration: const InputDecoration(
-                          hintText: 'שם חניך',
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 12,
-                          ),
-                        ),
-                        textAlign: TextAlign.center,
-                        onChanged: (v) {
-                          setState(() {
-                            trainee.name = v;
-                          });
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
+                        child: Column(
                           children: [
-                            ...stations.asMap().entries.map((stationEntry) {
-                              final stationIndex = stationEntry.key;
-                              final station = stationEntry.value;
-                              return SizedBox(
-                                width: 80,
-                                child: TextField(
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    border: OutlineInputBorder(),
-                                    hintText: '0',
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 12,
+                            // Header for trainee column
+                            Container(
+                              height: 60,
+                              padding: const EdgeInsets.all(8.0),
+                              decoration: BoxDecoration(
+                                color: Colors.blueGrey.shade50,
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                ),
+                              ),
+                              child: const Text(
+                                'חניך',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            // Trainee name fields
+                            ...trainees.map((trainee) {
+                              return Container(
+                                height: 60,
+                                padding: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: Colors.grey.shade200,
                                     ),
                                   ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
+                                ),
+                                child: TextField(
+                                  decoration: const InputDecoration(
+                                    hintText: 'שם חניך',
+                                    isDense: true,
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 8,
+                                    ),
+                                  ),
                                   textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 12),
                                   onChanged: (v) {
-                                    final hits = int.tryParse(v) ?? 0;
-                                    if (hits > station.bulletsCount) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                          ),
-                                          duration: const Duration(seconds: 1),
-                                        ),
-                                      );
-                                      return;
-                                    }
                                     setState(() {
-                                      trainee.hits[stationIndex] = hits;
+                                      trainee.name = v;
                                     });
                                   },
                                 ),
                               );
                             }),
-                            SizedBox(
-                              width: 100,
-                              child: Text(
-                                '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            SizedBox(
-                              width: 100,
-                              child: Builder(
-                                builder: (_) {
-                                  final totalHits = _getTraineeTotalHits(
-                                    traineeIndex,
-                                  );
-                                  final totalBullets = _getTotalBullets();
-                                  final percentage = totalBullets > 0
-                                      ? (totalHits / totalBullets * 100)
-                                      : 0.0;
-                                  return Text(
-                                    '${percentage.toStringAsFixed(1)}%',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: percentage >= 70
-                                          ? Colors.green
-                                          : percentage >= 50
-                                          ? Colors.orange
-                                          : Colors.red,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  );
-                                },
-                              ),
-                            ),
                           ],
                         ),
                       ),
-                    ),
-                  ],
+                      // Scrollable stations columns
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              ...stations.asMap().entries.map((entry) {
+                                final stationIndex = entry.key;
+                                final station = entry.value;
+                                return Container(
+                                  width: 120,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      // Station header
+                                      Container(
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blueGrey.shade50,
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade300,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              station.name.isEmpty
+                                                  ? 'מקצה ${stationIndex + 1}'
+                                                  : station.name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 11,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            Text(
+                                              '(${station.bulletsCount})',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // Trainee input fields for this station
+                                      ...trainees.map((trainee) {
+                                        return Container(
+                                          height: 60,
+                                          padding: const EdgeInsets.all(4.0),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          child: TextField(
+                                            decoration: const InputDecoration(
+                                              isDense: true,
+                                              border: OutlineInputBorder(),
+                                              hintText: '0',
+                                              contentPadding:
+                                                  EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 8,
+                                                  ),
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
+                                            ],
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                            onChanged: (v) {
+                                              final hits = int.tryParse(v) ?? 0;
+                                              if (hits > station.bulletsCount) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                    ),
+                                                    duration: const Duration(
+                                                      seconds: 1,
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                              setState(() {
+                                                trainee.hits[stationIndex] =
+                                                    hits;
+                                              });
+                                            },
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                );
+                              }),
+                              // Summary columns
+                              Container(
+                                width: 100,
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    // Header
+                                    Container(
+                                      height: 60,
+                                      padding: const EdgeInsets.all(4.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade50,
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'פגיעות/\nכדורים',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    // Values
+                                    ...trainees.asMap().entries.map((entry) {
+                                      final traineeIndex = entry.key;
+                                      return Container(
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                            fontSize: 11,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+                              // Percentage column
+                              Container(
+                                width: 80,
+                                color: Colors.transparent,
+                                child: Column(
+                                  children: [
+                                    // Header
+                                    Container(
+                                      height: 60,
+                                      padding: const EdgeInsets.all(4.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'אחוז\nפגיעות',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.green,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    // Values
+                                    ...trainees.asMap().entries.map((entry) {
+                                      final traineeIndex = entry.key;
+                                      final totalHits = _getTraineeTotalHits(
+                                        traineeIndex,
+                                      );
+                                      final totalBullets = _getTotalBullets();
+                                      final percentage = totalBullets > 0
+                                          ? (totalHits / totalBullets * 100)
+                                          : 0.0;
+                                      return Container(
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${percentage.toStringAsFixed(1)}%',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                            color: percentage >= 70
+                                                ? Colors.green
+                                                : percentage >= 50
+                                                ? Colors.orange
+                                                : Colors.red,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              );
-            }),
-          ],
-        ),
-      ),
+              ],
+            ),
+          );
+        } else {
+          // Desktop layout: Original table layout
+          return Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade400, width: 1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  // Header row
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 120,
+                        child: Text(
+                          'חניך',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              ...stations.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final station = entry.value;
+                                return SizedBox(
+                                  width: 80,
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        station.name.isEmpty
+                                            ? 'מקצה ${index + 1}'
+                                            : station.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      Text(
+                                        '(${station.bulletsCount})',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                              const SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'פגיעות/כדורים',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                    fontSize: 12,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'אחוז פגיעות',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                    fontSize: 12,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  // Trainee rows
+                  ...trainees.asMap().entries.map((entry) {
+                    final traineeIndex = entry.key;
+                    final trainee = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 120,
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                hintText: 'שם חניך',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                              ),
+                              textAlign: TextAlign.center,
+                              onChanged: (v) {
+                                setState(() {
+                                  trainee.name = v;
+                                });
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  ...stations.asMap().entries.map((
+                                    stationEntry,
+                                  ) {
+                                    final stationIndex = stationEntry.key;
+                                    final station = stationEntry.value;
+                                    return SizedBox(
+                                      width: 80,
+                                      child: TextField(
+                                        decoration: const InputDecoration(
+                                          isDense: true,
+                                          border: OutlineInputBorder(),
+                                          hintText: '0',
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
+                                        ],
+                                        textAlign: TextAlign.center,
+                                        onChanged: (v) {
+                                          final hits = int.tryParse(v) ?? 0;
+                                          if (hits > station.bulletsCount) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                ),
+                                                duration: const Duration(
+                                                  seconds: 1,
+                                                ),
+                                              ),
+                                            );
+                                            return;
+                                          }
+                                          setState(() {
+                                            trainee.hits[stationIndex] = hits;
+                                          });
+                                        },
+                                      ),
+                                    );
+                                  }),
+                                  SizedBox(
+                                    width: 100,
+                                    child: Text(
+                                      '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 100,
+                                    child: Builder(
+                                      builder: (_) {
+                                        final totalHits = _getTraineeTotalHits(
+                                          traineeIndex,
+                                        );
+                                        final totalBullets = _getTotalBullets();
+                                        final percentage = totalBullets > 0
+                                            ? (totalHits / totalBullets * 100)
+                                            : 0.0;
+                                        return Text(
+                                          '${percentage.toStringAsFixed(1)}%',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: percentage >= 70
+                                                ? Colors.green
+                                                : percentage >= 50
+                                                ? Colors.orange
+                                                : Colors.red,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 }

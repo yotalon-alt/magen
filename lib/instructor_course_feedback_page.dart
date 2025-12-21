@@ -87,10 +87,18 @@ class _InstructorCourseFeedbackPageState
 
   bool get hasRequiredDetails {
     final pikud = (_selectedPikud ?? '').trim();
+    final hativa = _hativaController.text.trim();
     final name = _candidateNameController.text.trim();
     final number = _candidateNumber;
-    return pikud.isNotEmpty && name.isNotEmpty && number != null;
+    return pikud.isNotEmpty &&
+        hativa.isNotEmpty &&
+        name.isNotEmpty &&
+        number != null;
   }
+
+  // Check if draft exists
+  bool get hasDraft =>
+      _existingScreeningId != null && _existingScreeningId!.isNotEmpty;
 
   @override
   void dispose() {
@@ -163,21 +171,37 @@ class _InstructorCourseFeedbackPageState
       debugPrint('⚠️ Save already in progress');
       return false;
     }
+
+    // If no draft exists yet, check if all required details are filled
+    if (!hasDraft && !hasRequiredDetails) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('יש למלא את כל פרטי המיון לפני שמירה'),
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
+          ),
+        );
+      }
+      return false;
+    }
+
+    // If draft exists but required details are missing, don't save
+    if (hasDraft && !hasRequiredDetails) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('לא ניתן לשמור ללא פרטי המיון המלאים'),
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
+          ),
+        );
+      }
+      return false;
+    }
+
     setState(() => _isSaving = true);
     try {
-      if (!hasRequiredDetails) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('יש למלא את כל פרטי המיון לפני שמירה'),
-              behavior: SnackBarBehavior.floating,
-              margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-            ),
-          );
-        }
-        setState(() => _isSaving = false);
-        return false;
-      }
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null || uid.isEmpty) {
         throw Exception('נדרשת התחברות');
@@ -185,10 +209,29 @@ class _InstructorCourseFeedbackPageState
       final coll = FirebaseFirestore.instance.collection(
         'instructor_course_screenings',
       );
-      final ref =
-          (_existingScreeningId != null && _existingScreeningId!.isNotEmpty)
-          ? coll.doc(_existingScreeningId)
-          : coll.doc();
+
+      // Create new draft if none exists
+      if (!hasDraft) {
+        final ref = coll.doc();
+        _existingScreeningId = ref.id;
+        // Create initial draft document
+        await ref.set({
+          'status': 'draft',
+          'courseType': 'miunim',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdBy': uid,
+          'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
+          'command': _selectedPikud ?? '',
+          'brigade': _hativaController.text.trim(),
+          'candidateName': _candidateNameController.text.trim(),
+          'candidateNumber': _candidateNumber ?? 0,
+          'title': _candidateNameController.text.trim(),
+        });
+      }
+
+      // Update existing draft
+      final ref = coll.doc(_existingScreeningId);
       final Map<String, dynamic> fields = {};
       categories.forEach((name, score) {
         if (score > 0) {
@@ -206,54 +249,20 @@ class _InstructorCourseFeedbackPageState
           fields[name] = meta;
         }
       });
+
       final payload = {
-        'status': 'draft',
-        'courseType': 'miunim',
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': uid,
-        'createdBy': uid,
-        'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
         'command': _selectedPikud ?? '',
         'brigade': _hativaController.text.trim(),
         'candidateName': _candidateNameController.text.trim(),
         'candidateNumber': _candidateNumber ?? 0,
-        'title': _candidateNameController.text.trim().isNotEmpty
-            ? _candidateNameController.text.trim()
-            : 'מועמד',
+        'title': _candidateNameController.text.trim(),
         if (fields.isNotEmpty) 'fields': fields,
       };
-      if (_existingScreeningId == null || _existingScreeningId!.isEmpty) {
-        payload['createdAt'] = FieldValue.serverTimestamp();
-      }
-      await ref.set(payload, SetOptions(merge: true));
-      _existingScreeningId ??= ref.id;
-      if (allowAutoFinalize && isFormValid) {
-        try {
-          await FeedbackExportService.finalizeScreeningAndCreateFeedback(
-            screeningId: _existingScreeningId!,
-          );
-          if (!mounted) return true;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('המשוב נסגר והועבר אוטומטית לדף המשובים'),
-              behavior: SnackBarBehavior.floating,
-              margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-            ),
-          );
-          Navigator.pop(context);
-          return true;
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('שגיאה בסגירת המשוב: ${e.toString()}'),
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
-              ),
-            );
-          }
-        }
-      }
+
+      await ref.update(payload);
+
       if (!mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -539,7 +548,32 @@ class _InstructorCourseFeedbackPageState
           title: const Text('מיון לקורס מדריכים'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              if (hasDraft) {
+                final shouldLeave = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('יציאה ללא שמירה'),
+                    content: const Text(
+                      'יש משוב בתהליך שלא נשמר. האם אתה בטוח שברצונך לצאת?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('הישאר'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('צא בכל זאת'),
+                      ),
+                    ],
+                  ),
+                );
+                if (shouldLeave != true) return;
+              }
+              if (!context.mounted) return;
+              Navigator.pop(context);
+            },
             tooltip: 'חזרה',
           ),
         ),

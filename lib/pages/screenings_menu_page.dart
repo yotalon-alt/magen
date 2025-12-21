@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../instructor_course_feedback_page.dart';
 import 'screenings_in_progress_page.dart';
 
@@ -37,45 +35,14 @@ class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('פתיחת משוב חדש'),
-                  onPressed: () async {
-                    final uid = FirebaseAuth.instance.currentUser?.uid;
-                    if (uid == null || uid.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('נדרשת התחברות')),
-                      );
-                      return;
-                    }
-                    try {
-                      final ref = FirebaseFirestore.instance
-                          .collection('instructor_course_screenings')
-                          .doc();
-                      await ref.set({
-                        'status': 'draft',
-                        'isFinalLocked': false,
-                        'createdAt': FieldValue.serverTimestamp(),
-                        'updatedAt': FieldValue.serverTimestamp(),
-                        'createdBy': uid,
-                        'createdByName':
-                            FirebaseAuth.instance.currentUser?.email ?? '',
-                        'courseType': widget.courseType,
-                        'title': 'מועמד חדש',
-                      });
-                      if (!context.mounted) return;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              InstructorCourseFeedbackPage(screeningId: ref.id),
-                        ),
-                      );
-                    } catch (e) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('שגיאה ביצירה: ${e.toString()}'),
-                        ),
-                      );
-                    }
+                  onPressed: () {
+                    // Navigate to feedback page without creating draft
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const InstructorCourseFeedbackPage(),
+                      ),
+                    );
                   },
                 ),
               ),

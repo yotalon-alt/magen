@@ -7,7 +7,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'instructor_course_feedback_page.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
 import 'pages/screenings_menu_page.dart';
 import 'voice_assistant.dart';
@@ -1028,12 +1027,24 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
 
-  late final List<Widget> _pages;
+  late final List<Navigator> _pages;
   bool _loadingData = true;
 
   // GlobalKey for StatisticsPage to access its state
   final GlobalKey<_StatisticsPageState> _statisticsKey =
       GlobalKey<_StatisticsPageState>();
+
+  // GlobalKeys for nested navigators
+  final GlobalKey<NavigatorState> _homeNavigatorKey =
+      GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _exercisesNavigatorKey =
+      GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _feedbacksNavigatorKey =
+      GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _statisticsNavigatorKey =
+      GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _materialsNavigatorKey =
+      GlobalKey<NavigatorState>();
 
   void _handleVoiceCommand(String command) {
     VoiceCommandHandler.handleCommand(
@@ -1093,13 +1104,9 @@ class _MainScreenState extends State<MainScreen> {
         // Sort by date (oldest first) and open first
         final sortedFeedbacks = List<FeedbackModel>.from(feedbackStorage)
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        Navigator.push(
+        Navigator.of(
           context,
-          MaterialPageRoute(
-            builder: (_) =>
-                FeedbackDetailsPage(feedback: sortedFeedbacks.first),
-          ),
-        );
+        ).pushNamed('/feedback_details', arguments: sortedFeedbacks.first);
         return;
       }
 
@@ -1114,13 +1121,9 @@ class _MainScreenState extends State<MainScreen> {
         // Sort by date (newest first) and open first
         final sortedFeedbacks = List<FeedbackModel>.from(feedbackStorage)
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        Navigator.push(
+        Navigator.of(
           context,
-          MaterialPageRoute(
-            builder: (_) =>
-                FeedbackDetailsPage(feedback: sortedFeedbacks.first),
-          ),
-        );
+        ).pushNamed('/feedback_details', arguments: sortedFeedbacks.first);
         return;
       }
 
@@ -1136,13 +1139,9 @@ class _MainScreenState extends State<MainScreen> {
           ).showSnackBar(SnackBar(content: Text('לא נמצאו משובים עבור $name')));
         } else if (matchingFeedbacks.length == 1) {
           // Open the single matching feedback
-          Navigator.push(
+          Navigator.of(
             context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  FeedbackDetailsPage(feedback: matchingFeedbacks.first),
-            ),
-          );
+          ).pushNamed('/feedback_details', arguments: matchingFeedbacks.first);
         } else {
           // Multiple matches - show count
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1322,33 +1321,19 @@ class _MainScreenState extends State<MainScreen> {
       if (!mounted) return;
 
       if (action == 'open_maagal_patuach') {
-        Navigator.push(
+        Navigator.of(
           context,
-          MaterialPageRoute(
-            builder: (_) => FeedbackFormPage(exercise: 'מעגל פתוח'),
-          ),
-        );
+        ).pushNamed('/feedback_form', arguments: 'מעגל פתוח');
       } else if (action == 'open_maagal_poruz') {
-        Navigator.push(
+        Navigator.of(
           context,
-          MaterialPageRoute(
-            builder: (_) => FeedbackFormPage(exercise: 'מעגל פרוץ'),
-          ),
-        );
+        ).pushNamed('/feedback_form', arguments: 'מעגל פרוץ');
       } else if (action == 'open_sarikot') {
-        Navigator.push(
+        Navigator.of(
           context,
-          MaterialPageRoute(
-            builder: (_) => FeedbackFormPage(exercise: 'סריקות רחוב'),
-          ),
-        );
+        ).pushNamed('/feedback_form', arguments: 'סריקות רחוב');
       } else if (action == 'open_instructor_selection') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const InstructorCourseFeedbackPage(),
-          ),
-        );
+        Navigator.of(context).pushNamed('/screenings_menu');
       }
     });
   }
@@ -1363,30 +1348,15 @@ class _MainScreenState extends State<MainScreen> {
       if (!mounted) return;
 
       if (action == 'open_maagal_patuach') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MaagalPatuachPage()),
-        );
+        Navigator.of(context).pushNamed('/maagal_patuach');
       } else if (action == 'open_maagal_poruz') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MaagalPoruzPage()),
-        );
+        Navigator.of(context).pushNamed('/poruz');
       } else if (action == 'open_sarikot') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SarikotFixedPage()),
-        );
+        Navigator.of(context).pushNamed('/sarikot');
       } else if (action == 'open_sheva') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ShevaPrinciplesPage()),
-        );
+        Navigator.of(context).pushNamed('/sheva');
       } else if (action == 'open_saabal') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SaabalPage()),
-        );
+        Navigator.of(context).pushNamed('/saabal');
       }
     });
   }
@@ -1395,11 +1365,140 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _pages = [
-      const HomePage(),
-      const ExercisesPage(),
-      const FeedbacksPage(),
-      StatisticsPage(key: _statisticsKey),
-      const MaterialsPage(),
+      Navigator(
+        key: _homeNavigatorKey,
+        onGenerateRoute: (settings) {
+          return MaterialPageRoute(
+            builder: (_) => const HomePage(),
+            settings: settings,
+          );
+        },
+      ),
+      Navigator(
+        key: _exercisesNavigatorKey,
+        onGenerateRoute: (settings) {
+          switch (settings.name) {
+            case '/screenings_menu':
+              return MaterialPageRoute(
+                builder: (_) => const ScreeningsMenuPage(courseType: 'miunim'),
+                settings: settings,
+              );
+            case '/range_selection':
+              return MaterialPageRoute(
+                builder: (_) => const RangeSelectionPage(),
+                settings: settings,
+              );
+            case '/feedback_form':
+              final exercise = settings.arguments as String?;
+              return MaterialPageRoute(
+                builder: (_) => FeedbackFormPage(exercise: exercise),
+                settings: settings,
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (_) => const ExercisesPage(),
+                settings: settings,
+              );
+          }
+        },
+      ),
+      Navigator(
+        key: _feedbacksNavigatorKey,
+        onGenerateRoute: (settings) {
+          switch (settings.name) {
+            case '/universal_export':
+              return MaterialPageRoute(
+                builder: (_) => const UniversalExportPage(),
+                settings: settings,
+              );
+            case '/instructor_course_selection_feedbacks':
+              return MaterialPageRoute(
+                builder: (_) => const InstructorCourseSelectionFeedbacksPage(),
+                settings: settings,
+              );
+            case '/screenings_menu':
+              return MaterialPageRoute(
+                builder: (_) => const ScreeningsMenuPage(courseType: 'miunim'),
+                settings: settings,
+              );
+            case '/export_selection':
+              return MaterialPageRoute(
+                builder: (_) => const ExportSelectionPage(),
+                settings: settings,
+              );
+            case '/feedback_details':
+              final feedback = settings.arguments as FeedbackModel;
+              return MaterialPageRoute(
+                builder: (_) => FeedbackDetailsPage(feedback: feedback),
+                settings: settings,
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (_) => const FeedbacksPage(),
+                settings: settings,
+              );
+          }
+        },
+      ),
+      Navigator(
+        key: _statisticsNavigatorKey,
+        onGenerateRoute: (settings) {
+          switch (settings.name) {
+            case '/general_statistics':
+              return MaterialPageRoute(
+                builder: (_) => const GeneralStatisticsPage(),
+                settings: settings,
+              );
+            case '/range_statistics':
+              return MaterialPageRoute(
+                builder: (_) => const RangeStatisticsPage(),
+                settings: settings,
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (_) => StatisticsPage(key: _statisticsKey),
+                settings: settings,
+              );
+          }
+        },
+      ),
+      Navigator(
+        key: _materialsNavigatorKey,
+        onGenerateRoute: (settings) {
+          switch (settings.name) {
+            case '/maagal_patuach':
+              return MaterialPageRoute(
+                builder: (_) => const MaagalPatuachPage(),
+                settings: settings,
+              );
+            case '/sheva':
+              return MaterialPageRoute(
+                builder: (_) => const ShevaPrinciplesPage(),
+                settings: settings,
+              );
+            case '/saabal':
+              return MaterialPageRoute(
+                builder: (_) => const SaabalPage(),
+                settings: settings,
+              );
+            case '/poruz':
+              return MaterialPageRoute(
+                builder: (_) => const MaagalPoruzPage(),
+                settings: settings,
+              );
+            case '/sarikot':
+              return MaterialPageRoute(
+                builder: (_) => const SarikotFixedPage(),
+                settings: settings,
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (_) => const MaterialsPage(),
+                settings: settings,
+              );
+          }
+        },
+      ),
     ];
     // Initial data load from Firestore to populate feedbackStorage
     Future.microtask(() async {
@@ -1474,7 +1573,7 @@ class _MainScreenState extends State<MainScreen> {
                       ],
                     ),
                   )
-                : _pages[selectedIndex],
+                : IndexedStack(index: selectedIndex, children: _pages),
           ),
           // Voice Assistant Button - Fixed position bottom-left (safe zone)
           Positioned(
@@ -1976,27 +2075,13 @@ class ExercisesPage extends StatelessWidget {
                 // מיונים לקורס מדריכים: זרימה חדשה למסך ניהול מיונים
                 if (ex == 'מיונים לקורס מדריכים') {
                   // Navigate to screenings menu (two-buttons screen)
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const ScreeningsMenuPage(courseType: 'miunim'),
-                    ),
-                  );
+                  Navigator.of(context).pushNamed('/screenings_menu');
                 } else if (ex == 'מטווחים') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const RangeSelectionPage(),
-                    ),
-                  );
+                  Navigator.of(context).pushNamed('/range_selection');
                 } else {
-                  Navigator.push(
+                  Navigator.of(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => FeedbackFormPage(exercise: ex),
-                    ),
-                  );
+                  ).pushNamed('/feedback_form', arguments: ex);
                 }
               },
               child: Padding(
@@ -2595,7 +2680,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   bool _isRefreshing = false;
   String?
   _selectedFolder; // null = show folders, non-null = show feedbacks from that folder
-  String selectedStation = 'כל המקצים';
+  String selectedSettlement = 'כל היישובים';
 
   Future<void> _refreshFeedbacks() async {
     if (_isRefreshing) return;
@@ -2640,12 +2725,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                 IconButton(
                   icon: const Icon(Icons.download),
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const UniversalExportPage(),
-                      ),
-                    );
+                    Navigator.of(context).pushNamed('/universal_export');
                   },
                   tooltip: 'ייצוא משובים',
                 ),
@@ -2664,7 +2744,27 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           ),
           body: LayoutBuilder(
             builder: (context, constraints) {
-              final isMobile = constraints.maxWidth < 600;
+              final screenWidth = constraints.maxWidth;
+              final isMobile = screenWidth < 600;
+              final isDesktop = screenWidth >= 1200;
+
+              // Responsive typography using clamp-like calculations
+              double getResponsiveFontSize(
+                double minSize,
+                double maxSize,
+                double preferredSize,
+              ) {
+                if (isMobile) return minSize;
+                if (isDesktop) return maxSize;
+                // For tablet: interpolate between min and max
+                final tabletRatio =
+                    (screenWidth - 600) / (1200 - 600); // 0 to 1
+                return minSize + (maxSize - minSize) * tabletRatio;
+              }
+
+              final folderTitleFontSize = getResponsiveFontSize(16, 22, 18);
+              final countFontSize = getResponsiveFontSize(14, 18, 15);
+
               return Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: GridView.builder(
@@ -2703,23 +2803,12 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                         onTap: () {
                           if (isInstructorCourse) {
                             // Feedbacks view for instructor-course: only closed items via two category buttons
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const InstructorCourseSelectionFeedbacksPage(),
-                              ),
+                            Navigator.of(context).pushNamed(
+                              '/instructor_course_selection_feedbacks',
                             );
                           } else if (isMiunimCourse) {
                             // ניווט למסך מיונים כללי
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const ScreeningsMenuPage(
-                                  courseType: 'miunim',
-                                ),
-                              ),
-                            );
+                            Navigator.of(context).pushNamed('/screenings_menu');
                           } else {
                             setState(() => _selectedFolder = folder);
                           }
@@ -2743,7 +2832,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                 folder,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: isMobile ? 14 : 9,
+                                  fontSize: folderTitleFontSize,
                                   fontWeight: FontWeight.bold,
                                 ),
                                 maxLines: 2,
@@ -2753,7 +2842,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               Text(
                                 '$count משובים',
                                 style: TextStyle(
-                                  fontSize: isMobile ? 12 : 8,
+                                  fontSize: countFontSize,
                                   color: Colors.white70,
                                 ),
                               ),
@@ -2781,14 +2870,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
     final isRangeFolder = _selectedFolder == 'מטווחי ירי';
 
-    // Apply station filter for range feedbacks
+    // Apply settlement filter for range feedbacks
     List<FeedbackModel> finalFilteredFeedbacks = filteredFeedbacks;
     if (isRangeFolder) {
       finalFilteredFeedbacks = filteredFeedbacks
           .where(
             (f) =>
-                selectedStation == 'כל המקצים' ||
-                f.scenario.contains(selectedStation),
+                selectedSettlement == 'כל היישובים' ||
+                f.settlement == selectedSettlement,
           )
           .toList();
     }
@@ -2809,12 +2898,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               IconButton(
                 icon: const Icon(Icons.file_download),
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ExportSelectionPage(),
-                    ),
-                  );
+                  Navigator.of(context).pushNamed('/export_selection');
                 },
                 tooltip: 'ייצוא ל-Google Sheets / Excel',
               ),
@@ -2863,15 +2947,17 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               width: 240,
                               child: Builder(
                                 builder: (ctx) {
-                                  final items = rangeStations.toSet().toList();
-                                  final value = items.contains(selectedStation)
-                                      ? selectedStation
+                                  final items =
+                                      ['כל היישובים'] + golanSettlements;
+                                  final value =
+                                      items.contains(selectedSettlement)
+                                      ? selectedSettlement
                                       : null;
                                   return DropdownButtonFormField<String>(
                                     initialValue: value,
                                     isExpanded: true,
                                     decoration: const InputDecoration(
-                                      labelText: 'מקצה',
+                                      labelText: 'בחירת יישוב',
                                       isDense: true,
                                     ),
                                     items: items
@@ -2883,7 +2969,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                         )
                                         .toList(),
                                     onChanged: (v) => setState(
-                                      () => selectedStation = v ?? 'כל המקצים',
+                                      () => selectedSettlement =
+                                          v ?? 'כל היישובים',
                                     ),
                                   );
                                 },
@@ -2908,12 +2995,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           subtitle: Text(
                             '${f.exercise} • ${f.instructorName.isNotEmpty ? '${f.instructorName} • ' : ''}$date',
                           ),
-                          onTap: () => Navigator.push(
+                          onTap: () => Navigator.of(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => FeedbackDetailsPage(feedback: f),
-                            ),
-                          ),
+                          ).pushNamed('/feedback_details', arguments: f),
                         );
                       },
                     ),
@@ -3870,12 +3954,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 height: 80,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const GeneralStatisticsPage(),
-                      ),
-                    );
+                    Navigator.of(context).pushNamed('/general_statistics');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueGrey.shade700,
@@ -3900,12 +3979,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 height: 80,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const RangeStatisticsPage(),
-                      ),
-                    );
+                    Navigator.of(context).pushNamed('/range_statistics');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueGrey.shade700,
@@ -4647,21 +4721,11 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     'תפקוד באירוע': 'תפקוד באירוע',
   };
 
-  // roles available for filtering (Hebrew)
-  static const List<String> availableRoles = [
-    'כל התפקידים',
-    'רבש"ץ',
-    'סגן רבש"ץ',
-    'מפקד מחלקה',
-    'סגן מפקד מחלקה',
-    'לוחם',
-  ];
-
-  String selectedRoleFilter = 'כל התפקידים';
   String selectedInstructor = 'כל המדריכים';
   String selectedSettlement = 'כל היישובים';
   String selectedStation = 'כל המקצים';
   String personFilter = '';
+  String searchText = '';
   DateTime? dateFrom;
   DateTime? dateTo;
 
@@ -4723,15 +4787,43 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
           f.settlement != selectedSettlement) {
         return false;
       }
-      if (selectedStation != 'כל המקצים' &&
-          !f.scenario.contains(selectedStation)) {
-        return false;
+      if (selectedStation != 'כל המקצים') {
+        // Check if selected station exists in this feedback's stations
+        if (!rangeData.containsKey(f.id)) return false;
+        final data = rangeData[f.id];
+        final stations =
+            (data?['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final hasSelectedStation = stations.any(
+          (station) => station['name'] == selectedStation,
+        );
+        if (!hasSelectedStation) return false;
       }
       if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
         return false;
       }
       if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
       if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
+
+      // Free text search
+      if (searchText.isNotEmpty) {
+        final searchLower = searchText.toLowerCase();
+        final nameMatch = f.name.toLowerCase().contains(searchLower);
+        final settlementMatch = f.settlement.toLowerCase().contains(
+          searchLower,
+        );
+        final scenarioMatch = f.scenario.toLowerCase().contains(searchLower);
+        final dateMatch = f.createdAt
+            .toLocal()
+            .toString()
+            .split('.')
+            .first
+            .toLowerCase()
+            .contains(searchLower);
+        if (!nameMatch && !settlementMatch && !scenarioMatch && !dateMatch) {
+          return false;
+        }
+      }
+
       return true;
     }).toList();
   }
@@ -4784,36 +4876,32 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       }
     }
 
-    // department aggregates (based on settlement) - average total hits
-    final Map<String, List<int>> deptValues = {};
-    for (final f in filtered) {
-      if (f.settlement.isNotEmpty && rangeData.containsKey(f.id)) {
-        final data = rangeData[f.id];
-        final trainees =
-            (data?['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-        int totalHits = 0;
-        for (final trainee in trainees) {
-          totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
-        }
-        deptValues.putIfAbsent(f.settlement, () => []).add(totalHits);
-      }
-    }
-
-    // total bullets per settlement
+    // department aggregates (based on settlement) - total hits and bullets
+    final Map<String, int> totalHitsPerSettlement = {};
     final Map<String, int> totalBulletsPerSettlement = {};
     for (final f in filtered) {
       if (f.settlement.isNotEmpty && rangeData.containsKey(f.id)) {
         final data = rangeData[f.id];
         final stations =
             (data?['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final trainees =
+            (data?['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         int feedbackTotalBullets = 0;
         for (final station in stations) {
           feedbackTotalBullets +=
-              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+              ((station['bulletsCount'] as num?)?.toInt() ?? 0) *
+              trainees.length;
         }
         totalBulletsPerSettlement[f.settlement] =
             (totalBulletsPerSettlement[f.settlement] ?? 0) +
             feedbackTotalBullets;
+
+        int totalHits = 0;
+        for (final trainee in trainees) {
+          totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
+        }
+        totalHitsPerSettlement[f.settlement] =
+            (totalHitsPerSettlement[f.settlement] ?? 0) + totalHits;
       }
     }
 
@@ -4851,41 +4939,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          // Role filter (admin only)
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = availableRoles.toSet().toList();
-                                final value = items.contains(selectedRoleFilter)
-                                    ? selectedRoleFilter
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תפקיד',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (r) => DropdownMenuItem(
-                                          value: r,
-                                          child: Text(r),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: isAdmin
-                                      ? (v) => setState(
-                                          () => selectedRoleFilter =
-                                              v ?? 'כל התפקידים',
-                                        )
-                                      : null,
-                                );
-                              },
-                            ),
-                          ),
-
                           // Person filter (free text)
                           SizedBox(
                             width: 200,
@@ -4977,7 +5030,31 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                             width: 240,
                             child: Builder(
                               builder: (ctx) {
-                                final items = rangeStations.toSet().toList();
+                                // Build station list dynamically from range data
+                                final Set<String> stationNames = {};
+                                final List<String> orderedStations = [];
+
+                                // Collect station names from all range feedbacks in order
+                                for (final f in filtered) {
+                                  if (rangeData.containsKey(f.id)) {
+                                    final data = rangeData[f.id];
+                                    final stations =
+                                        (data?['stations'] as List?)
+                                            ?.cast<Map<String, dynamic>>() ??
+                                        [];
+                                    for (final station in stations) {
+                                      final stationName =
+                                          station['name'] as String? ?? '';
+                                      if (stationName.isNotEmpty &&
+                                          !stationNames.contains(stationName)) {
+                                        stationNames.add(stationName);
+                                        orderedStations.add(stationName);
+                                      }
+                                    }
+                                  }
+                                }
+
+                                final items = ['כל המקצים'] + orderedStations;
                                 final value = items.contains(selectedStation)
                                     ? selectedStation
                                     : null;
@@ -5001,6 +5078,27 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                   ),
                                 );
                               },
+                            ),
+                          ),
+
+                          // Free text search
+                          SizedBox(
+                            width: 280,
+                            child: TextField(
+                              decoration: InputDecoration(
+                                labelText:
+                                    'חיפוש לפי שוב / יישוב / מקצה / תאריך',
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIcon: searchText.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear),
+                                        onPressed: () =>
+                                            setState(() => searchText = ''),
+                                      )
+                                    : null,
+                                isDense: true,
+                              ),
+                              onChanged: (v) => setState(() => searchText = v),
                             ),
                           ),
 
@@ -5046,11 +5144,16 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              ...deptValues.entries.map((e) {
+              ...totalHitsPerSettlement.entries.map((e) {
                 final label = e.key;
-                final a = avgOf(e.value);
-                final pct = (a / 50.0).clamp(0.0, 1.0);
+                final totalHits = e.value;
                 final totalBullets = totalBulletsPerSettlement[e.key] ?? 0;
+                final percentage = totalBullets > 0
+                    ? ((totalHits / totalBullets) * 100).toStringAsFixed(1)
+                    : '0.0';
+                final pct = totalBullets > 0
+                    ? (totalHits / totalBullets).clamp(0.0, 1.0)
+                    : 0.0;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
                   child: Column(
@@ -5089,9 +5192,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            e.value.isEmpty
-                                ? '-'
-                                : '${a.toStringAsFixed(1)} מתוך $totalBullets כדורים',
+                            '$totalHits מתוך $totalBullets כדורים ($percentage%)',
                             style: const TextStyle(
                               color: Colors.purpleAccent,
                               fontWeight: FontWeight.bold,
@@ -5112,63 +5213,63 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              // New graph for station averages
+              // New graph for station totals
               Builder(
                 builder: (ctx) {
-                  final Map<String, List<int>> stationValues = {};
-                  for (final data in rangeData.values) {
-                    final stations =
-                        (data['stations'] as List?)
-                            ?.cast<Map<String, dynamic>>() ??
-                        [];
-                    final trainees =
-                        (data['trainees'] as List?)
-                            ?.cast<Map<String, dynamic>>() ??
-                        [];
-                    for (var i = 0; i < stations.length; i++) {
-                      final station = stations[i];
-                      final stationName = station['name'] ?? 'מקצה ${i + 1}';
-                      stationValues.putIfAbsent(stationName, () => []);
-                      for (final trainee in trainees) {
-                        final hits = trainee['hits'] as Map<String, dynamic>?;
-                        if (hits != null) {
-                          final hit =
-                              (hits['station_$i'] as num?)?.toInt() ?? 0;
-                          stationValues[stationName]!.add(hit);
+                  final Map<String, int> totalHitsPerStation = {};
+                  final Map<String, int> totalBulletsPerStation = {};
+                  for (final f in filtered) {
+                    if (rangeData.containsKey(f.id)) {
+                      final data = rangeData[f.id];
+                      final stations =
+                          (data?['stations'] as List?)
+                              ?.cast<Map<String, dynamic>>() ??
+                          [];
+                      final trainees =
+                          (data?['trainees'] as List?)
+                              ?.cast<Map<String, dynamic>>() ??
+                          [];
+                      for (var i = 0; i < stations.length; i++) {
+                        final station = stations[i];
+                        final stationName = station['name'] ?? 'מקצה ${i + 1}';
+                        final bulletsPerTrainee =
+                            (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                        final totalBulletsForStation =
+                            trainees.length * bulletsPerTrainee;
+                        totalBulletsPerStation[stationName] =
+                            (totalBulletsPerStation[stationName] ?? 0) +
+                            totalBulletsForStation;
+
+                        int stationHits = 0;
+                        for (final trainee in trainees) {
+                          final hits = trainee['hits'] as Map<String, dynamic>?;
+                          if (hits != null) {
+                            stationHits +=
+                                (hits['station_$i'] as num?)?.toInt() ?? 0;
+                          }
                         }
+                        totalHitsPerStation[stationName] =
+                            (totalHitsPerStation[stationName] ?? 0) +
+                            stationHits;
                       }
                     }
                   }
-                  final Map<String, int> totalBulletsPerStation = {};
-                  for (final data in rangeData.values) {
-                    final stations =
-                        (data['stations'] as List?)
-                            ?.cast<Map<String, dynamic>>() ??
-                        [];
-                    for (var i = 0; i < stations.length; i++) {
-                      final station = stations[i];
-                      final stationName = station['name'] ?? 'מקצה ${i + 1}';
-                      final bullets =
-                          (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                      totalBulletsPerStation[stationName] =
-                          (totalBulletsPerStation[stationName] ?? 0) + bullets;
-                    }
-                  }
-                  final entries = stationValues.entries.toList();
+                  final entries = totalHitsPerStation.entries.toList();
                   if (entries.isEmpty) return const Text('-');
                   return Column(
                     children: entries.map((en) {
                       final stationName = en.key;
-                      final hits = en.value;
-                      final avg = hits.isEmpty
-                          ? 0.0
-                          : hits.reduce((a, b) => a + b) / hits.length;
-                      final pct = (avg / 50.0).clamp(
-                        0.0,
-                        1.0,
-                      ); // Assuming max 50 hits per station
+                      final totalHits = en.value;
                       final totalBullets =
                           totalBulletsPerStation[stationName] ?? 0;
+                      final percentage = totalBullets > 0
+                          ? ((totalHits / totalBullets) * 100).toStringAsFixed(
+                              1,
+                            )
+                          : '0.0';
+                      final pct = totalBullets > 0
+                          ? (totalHits / totalBullets).clamp(0.0, 1.0)
+                          : 0.0;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Column(
@@ -5208,7 +5309,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  '${avg.toStringAsFixed(1)} מתוך $totalBullets כדורים',
+                                  '$totalHits מתוך $totalBullets כדורים ($percentage%)',
                                   style: const TextStyle(
                                     color: Colors.greenAccent,
                                     fontWeight: FontWeight.bold,
@@ -5351,38 +5452,15 @@ class MaterialsPage extends StatelessWidget {
                   onTap: () {
                     final route = item['route'];
                     if (route == 'patuach') {
-                      Navigator.push(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (_) => const MaagalPatuachPage(),
-                        ),
-                      );
+                      Navigator.of(ctx).pushNamed('/maagal_patuach');
                     } else if (route == 'sheva') {
-                      Navigator.push(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (_) => const ShevaPrinciplesPage(),
-                        ),
-                      );
+                      Navigator.of(ctx).pushNamed('/sheva');
                     } else if (route == 'saabal') {
-                      Navigator.push(
-                        ctx,
-                        MaterialPageRoute(builder: (_) => const SaabalPage()),
-                      );
+                      Navigator.of(ctx).pushNamed('/saabal');
                     } else if (route == 'poruz') {
-                      Navigator.push(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (_) => const MaagalPoruzPage(),
-                        ),
-                      );
+                      Navigator.of(ctx).pushNamed('/poruz');
                     } else if (route == 'sarikot') {
-                      Navigator.push(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (_) => const SarikotFixedPage(),
-                        ),
-                      );
+                      Navigator.of(ctx).pushNamed('/sarikot');
                     }
                   },
                   child: Padding(

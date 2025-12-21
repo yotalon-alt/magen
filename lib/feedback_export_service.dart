@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'main.dart'; // for FeedbackModel
 
 /// שירות ייצוא משובים ל-Google Sheets
 /// תומך גם במשובים כלליים וגם במשובי מטווחים
@@ -1042,5 +1043,123 @@ class FeedbackExportService {
       'updatedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// ייצוא מאוחד של כל סוגי המשובים ל-Google Sheet קבוע
+  /// מקבל רשימת משובים ומפרסם אותם ל-Google Apps Script
+  static Future<String?> exportFeedbacksToGoogleSheets({
+    required List<FeedbackModel> feedbacks,
+  }) async {
+    try {
+      // Guard: ensure scriptUrl is configured
+      if (scriptUrl.isEmpty || scriptUrl.startsWith('YOUR_')) {
+        throw Exception(
+          'כתובת Google Apps Script אינה מוגדרת. עדכן את scriptUrl בקובץ השירות.',
+        );
+      }
+
+      if (feedbacks.isEmpty) {
+        throw Exception('אין משובים לייצוא');
+      }
+
+      // בניית payload מאוחד
+      final List<Map<String, dynamic>> unifiedData = [];
+
+      for (final feedback in feedbacks) {
+        // בדיקה אם זה משוב מטווחים (יש לו rangeName או attendeesCount > 0)
+        final isRangeFeedback =
+            feedback.folder == 'מטווחי ירי' || (feedback.attendeesCount > 0);
+
+        if (isRangeFeedback) {
+          // משוב מטווחים - צריך לטעון נתונים נוספים מ-Firestore
+          final doc = await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(feedback.id)
+              .get();
+
+          if (doc.exists) {
+            final data = doc.data()!;
+            final stations =
+                (data['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+            final trainees =
+                (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+            // חישוב סך הכל פגיעות וכדורים
+            int totalHits = 0;
+            int totalBullets = 0;
+
+            for (final trainee in trainees) {
+              totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
+            }
+
+            for (final station in stations) {
+              totalBullets +=
+                  ((station['bulletsCount'] as num?)?.toInt() ?? 0) *
+                  trainees.length;
+            }
+
+            // יצירת רשומת נתונים מאוחדת למשוב מטווחים
+            unifiedData.add({
+              'type': 'range',
+              'date': feedback.createdAt.toIso8601String(),
+              'command': feedback.commandText,
+              'brigade': feedback.commandStatus,
+              'settlement': feedback.settlement,
+              'traineeName': feedback.name,
+              'rangeName': feedback.exercise,
+              'totalHits': totalHits,
+              'totalShots': totalBullets,
+              'scores': feedback.scores.map(
+                (k, v) => MapEntry(k, v.toString()),
+              ),
+              'notes': feedback.notes.map((k, v) => MapEntry(k, v)),
+            });
+          }
+        } else {
+          // משוב רגיל - יצירת רשומת נתונים מאוחדת
+          unifiedData.add({
+            'type': 'regular',
+            'date': feedback.createdAt.toIso8601String(),
+            'command': feedback.commandText,
+            'brigade': feedback.commandStatus,
+            'settlement': feedback.settlement,
+            'traineeName': feedback.name,
+            'rangeName': feedback.exercise,
+            'totalHits': null,
+            'totalShots': null,
+            'scores': feedback.scores.map((k, v) => MapEntry(k, v.toString())),
+            'notes': feedback.notes.map((k, v) => MapEntry(k, v)),
+          });
+        }
+      }
+
+      // שליחת הנתונים ל-Google Apps Script
+      final response = await http
+          .post(
+            Uri.parse(scriptUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'action': 'exportFeedbacks',
+              'data': unifiedData,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        throw Exception('שגיאת שרת: ${response.statusCode} - ${response.body}');
+      }
+
+      final responseData = json.decode(response.body);
+      final sheetUrl = responseData['sheetUrl'] as String?;
+
+      if (sheetUrl == null || sheetUrl.isEmpty) {
+        throw Exception('לא התקבל URL של הגיליון');
+      }
+
+      return sheetUrl;
+    } catch (e) {
+      debugPrint('Error exporting feedbacks: $e');
+      rethrow;
+    }
   }
 }

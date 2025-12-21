@@ -158,6 +158,63 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
     }
   }
 
+  // ייצוא המשובים הנבחרים לגיליון מאוחד
+  Future<void> _exportToUnifiedSheet() async {
+    // בדיקת הרשאות
+    if (currentUser?.role != 'Admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('רק מנהל מערכת יכול לייצא משובים')),
+      );
+      return;
+    }
+
+    setState(() => _isExporting = true);
+
+    try {
+      // קבלת כל המשובים המסוננים (לא רק הנבחרים)
+      final filteredFeedbacks = _getFilteredFeedbacks();
+
+      if (filteredFeedbacks.isEmpty) {
+        throw Exception('אין משובים לייצוא');
+      }
+
+      // ייצוא לגיליון מאוחד
+      final url = await FeedbackExportService.exportFeedbacksToGoogleSheets(
+        feedbacks: filteredFeedbacks,
+      );
+
+      if (url != null && url.isNotEmpty) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ ${filteredFeedbacks.length} משובים יוצאו בהצלחה לגיליון מאוחד!',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+
+        // פתיחה אוטומטית
+        await FeedbackExportService.openGoogleSheet(url);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
   // ייצוא המשובים הנבחרים
   Future<void> _exportSelected() async {
     if (_selectedFeedbackIds.isEmpty) {
@@ -673,6 +730,56 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                               );
                             },
                           ),
+                  ),
+
+                  // כפתור ייצוא מאוחד ל-Google Sheet קבוע
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton.icon(
+                          onPressed: _isExporting
+                              ? null
+                              : _exportToUnifiedSheet,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueAccent,
+                            disabledBackgroundColor: Colors.grey.shade700,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          icon: _isExporting
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(Icons.cloud_upload, size: 28),
+                          label: Text(
+                            _isExporting ? 'מייצא...' : 'ייצא לגיליון מאוחד',
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
 
                   // כפתור ייצוא
