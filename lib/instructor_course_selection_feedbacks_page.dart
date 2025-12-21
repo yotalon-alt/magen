@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'main.dart'; // for currentUser
+import 'feedback_export_service.dart'; // for export functionality
 
 /// דף תצוגת משובים למיונים לקורס מדריכים
 class InstructorCourseSelectionFeedbacksPage extends StatefulWidget {
@@ -16,6 +18,35 @@ class _InstructorCourseSelectionFeedbacksPageState
   _selectedCategory; // null = show buttons, 'suitable' or 'not_suitable' = show list
   bool _isLoading = false;
   List<Map<String, dynamic>> _feedbacks = [];
+
+  Future<void> _exportInstructorCourseFeedbacks() async {
+    setState(() => _isLoading = true);
+
+    try {
+      await FeedbackExportService.exportInstructorCourseFeedbacksToXlsx();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ נוצר בהצלחה!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   Future<void> _loadFeedbacks(String category) async {
     setState(() {
@@ -71,6 +102,8 @@ class _InstructorCourseSelectionFeedbacksPageState
   }
 
   Widget _buildCategoryButtons() {
+    final isAdmin = currentUser?.role == 'Admin';
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Padding(
@@ -89,6 +122,39 @@ class _InstructorCourseSelectionFeedbacksPageState
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
+
+            // כפתור ייצוא - רק לאדמין
+            if (isAdmin) ...[
+              SizedBox(
+                height: 60,
+                child: ElevatedButton(
+                  onPressed: _exportInstructorCourseFeedbacks,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade700,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 4,
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.download, size: 28),
+                      SizedBox(width: 16),
+                      Text(
+                        'הורדת משובים – קורס מדריכים',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
             // כפתור ירוק - מתאימים
             SizedBox(

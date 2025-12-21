@@ -100,23 +100,17 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
     setState(() => _isExporting = true);
 
     try {
-      final url = await FeedbackExportService.exportFeedback(
-        feedbackId: selected.id!,
+      // ייצוא לקובץ XLSX מקומי
+      await FeedbackExportService.exportAllFeedbacksToXlsx();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ נוצר בהצלחה!'),
+          backgroundColor: Colors.green,
+        ),
       );
-
-      if (url != null && url.isNotEmpty) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('הקובץ נוצר בהצלחה!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // פתיחה אוטומטית
-        await FeedbackExportService.openGoogleSheet(url);
-      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -175,23 +169,19 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
     setState(() => _isExporting = true);
 
     try {
-      final url = await FeedbackExportService.exportMultipleFeedbacks(
-        feedbacks: feedbacksList,
-      );
+      // ייצוא לקובץ XLSX מקומי
+      await FeedbackExportService.exportAllFeedbacksToXlsx();
 
-      if (url != null && url.isNotEmpty) {
-        if (!mounted) return;
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${feedbacksList.length} משובים יוצאו בהצלחה!'),
-            backgroundColor: Colors.green,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${feedbacksList.length} משובים יוצאו בהצלחה לקובץ מקומי!',
           ),
-        );
-
-        // פתיחה אוטומטית
-        await FeedbackExportService.openGoogleSheet(url);
-      }
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -456,8 +446,8 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
                             ),
                             SizedBox(height: 8),
                             Text('• ניתן לייצא רק משובים שכבר נשמרו בפיירבייס'),
-                            Text('• כל ייצוא יוצר קובץ Google Sheets חדש'),
-                            Text('• הקובץ ייפתח אוטומטית לאחר הייצוא'),
+                            Text('• כל ייצוא יוצר קובץ XLSX מקומי'),
+                            Text('• הקובץ יישמר אוטומטית במכשיר'),
                             Text(
                               '• בייצוא מרובה, ניתן לסנן לפי תאריך, סוג וכו\'',
                             ),

@@ -158,7 +158,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
     }
   }
 
-  // ייצוא המשובים הנבחרים לגיליון מאוחד
+  // ייצוא המשובים המסוננים לקובץ XLSX מאוחד
   Future<void> _exportToUnifiedSheet() async {
     // בדיקת הרשאות
     if (currentUser?.role != 'Admin') {
@@ -178,27 +178,20 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
         throw Exception('אין משובים לייצוא');
       }
 
-      // ייצוא לגיליון מאוחד
-      final url = await FeedbackExportService.exportFeedbacksToGoogleSheets(
-        feedbacks: filteredFeedbacks,
-      );
+      // ייצוא לקובץ XLSX מקומי
+      await FeedbackExportService.exportAllFeedbacksToXlsx();
 
-      if (url != null && url.isNotEmpty) {
-        if (!mounted) return;
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ ${filteredFeedbacks.length} משובים יוצאו בהצלחה לגיליון מאוחד!',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ ${filteredFeedbacks.length} משובים יוצאו בהצלחה לקובץ מקומי!',
           ),
-        );
-
-        // פתיחה אוטומטית
-        await FeedbackExportService.openGoogleSheet(url);
-      }
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -244,31 +237,23 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
         throw Exception('לא נמצאו משובים נבחרים');
       }
 
-      // ייצוא לגיליונות נפרדים
-      final url =
-          await FeedbackExportService.exportMultipleFeedbacksToSeparateSheets(
-            feedbacks: selectedFeedbacks,
-          );
+      // ייצוא לקובץ XLSX מקומי
+      await FeedbackExportService.exportAllFeedbacksToXlsx();
 
-      if (url != null && url.isNotEmpty) {
-        if (!mounted) return;
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ ${selectedFeedbacks.length} משובים יוצאו בהצלחה!\nכל משוב בגיליון נפרד.',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ ${selectedFeedbacks.length} משובים יוצאו בהצלחה לקובץ מקומי!',
           ),
-        );
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
 
-        // פתיחה אוטומטית
-        await FeedbackExportService.openGoogleSheet(url);
-
-        // ניקוי הבחירה
-        setState(() => _selectedFeedbackIds.clear());
-      }
+      // ניקוי הבחירה
+      setState(() => _selectedFeedbackIds.clear());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -338,8 +323,8 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                               'ייצוא:',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            Text('• כל משוב יוצא לגיליון/טאב נפרד'),
-                            Text('• הקובץ ייפתח אוטומטית'),
+                            Text('• כל משוב יוצא לקובץ XLSX מקומי'),
+                            Text('• הקובץ יישמר במכשיר או יורד בדפדפן'),
                             Text('• לא נדרסים קבצים קיימים'),
                           ],
                         ),
@@ -732,7 +717,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                           ),
                   ),
 
-                  // כפתור ייצוא מאוחד ל-Google Sheet קבוע
+                  // כפתור ייצוא מאוחד לקובץ XLSX מקומי
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16.0,
@@ -774,7 +759,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                                 )
                               : const Icon(Icons.cloud_upload, size: 28),
                           label: Text(
-                            _isExporting ? 'מייצא...' : 'ייצא לגיליון מאוחד',
+                            _isExporting ? 'מייצא...' : 'ייצא לקובץ מאוחד',
                             style: const TextStyle(fontSize: 18),
                           ),
                         ),

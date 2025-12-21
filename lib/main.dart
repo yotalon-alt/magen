@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -2724,10 +2725,28 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               if (isAdmin)
                 IconButton(
                   icon: const Icon(Icons.download),
-                  onPressed: () {
-                    Navigator.of(context).pushNamed('/universal_export');
+                  onPressed: () async {
+                    try {
+                      await FeedbackExportService.exportAllFeedbacksToXlsx();
+                      if (!mounted) return;
+                      final message = kIsWeb
+                          ? 'הקובץ הורד בהצלחה'
+                          : 'הקובץ נשמר בהורדות';
+                      if (mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(message)));
+                      }
+                    } catch (e) {
+                      if (!mounted) return;
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('שגיאה בייצוא: $e')),
+                        );
+                      }
+                    }
                   },
-                  tooltip: 'ייצוא משובים',
+                  tooltip: 'ייצוא נתונים',
                 ),
               IconButton(
                 icon: _isRefreshing
@@ -2893,15 +2912,6 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
             tooltip: 'חזרה לתיקיות',
           ),
           actions: [
-            // כפתור ייצוא - רק לאדמין ורק בתיקייה "מטווחי ירי"
-            if (isAdmin && isRangeFolder)
-              IconButton(
-                icon: const Icon(Icons.file_download),
-                onPressed: () {
-                  Navigator.of(context).pushNamed('/export_selection');
-                },
-                tooltip: 'ייצוא ל-Google Sheets / Excel',
-              ),
             IconButton(
               icon: _isRefreshing
                   ? const SizedBox(
@@ -3033,72 +3043,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
   bool _isEditingCommand = false;
   bool _isSaving = false;
   bool _isExporting = false;
-  String? _exportedSheetUrl;
-
-  Future<void> _exportToGoogleSheets() async {
-    if (feedback.id == null || feedback.id!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('לא ניתן לייצא משוב ללא מזהה')),
-      );
-      return;
-    }
-
-    setState(() => _isExporting = true);
-
-    try {
-      // שימוש בשירות הייצוא
-      final url = await FeedbackExportService.exportFeedback(
-        feedbackId: feedback.id!,
-      );
-
-      if (url != null && url.isNotEmpty) {
-        setState(() => _exportedSheetUrl = url);
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('הקובץ נוצר בהצלחה!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('שגיאה בייצוא: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isExporting = false);
-      }
-    }
-  }
-
-  Future<void> _openGoogleSheet() async {
-    if (_exportedSheetUrl == null || _exportedSheetUrl!.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('אין קובץ לפתיחה')));
-      return;
-    }
-
-    try {
-      await FeedbackExportService.openGoogleSheet(_exportedSheetUrl!);
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('שגיאה: ${e.toString()}')));
-    }
-  }
 
   void _showStationDetailsModal(
     BuildContext context,
@@ -3784,7 +3728,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               ),
             ],
 
-            // כפתור ייצוא ל-Google Sheets (רק לאדמין)
+            // כפתור ייצוא ל-XLSX מקומי (רק לאדמין)
             if (isAdmin) ...[
               const SizedBox(height: 20),
               const Divider(),
@@ -3797,7 +3741,35 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _isExporting ? null : _exportToGoogleSheets,
+                  onPressed: _isExporting
+                      ? null
+                      : () async {
+                          setState(() => _isExporting = true);
+                          try {
+                            await FeedbackExportService.exportAllFeedbacksToXlsx();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('הקובץ נוצר בהצלחה!'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('שגיאה בייצוא: $e'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isExporting = false);
+                            }
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     backgroundColor: Colors.green,
@@ -3813,33 +3785,13 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             ),
                           ),
                         )
-                      : const Icon(Icons.upload_file),
+                      : const Icon(Icons.download),
                   label: Text(
-                    _isExporting ? 'מייצא...' : 'ייצוא ל-Google Sheets',
+                    _isExporting ? 'מייצא...' : 'ייצוא לקובץ מקומי',
                     style: const TextStyle(fontSize: 18),
                   ),
                 ),
               ),
-
-              // כפתור פתיחת הקובץ (מוצג רק אחרי ייצוא)
-              if (_exportedSheetUrl != null) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _openGoogleSheet,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Colors.green, width: 2),
-                    ),
-                    icon: const Icon(Icons.open_in_new, color: Colors.green),
-                    label: const Text(
-                      'פתיחה ב-Google Sheets',
-                      style: TextStyle(fontSize: 18, color: Colors.green),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ],
         ),

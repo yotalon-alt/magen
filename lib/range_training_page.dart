@@ -211,7 +211,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   // ⚠️ פונקציות הייצוא הוסרו - הייצוא יבוצע רק מדף המשובים (Admin בלבד)
-  // יצוא ל-Google Sheets יתבצע על משובים שכבר נשמרו בלבד
+  // ייצוא לקובץ XLSX מקומי יתבוצע על משובים שכבר נשמרו בלבד
 
   Future<void> _saveToFirestore() async {
     // בדיקות תקינות
@@ -667,7 +667,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 // הערה למשתמש
                 const SizedBox(height: 12),
                 const Text(
-                  'לייצוא ל-Google Sheets, עבור לדף המשובים ולחץ על המטווח השמור',
+                  'לייצוא לקובץ מקומי, עבור לדף המשובים ולחץ על המטווח השמור',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
