@@ -112,14 +112,6 @@ class FeedbackExportService {
     try {
       final excel = Excel.createExcel();
 
-      // גיליון מתאימים
-      final suitableSheet = excel['מתאימים'];
-      _addInstructorCourseHeaders(suitableSheet);
-
-      // גיליון לא מתאימים
-      final notSuitableSheet = excel['לא מתאימים'];
-      _addInstructorCourseHeaders(notSuitableSheet);
-
       // טעינת נתונים משתי הקולקציות
       final suitableFeedbacks = await _loadInstructorCourseFeedbacks(
         'suitable',
@@ -128,13 +120,16 @@ class FeedbackExportService {
         'not_suitable',
       );
 
-      // הוספת נתונים לגיליונות
-      for (final feedback in suitableFeedbacks) {
-        _addInstructorCourseRow(suitableSheet, feedback);
+      // יצירת גיליון מתאימים עם כותרות דינמיות
+      if (suitableFeedbacks.isNotEmpty) {
+        final suitableSheet = excel['מתאימים'];
+        _addDynamicHeadersAndRows(suitableSheet, suitableFeedbacks);
       }
 
-      for (final feedback in notSuitableFeedbacks) {
-        _addInstructorCourseRow(notSuitableSheet, feedback);
+      // יצירת גיליון לא מתאימים עם כותרות דינמיות
+      if (notSuitableFeedbacks.isNotEmpty) {
+        final notSuitableSheet = excel['לא מתאימים'];
+        _addDynamicHeadersAndRows(notSuitableSheet, notSuitableFeedbacks);
       }
 
       // שמירה וייצוא
@@ -182,46 +177,53 @@ class FeedbackExportService {
     }
   }
 
-  /// הוספת כותרות לגיליון משובי קורס מדריכים
-  static void _addInstructorCourseHeaders(Sheet sheet) {
-    sheet.appendRow([
-      TextCellValue('ID'),
-      TextCellValue('שם מועמד'),
-      TextCellValue('מספר מועמד'),
-      TextCellValue('מדריך'),
-      TextCellValue('פיקוד'),
-      TextCellValue('חטיבה'),
-      TextCellValue('בוחן רמה'),
-      TextCellValue('הדרכה טובה'),
-      TextCellValue('הדרכת מבנה'),
-      TextCellValue('יבשים'),
-      TextCellValue('תרגיל הפתעה'),
-      TextCellValue('ממוצע'),
-      TextCellValue('תאריך יצירה'),
-    ]);
-  }
-
-  /// הוספת שורה של משוב קורס מדריכים
-  static void _addInstructorCourseRow(
+  /// הוספת כותרות דינמיות ושורות נתונים לגיליון
+  static void _addDynamicHeadersAndRows(
     Sheet sheet,
-    Map<String, dynamic> feedback,
+    List<Map<String, dynamic>> feedbacks,
   ) {
-    final scores = feedback['scores'] as Map<String, dynamic>? ?? {};
-    sheet.appendRow([
-      TextCellValue(feedback['id'] ?? ''),
-      TextCellValue(feedback['candidateName'] ?? ''),
-      IntCellValue(feedback['candidateNumber'] ?? 0),
-      TextCellValue(feedback['instructorName'] ?? ''),
-      TextCellValue(feedback['command'] ?? ''),
-      TextCellValue(feedback['brigade'] ?? ''),
-      DoubleCellValue(scores['levelTest']?.toDouble() ?? 0.0),
-      DoubleCellValue(scores['goodInstruction']?.toDouble() ?? 0.0),
-      DoubleCellValue(scores['structureInstruction']?.toDouble() ?? 0.0),
-      DoubleCellValue(scores['dryPractice']?.toDouble() ?? 0.0),
-      DoubleCellValue(scores['surpriseExercise']?.toDouble() ?? 0.0),
-      DoubleCellValue(feedback['averageScore']?.toDouble() ?? 0.0),
-      TextCellValue(feedback['createdAt']?.toString() ?? ''),
-    ]);
+    if (feedbacks.isEmpty) return;
+
+    // קביעת כותרות דינמיות על בסיס הנתונים בפועל
+    final columnOrder = <String>[];
+    final columnSet = <String>{};
+
+    // איסוף כל השדות מכל המשובים
+    for (final feedback in feedbacks) {
+      for (final key in feedback.keys) {
+        if (!columnSet.contains(key)) {
+          columnSet.add(key);
+          columnOrder.add(key);
+        }
+      }
+    }
+
+    // הוספת כותרות בגיליון
+    final headerRow = columnOrder.map((key) => TextCellValue(key)).toList();
+    sheet.appendRow(headerRow);
+
+    // הוספת נתונים לכל משוב
+    for (final feedback in feedbacks) {
+      final row = <CellValue>[];
+      for (final key in columnOrder) {
+        final value = feedback[key];
+        if (value == null) {
+          row.add(TextCellValue(''));
+        } else if (value is int) {
+          row.add(IntCellValue(value));
+        } else if (value is double) {
+          row.add(DoubleCellValue(value));
+        } else if (value is bool) {
+          row.add(TextCellValue(value ? 'כן' : 'לא'));
+        } else if (value is Map || value is List) {
+          // המרת Map/List ל-JSON string
+          row.add(TextCellValue(json.encode(value)));
+        } else {
+          row.add(TextCellValue(value.toString()));
+        }
+      }
+      sheet.appendRow(row);
+    }
   }
 
   /// טעינת משובי קורס מדריכים מקולקציה ספציפית
@@ -246,6 +248,108 @@ class FeedbackExportService {
     }
 
     return feedbacks;
+  }
+
+  /// ייצוא משובים נבחרים מקורס מדריכים לקובץ XLSX
+  static Future<void> exportSelectedInstructorCourseFeedbacksToXlsx(
+    List<Map<String, dynamic>> selectedFeedbacks,
+    String categoryName,
+  ) async {
+    try {
+      if (selectedFeedbacks.isEmpty) {
+        throw Exception('לא נבחרו משובים לייצוא');
+      }
+
+      final excel = Excel.createExcel();
+      final sheet = excel[categoryName];
+
+      // קביעת כותרות דינמיות על בסיס הנתונים בפועל
+      // שימוש בסדר ההופעה של השדות במשוב הראשון כבסיס לסדר העמודות
+      final columnOrder = <String>[];
+      final columnSet = <String>{};
+
+      // איסוף כל השדות מכל המשובים הנבחרים
+      for (final feedback in selectedFeedbacks) {
+        for (final key in feedback.keys) {
+          if (!columnSet.contains(key)) {
+            columnSet.add(key);
+            columnOrder.add(key);
+          }
+        }
+      }
+
+      // הוספת כותרות בגיליון
+      final headerRow = columnOrder.map((key) => TextCellValue(key)).toList();
+      sheet.appendRow(headerRow);
+
+      // הוספת נתונים לכל משוב
+      for (final feedback in selectedFeedbacks) {
+        final row = <CellValue>[];
+        for (final key in columnOrder) {
+          final value = feedback[key];
+          if (value == null) {
+            row.add(TextCellValue(''));
+          } else if (value is int) {
+            row.add(IntCellValue(value));
+          } else if (value is double) {
+            row.add(DoubleCellValue(value));
+          } else if (value is bool) {
+            row.add(TextCellValue(value ? 'כן' : 'לא'));
+          } else if (value is Map || value is List) {
+            // המרת Map/List ל-JSON string
+            row.add(TextCellValue(json.encode(value)));
+          } else {
+            row.add(TextCellValue(value.toString()));
+          }
+        }
+        sheet.appendRow(row);
+      }
+
+      // שמירה וייצוא
+      final fileBytes = excel.encode();
+      if (fileBytes == null) {
+        throw Exception('שגיאה ביצירת קובץ XLSX');
+      }
+
+      final now = DateTime.now();
+      final fileName =
+          'instructor_course_feedbacks_${categoryName}_${DateFormat('yyyy-MM-dd_HH-mm').format(now)}.xlsx';
+
+      if (kIsWeb) {
+        // Web: יצירת blob וייצוא דרך browser
+        final blob = html.Blob([
+          fileBytes,
+        ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        // Mobile: שמירה לתיקיית Downloads
+        Directory? directory;
+        if (Platform.isAndroid) {
+          directory = await getDownloadsDirectory();
+        } else if (Platform.isIOS) {
+          directory = await getApplicationDocumentsDirectory();
+        } else {
+          throw Exception('פלטפורמה לא נתמכת');
+        }
+
+        if (directory == null) {
+          throw Exception('לא ניתן לקבל תיקיית שמירה');
+        }
+
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+      }
+    } catch (e) {
+      debugPrint(
+        'Error exporting selected instructor course feedbacks to XLSX: $e',
+      );
+      rethrow;
+    }
   }
 
   // Stub methods for screening functionality (to avoid breaking existing code)

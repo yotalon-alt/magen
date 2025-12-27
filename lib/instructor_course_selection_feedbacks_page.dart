@@ -18,12 +18,50 @@ class _InstructorCourseSelectionFeedbacksPageState
   _selectedCategory; // null = show buttons, 'suitable' or 'not_suitable' = show list
   bool _isLoading = false;
   List<Map<String, dynamic>> _feedbacks = [];
+  Set<String> _selectedFeedbackIds = {}; // For export selection
 
   Future<void> _exportInstructorCourseFeedbacks() async {
     setState(() => _isLoading = true);
 
     try {
       await FeedbackExportService.exportInstructorCourseFeedbacksToXlsx();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ נוצר בהצלחה!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _exportSelectedFeedbacks() async {
+    if (_selectedFeedbackIds.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final selectedFeedbacks = _feedbacks
+          .where((f) => _selectedFeedbackIds.contains(f['id']))
+          .toList();
+      await FeedbackExportService.exportSelectedInstructorCourseFeedbacksToXlsx(
+        selectedFeedbacks,
+        _selectedCategory == 'suitable' ? 'מתאימים' : 'לא מתאימים',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -99,6 +137,107 @@ class _InstructorCourseSelectionFeedbacksPageState
         );
       }
     }
+  }
+
+  void _showExportSelectionDialog() {
+    _selectedFeedbackIds.clear(); // Reset selection
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('בחר משובים לייצוא'),
+          content: StatefulBuilder(
+            builder: (context, setState) => SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Select All / None buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedFeedbackIds = _feedbacks
+                                .map((f) => f['id'] as String)
+                                .toSet();
+                          });
+                        },
+                        child: const Text('בחר הכל'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedFeedbackIds.clear();
+                          });
+                        },
+                        child: const Text('בטל בחירה'),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  // Feedback list with checkboxes
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _feedbacks.length,
+                      itemBuilder: (context, i) {
+                        final feedback = _feedbacks[i];
+                        final id = feedback['id'] as String;
+                        final candidateName =
+                            feedback['candidateName'] ?? 'לא ידוע';
+                        final candidateNumber =
+                            feedback['candidateNumber'] as int?;
+                        final isSelected = _selectedFeedbackIds.contains(id);
+
+                        return CheckboxListTile(
+                          title: Text(
+                            candidateNumber != null
+                                ? '$candidateName – $candidateNumber'
+                                : candidateName,
+                          ),
+                          subtitle: Text(
+                            'מדריך: ${feedback['instructorName'] ?? 'לא ידוע'}',
+                          ),
+                          value: isSelected,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              if (value == true) {
+                                _selectedFeedbackIds.add(id);
+                              } else {
+                                _selectedFeedbackIds.remove(id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: _selectedFeedbackIds.isNotEmpty
+                  ? () async {
+                      Navigator.pop(ctx);
+                      await _exportSelectedFeedbacks();
+                    }
+                  : null,
+              child: const Text('ייצא לאקסל'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildCategoryButtons() {
@@ -260,7 +399,12 @@ class _InstructorCourseSelectionFeedbacksPageState
                     textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(width: 48), // Balance the back button
+                // Export button
+                IconButton(
+                  icon: const Icon(Icons.download, color: Colors.white),
+                  onPressed: () => _showExportSelectionDialog(),
+                  tooltip: 'ייצוא משובים לאקסל',
+                ),
               ],
             ),
           ),

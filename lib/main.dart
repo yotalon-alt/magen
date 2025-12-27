@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -11,7 +11,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
 import 'pages/screenings_menu_page.dart';
 import 'voice_assistant.dart';
-import 'range_selection_page.dart';
 import 'feedback_export_service.dart';
 import 'export_selection_page.dart';
 import 'universal_export_page.dart';
@@ -491,16 +490,8 @@ class MyApp extends StatelessWidget {
       routes: {'/main': (_) => const MainScreen()},
       // readiness and alerts routes
       onGenerateRoute: (settings) {
-        if (settings.name == '/commander') {
-          return MaterialPageRoute(
-            builder: (_) => const CommanderDashboardPage(),
-          );
-        }
         if (settings.name == '/alerts') {
           return MaterialPageRoute(builder: (_) => const AlertsPage());
-        }
-        if (settings.name == '/readiness') {
-          return MaterialPageRoute(builder: (_) => const ReadinessPage());
         }
         return null;
       },
@@ -1384,11 +1375,6 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const ScreeningsMenuPage(courseType: 'miunim'),
                 settings: settings,
               );
-            case '/range_selection':
-              return MaterialPageRoute(
-                builder: (_) => const RangeSelectionPage(),
-                settings: settings,
-              );
             case '/feedback_form':
               final exercise = settings.arguments as String?;
               return MaterialPageRoute(
@@ -2046,7 +2032,6 @@ class ExercisesPage extends StatelessWidget {
       'מעגל פרוץ',
       'סריקות רחוב',
       'מיונים לקורס מדריכים',
-      'מטווחים',
     ];
 
     return Scaffold(
@@ -2077,8 +2062,6 @@ class ExercisesPage extends StatelessWidget {
                 if (ex == 'מיונים לקורס מדריכים') {
                   // Navigate to screenings menu (two-buttons screen)
                   Navigator.of(context).pushNamed('/screenings_menu');
-                } else if (ex == 'מטווחים') {
-                  Navigator.of(context).pushNamed('/range_selection');
                 } else {
                   Navigator.of(
                     context,
@@ -2732,18 +2715,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                       final message = kIsWeb
                           ? 'הקובץ הורד בהצלחה'
                           : 'הקובץ נשמר בהורדות';
-                      if (mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(message)));
-                      }
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(message)));
                     } catch (e) {
                       if (!mounted) return;
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('שגיאה בייצוא: $e')),
-                        );
-                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('שגיאה בייצוא: $e')),
+                      );
                     }
                   },
                   tooltip: 'ייצוא נתונים',
@@ -3748,6 +3727,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           try {
                             await FeedbackExportService.exportAllFeedbacksToXlsx();
                             if (!mounted) return;
+                            // ignore: use_build_context_synchronously
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('הקובץ נוצר בהצלחה!'),
@@ -3757,6 +3737,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             );
                           } catch (e) {
                             if (!mounted) return;
+                            // ignore: use_build_context_synchronously
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('שגיאה בייצוא: $e'),
