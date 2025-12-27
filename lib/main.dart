@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
 import 'pages/screenings_menu_page.dart';
 import 'voice_assistant.dart';
+import 'range_selection_page.dart';
 import 'feedback_export_service.dart';
 import 'export_selection_page.dart';
 import 'universal_export_page.dart';
@@ -44,6 +45,7 @@ const List<String> feedbackFolders = <String>[
   'מיונים לקורס מדריכים',
   'משובים – כללי',
   'עבודה במבנה',
+  'משובים זמניים', // Temporary Feedbacks
 ];
 
 // Settlements list for dropdown (can be extended; empty list is valid)
@@ -225,6 +227,27 @@ class FeedbackModel {
       settlement: settlement ?? this.settlement,
       attendeesCount: attendeesCount ?? this.attendeesCount,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'role': role,
+      'name': name,
+      'exercise': exercise,
+      'scores': scores,
+      'notes': notes,
+      'criteriaList': criteriaList,
+      'createdAt': createdAt.toIso8601String(),
+      'instructorName': instructorName,
+      'instructorRole': instructorRole,
+      'commandText': commandText,
+      'commandStatus': commandStatus,
+      'folder': folder,
+      'scenario': scenario,
+      'settlement': settlement,
+      'attendeesCount': attendeesCount,
+    };
   }
 }
 
@@ -490,8 +513,16 @@ class MyApp extends StatelessWidget {
       routes: {'/main': (_) => const MainScreen()},
       // readiness and alerts routes
       onGenerateRoute: (settings) {
+        if (settings.name == '/commander') {
+          return MaterialPageRoute(
+            builder: (_) => const CommanderDashboardPage(),
+          );
+        }
         if (settings.name == '/alerts') {
           return MaterialPageRoute(builder: (_) => const AlertsPage());
+        }
+        if (settings.name == '/readiness') {
+          return MaterialPageRoute(builder: (_) => const ReadinessPage());
         }
         return null;
       },
@@ -1375,6 +1406,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const ScreeningsMenuPage(courseType: 'miunim'),
                 settings: settings,
               );
+            case '/range_selection':
+              return MaterialPageRoute(
+                builder: (_) => const RangeSelectionPage(),
+                settings: settings,
+              );
             case '/feedback_form':
               final exercise = settings.arguments as String?;
               return MaterialPageRoute(
@@ -2032,6 +2068,7 @@ class ExercisesPage extends StatelessWidget {
       'מעגל פרוץ',
       'סריקות רחוב',
       'מיונים לקורס מדריכים',
+      'מטווחים',
     ];
 
     return Scaffold(
@@ -2062,6 +2099,8 @@ class ExercisesPage extends StatelessWidget {
                 if (ex == 'מיונים לקורס מדריכים') {
                   // Navigate to screenings menu (two-buttons screen)
                   Navigator.of(context).pushNamed('/screenings_menu');
+                } else if (ex == 'מטווחים') {
+                  Navigator.of(context).pushNamed('/range_selection');
                 } else {
                   Navigator.of(
                     context,

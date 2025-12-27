@@ -374,6 +374,32 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
   }
 
+  bool get _canSaveTemporarily =>
+      selectedSettlement != null &&
+      attendeesCount > 0 &&
+      stations.isNotEmpty &&
+      stations.first.name.isNotEmpty;
+
+  void _saveTemporarily() {
+    final tempFeedback = {
+      'settlement': selectedSettlement,
+      'attendeesCount': attendeesCount,
+      'stations': stations.map((s) => s.toJson()).toList(),
+      'trainees': trainees.map((t) => t.toJson()).toList(),
+      'instructorName': instructorName,
+      'rangeType': widget.rangeType,
+      'savedAt': DateTime.now().toIso8601String(),
+    };
+
+    FirebaseFirestore.instance
+        .collection('temporary_feedbacks')
+        .add(tempFeedback);
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('המשוב נשמר באופן זמני')));
+  }
+
   @override
   Widget build(BuildContext context) {
     // קביעת שם המטווח להצגה
@@ -670,6 +696,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   'לייצוא לקובץ מקומי, עבור לדף המשובים ולחץ על המטווח השמור',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                   textAlign: TextAlign.center,
+                ),
+              ],
+              // כפתור שמירה זמנית
+              if (attendeesCount > 0) ...[
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _canSaveTemporarily ? _saveTemporarily : null,
+                  child: const Text('שמור זמנית'),
                 ),
               ],
             ],
@@ -1291,4 +1325,22 @@ class Trainee {
   Map<int, int> hits; // מפה: אינדקס מקצה -> מספר פגיעות
 
   Trainee({required this.name, required this.hits});
+
+  Map<String, dynamic> toJson() {
+    return {'name': name, 'hits': hits};
+  }
+}
+
+extension RangeStationJson on RangeStation {
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'bulletsCount': bulletsCount,
+      'timeSeconds': timeSeconds,
+      'hits': hits,
+      'isManual': isManual,
+      'isLevelTester': isLevelTester,
+      'selectedRubrics': selectedRubrics,
+    };
+  }
 }

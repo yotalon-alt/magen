@@ -178,7 +178,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
         throw Exception('אין משובים לייצוא');
       }
 
-      // ייצוא לקובץ XLSX מקומי
+      // ייצוא משובים לקובץ XLSX
       await FeedbackExportService.exportAllFeedbacksToXlsx();
 
       if (!mounted) return;

@@ -352,6 +352,183 @@ class FeedbackExportService {
     }
   }
 
+  /// Returns a mapper function for a given folder name.
+  static Map<String, dynamic> getMapperForFolder(String folderName) {
+    // Example implementation: customize based on folder-specific logic
+    switch (folderName) {
+      case 'מטווחי ירי':
+        return {
+          'id': 'ID',
+          'role': 'תפקיד',
+          'name': 'שם',
+          'exercise': 'תרגיל',
+          'scores': 'ציונים',
+          'notes': 'הערות',
+          'criteriaList': 'קריטריונים',
+          'createdAt': 'תאריך יצירה',
+          'instructorName': 'מדריך',
+          'instructorRole': 'תפקיד מדריך',
+          'folder': 'תיקייה',
+        };
+      default:
+        return {
+          'id': 'ID',
+          'role': 'תפקיד',
+          'name': 'שם',
+          'exercise': 'תרגיל',
+          'createdAt': 'תאריך יצירה',
+        };
+    }
+  }
+
+  /// Exports feedbacks to an XLSX file using a provided mapper.
+  static Future<void> exportFeedbacksToXlsx(
+    List<FeedbackModel> feedbacks,
+    Map<String, dynamic> mapper,
+    String fileNamePrefix,
+  ) async {
+    try {
+      final excel = Excel.createExcel();
+      final sheet = excel['משובים'];
+
+      // Add headers based on the mapper
+      final headers = mapper.values
+          .map((header) => TextCellValue(header))
+          .toList();
+      sheet.appendRow(headers);
+
+      // Add rows based on the mapper
+      for (final feedback in feedbacks) {
+        final row = mapper.keys.map((key) {
+          final value = feedback.toJson()[key];
+          if (value == null) {
+            return TextCellValue('');
+          } else if (value is int) {
+            return IntCellValue(value);
+          } else if (value is double) {
+            return DoubleCellValue(value);
+          } else {
+            return TextCellValue(value.toString());
+          }
+        }).toList();
+        sheet.appendRow(row);
+      }
+
+      // Save and export
+      final fileBytes = excel.encode();
+      if (fileBytes == null) {
+        throw Exception('שגיאה ביצירת קובץ XLSX');
+      }
+
+      final now = DateTime.now();
+      final fileName =
+          '${fileNamePrefix}_${DateFormat('yyyy-MM-dd_HH-mm').format(now)}.xlsx';
+
+      if (kIsWeb) {
+        final blob = html.Blob([
+          fileBytes,
+        ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        Directory? directory;
+        if (Platform.isAndroid) {
+          directory = await getDownloadsDirectory();
+        } else if (Platform.isIOS) {
+          directory = await getApplicationDocumentsDirectory();
+        } else {
+          throw Exception('פלטפורמה לא נתמכת');
+        }
+
+        if (directory == null) {
+          throw Exception('לא ניתן לקבל תיקיית שמירה');
+        }
+
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+      }
+    } catch (e) {
+      debugPrint('Error exporting feedbacks to XLSX: $e');
+      rethrow;
+    }
+  }
+
+  /// Exports statistics to an XLSX file.
+  static Future<void> exportStatisticsToXlsx(
+    List<Map<String, dynamic>> statistics,
+    String fileName,
+  ) async {
+    try {
+      final excel = Excel.createExcel();
+      final sheet = excel['סטטיסטיקות'];
+
+      // Add headers dynamically based on the first statistic entry
+      if (statistics.isNotEmpty) {
+        final headers = statistics.first.keys
+            .map((key) => TextCellValue(key))
+            .toList();
+        sheet.appendRow(headers);
+
+        // Add rows for each statistic entry
+        for (final stat in statistics) {
+          final row = stat.values.map((value) {
+            if (value == null) {
+              return TextCellValue('');
+            } else if (value is int) {
+              return IntCellValue(value);
+            } else if (value is double) {
+              return DoubleCellValue(value);
+            } else {
+              return TextCellValue(value.toString());
+            }
+          }).toList();
+          sheet.appendRow(row);
+        }
+      }
+
+      // Save and export
+      final fileBytes = excel.encode();
+      if (fileBytes == null) {
+        throw Exception('שגיאה ביצירת קובץ XLSX');
+      }
+
+      if (kIsWeb) {
+        final blob = html.Blob([
+          fileBytes,
+        ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        Directory? directory;
+        if (Platform.isAndroid) {
+          directory = await getDownloadsDirectory();
+        } else if (Platform.isIOS) {
+          directory = await getApplicationDocumentsDirectory();
+        } else {
+          throw Exception('פלטפורמה לא נתמכת');
+        }
+
+        if (directory == null) {
+          throw Exception('לא ניתן לקבל תיקיית שמירה');
+        }
+
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+      }
+    } catch (e) {
+      debugPrint('Error exporting statistics to XLSX: $e');
+      rethrow;
+    }
+  }
+
   // Stub methods for screening functionality (to avoid breaking existing code)
   static Future<void> finalizeScreeningAndCreateFeedback({
     required String screeningId,

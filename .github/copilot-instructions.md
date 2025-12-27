@@ -1,51 +1,49 @@
-<!-- Copilot instructions tailored for this Flutter single-file demo app -->
-# Copilot / AI agent instructions (project-specific)
+<!-- Copilot/AI agent instructions for this Flutter feedback system -->
+# AI Coding Agent Project Guide
 
-Purpose: make AI contributors productive quickly by documenting the app shape, local conventions, build/test commands, and important code locations to read before changing behavior.
+## Overview
+This is a Flutter app for managing feedbacks, built around a single main file ([lib/main.dart](../lib/main.dart)) with additional pages and services under `lib/`. The app uses a BottomNavigationBar for navigation between Home, Exercises, Feedbacks, Statistics, and Materials. Feedback data is loaded from Firestore and cached in-memory (`feedbackStorage`).
 
-- **Big picture:** This is a small Flutter app implemented primarily in a single file: [lib/main.dart](../lib/main.dart). It uses a BottomNavigationBar with five pages (Home, Exercises, Feedbacks, Statistics, Materials). Feedbacks are stored in-memory in `FeedbackStore.feedbacks` (in [lib/main.dart](../lib/main.dart)).
+## Key Files & Structure
+- [lib/main.dart](../lib/main.dart): App entrypoint, navigation, all main pages, feedback model, Firestore integration, and most business logic.
+- [pubspec.yaml](../pubspec.yaml): Declares dependencies (Firebase, shared_preferences, etc.).
+- `lib/pages/`, `lib/services/`: Place new UI pages and service logic here for non-trivial features.
+- Platform folders (`android/`, `ios/`, etc.) are generated—**never edit plugin registrant files directly**.
 
-- **Key files to read first:**
-  - [lib/main.dart](../lib/main.dart) — app entrypoint, UI, navigation, and the `FeedbackStore` used as the single data source.
-  - [pubspec.yaml](../pubspec.yaml) — dependencies (no third-party persistence packages present).
+## Data Flow & Architecture
+- **Feedbacks**: Modeled by `FeedbackModel`, stored in Firestore (`feedbacks` collection), loaded into global `feedbackStorage`.
+- **User roles**: `currentUser` is set after Firebase Auth; role-based access (Admin/Instructor) controls data visibility and actions.
+- **Navigation**: Uses nested `Navigator` widgets and `MaterialPageRoute`. Add new pages using this pattern.
+- **State**: Most state is managed in-memory; no Redux/Provider. Use local state or extract to services as needed.
 
-- **Why the structure is like this:** The project is a starter/demo Flutter app (generated template) that was extended inline. Expect UI, navigation, and simple state to live together; non-trivial changes should consider extracting widgets/services into new files under `lib/`.
+## Developer Workflows
+- **Build**: `flutter pub get`, then `flutter run -d <device>`
+- **Test**: `flutter test` (see [test/widget_test.dart](../test/widget_test.dart))
+- **Analyze**: `flutter analyze` for static checks
+- **Export**: Admins can export feedbacks to XLSX via UI (see `FeedbackExportService`)
 
-- **Data & integration notes:**
-  - Feedbacks are plain `Map<String, dynamic>` objects held in `FeedbackStore.feedbacks`. Keys used: `role`, `name`, `scores`, `comment`. See the feedback submission flow in [lib/main.dart](../lib/main.dart).
-  - There is no persistence (DB, shared_preferences, or network). Introducing persistence requires adding a package in `pubspec.yaml` and updating platform code only when necessary.
-  - Many platform folders (android/, ios/, macos/, windows/, linux/) contain generated plugin registrant files — do not edit generated files directly.
+## Project Conventions
+- **Hebrew UI**: All UI strings are in Hebrew; maintain UTF-8 and RTL layout.
+- **Const Widgets**: Prefer `const` constructors for widgets.
+- **Small PRs**: Extract new logic to `lib/services/` or `lib/widgets/` instead of growing `main.dart`.
+- **No direct DB/network in widgets**: Use service wrappers for persistence/networking.
+- **Feedback criteria**: Scoring uses discrete values (1, 3, 5); keep this logic consistent.
 
-- **Common UI/navigation patterns to follow:**
-  - Navigation uses `Navigator.push` with `MaterialPageRoute` (see exercise -> `FeedbackFormPage`). Keep to this pattern for consistency.
-  - Pages are defined as Widgets (Stateless/Stateful) directly in `lib/main.dart`. If adding complex pages, extract them to new files named logically (e.g., `lib/pages/feedback_form.dart`).
-  - Score selection uses `ChoiceChip` with values {1,3,5}; maintain these discrete values when reusing scoring logic.
+## Integration & Extensibility
+- **Persistence**: To add new storage, update `pubspec.yaml` and create a service in `lib/services/` (see Firestore usage in `main.dart`).
+- **Voice Assistant**: Voice command logic is in `voice_assistant.dart` and integrated in `MainScreen`.
+- **Export/Import**: Use `feedback_export_service.dart` for XLSX export; follow this pattern for new export features.
 
-- **Build / run / test commands (use from repo root):**
-  - `flutter pub get` — fetch deps
-  - `flutter analyze` — run static analysis
-  - `flutter test` — run unit/widget tests (there is a simple `test/widget_test.dart`)
-  - `flutter run -d <device>` — run app locally (emulator or `-d windows`/`-d chrome` etc.)
-  - `flutter build apk` / `flutter build ios` / `flutter build windows` — platform builds
+## Examples
+- **Feedback submission**: See `FeedbackFormPage` in [lib/main.dart](../lib/main.dart).
+- **Feedback display**: See `FeedbacksPage` and `FeedbackDetailsPage` in [lib/main.dart](../lib/main.dart).
+- **Statistics**: See `StatisticsPage` and related pages for filtering/aggregation patterns.
 
-- **Project-specific conventions & hints:**
-  - Strings are written in Hebrew inside the UI; preserve UTF-8 encoding and RTL considerations when editing.
-  - The codebase favors using `const` constructors and widgets where possible (keep this style).
-  - Small, isolated changes are preferred: extract services (e.g., persistence) into `lib/services/` and widgets into `lib/widgets/` instead of expanding `main.dart` further.
+## Do / Don't Checklist
+- **Do**: Run `flutter analyze` and `flutter test` before PRs.
+- **Do**: Add new files under `lib/` for new features/services.
+- **Don't**: Edit generated platform files or plugin registrants.
+- **Don't**: Replace Firestore/in-memory feedback logic without migration/tests.
 
-- **Do / Don't (quick checklist for PRs):**
-  - Do: Run `flutter analyze` and `flutter test` before opening PR.
-  - Do: Add new files under `lib/` for non-trivial logic or UI.
-  - Don't: Modify generated files under platform folders. Avoid changing plugin registrant files.
-  - Don't: Replace the in-memory `FeedbackStore` with a network-backed store without adding tests and migration notes.
-
-- **Examples to cite in changes:**
-  - Feedback submission flow: see `FeedbackFormPage` and the button that appends to `FeedbackStore.feedbacks` in [lib/main.dart](../lib/main.dart).
-  - Feedback display: `FeedbacksPage` reads `FeedbackStore.feedbacks` directly; mirror that shape if you add persistence ([lib/main.dart](../lib/main.dart)).
-
-- **When adding persistence or networking:**
-  - Update `pubspec.yaml` to include the package (for example `shared_preferences` or `hive`).
-  - Add a `lib/services/feedback_service.dart` that wraps reads/writes and write migration tests.
-  - Keep the UI code (widgets) dependent only on a small interface (e.g., `FeedbackRepository`) so testing is simpler.
-
-If anything above is unclear or you want the instructions to include preferred PR titles, branching rules, or CI steps, tell me what to include and I will update this file.
+---
+If any section is unclear or missing, please request clarification or suggest additions for future updates.
