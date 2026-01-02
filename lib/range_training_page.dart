@@ -1,21 +1,30 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser and golanSettlements
+import 'widgets/standard_back_button.dart';
 
 /// מסך מטווח עם טבלה דינמית
 class RangeTrainingPage extends StatefulWidget {
   final String rangeType; // 'קצרים' / 'ארוכים' / 'הפתעה'
+  final String? feedbackId; // optional: edit an existing temporary feedback
+  final String mode; // 'range' or 'surprise' - determines UI behavior
 
-  const RangeTrainingPage({super.key, required this.rangeType});
+  const RangeTrainingPage({
+    super.key,
+    required this.rangeType,
+    this.feedbackId,
+    this.mode = 'range', // default to range mode
+  });
 
   @override
   State<RangeTrainingPage> createState() => _RangeTrainingPageState();
 }
 
 class _RangeTrainingPageState extends State<RangeTrainingPage> {
-  // רשימת מקצים קבועה
+  // רשימת מקצים קבועה (range mode)
   static const List<String> availableStations = [
     'הרמות',
     'שלשות',
@@ -33,9 +42,29 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     'מקצה ידני',
   ];
 
+  // רשימת עקרונות קבועה (surprise mode)
+  static const List<String> availablePrinciples = [
+    'קשר עין',
+    'בחירת ציר התקדמות',
+    'איום עיקרי ואיום משני',
+    'קצב אש ומרחק',
+    'ירי בטוח בתוך קהל',
+    'וידוא ניטרול',
+    'זיהוי והדחה',
+    'רמת ביצוע',
+  ];
+
   String? selectedSettlement;
   String instructorName = '';
   int attendeesCount = 0;
+
+  late String _rangeType;
+
+  // Dynamic labels based on mode
+  String get _itemLabel => widget.mode == 'surprise' ? 'עיקרון' : 'מקצה';
+  String get _itemsLabel => widget.mode == 'surprise' ? 'עקרונות' : 'מקצים';
+  String get _addItemLabel =>
+      widget.mode == 'surprise' ? 'הוסף עיקרון' : 'הוסף מקצה';
 
   String _settlementDisplayText = '';
 
@@ -44,6 +73,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   // רשימת חניכים - כל חניך מכיל שם + פגיעות למקצה
   List<Trainee> trainees = [];
+  // sequential numbers for trainees (editable but reset on list changes)
+  List<int> traineeNumbers = [];
+
+  // editing document id stored in state so we can create/update temporary docs
+  String? _editingFeedbackId;
+
+  // autosave timer (debounced saves)
+  Timer? _autosaveTimer;
+
+  // whether the current feedback has been finalized (final save)
+  final bool _isFinalized = false;
 
   bool _isSaving = false;
   // הייצוא יתבצע מדף המשובים בלבד
@@ -55,10 +95,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _settlementDisplayText = selectedSettlement ?? '';
     // מקצה ברירת מחדל אחד
     stations.add(RangeStation(name: '', bulletsCount: 0));
+    _rangeType = widget.rangeType;
+    // track editing id and load existing temporary if provided
+    _editingFeedbackId = widget.feedbackId;
+    if (_editingFeedbackId != null) {
+      _loadExistingTemporaryFeedback(_editingFeedbackId!);
+    }
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     super.dispose();
   }
 
@@ -140,11 +187,24 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // הוספת חניכים
         for (int i = trainees.length; i < count; i++) {
           trainees.add(Trainee(name: '', hits: {}));
+          traineeNumbers.add(i + 1);
         }
+        // schedule autosave after changes
+        _scheduleAutosave();
       } else if (count < trainees.length) {
         // הסרת חניכים
         trainees = trainees.sublist(0, count);
+        traineeNumbers = List<int>.generate(trainees.length, (i) => i + 1);
+        _scheduleAutosave();
       }
+    });
+  }
+
+  void _scheduleAutosave() {
+    if (_isFinalized) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 1500), () async {
+      await _saveTemporarily();
     });
   }
 
@@ -167,7 +227,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   void _removeStation(int index) {
     if (stations.length <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('חייב להיות לפחות מקצה אחד')),
+        SnackBar(content: Text('חייב להיות לפחות $_itemLabel אחד')),
       );
       return;
     }
@@ -210,6 +270,38 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return total;
   }
 
+  // Calculate total points for a trainee (surprise mode only)
+  // Sum of all filled principle scores
+  int _getTraineeTotalPoints(int traineeIndex) {
+    if (traineeIndex >= trainees.length) return 0;
+    if (widget.mode != 'surprise') return 0;
+
+    int total = 0;
+    trainees[traineeIndex].hits.forEach((stationIndex, score) {
+      if (score > 0) {
+        total += score;
+      }
+    });
+    return total;
+  }
+
+  // Calculate average points for a trainee (surprise mode only)
+  // Average of filled principle scores (ignores empty/0 scores)
+  double _getTraineeAveragePoints(int traineeIndex) {
+    if (traineeIndex >= trainees.length) return 0.0;
+    if (widget.mode != 'surprise') return 0.0;
+
+    int total = 0;
+    int count = 0;
+    trainees[traineeIndex].hits.forEach((stationIndex, score) {
+      if (score > 0) {
+        total += score;
+        count++;
+      }
+    });
+    return count > 0 ? total / count : 0.0;
+  }
+
   // ⚠️ פונקציות הייצוא הוסרו - הייצוא יבוצע רק מדף המשובים (Admin בלבד)
   // ייצוא לקובץ XLSX מקומי יתבוצע על משובים שכבר נשמרו בלבד
 
@@ -229,17 +321,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       return;
     }
 
-    // וידוא שכל המקצים מוגדרים
+    // וידוא שכל המקצים/עקרונות מוגדרים
     for (int i = 0; i < stations.length; i++) {
       if (stations[i].name.trim().isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('אנא הזן שם למקצה ${i + 1}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('אנא הזן שם ל$_itemLabel ${i + 1}')),
+        );
         return;
       }
 
-      // בדיקת תקינות לפי סוג המקצה
-      if (stations[i].isLevelTester) {
+      // בדיקת תקינות לפי סוג המקצה (range mode only)
+      if (widget.mode == 'range' && stations[i].isLevelTester) {
         // בוחן רמה - חייב זמן ופגיעות
         if (stations[i].timeSeconds == null || stations[i].timeSeconds! <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -257,15 +349,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           );
           return;
         }
-      } else {
-        // מקצים רגילים - חייב כדורים
+      } else if (widget.mode == 'range') {
+        // מקצים רגילים - חייב כדורים (range mode only)
         if (stations[i].bulletsCount <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('אנא הזן מספר כדורים למקצה ${i + 1}')),
+            SnackBar(
+              content: Text('אנא הזן מספר כדורים ל$_itemLabel ${i + 1}'),
+            ),
           );
           return;
         }
       }
+      // Surprise mode: no bullets validation needed
     }
 
     // וידוא שכל החניכים מוגדרים
@@ -287,16 +382,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
 
       // הכנת הנתונים לשמירה - אינטגרציה מלאה עם מערכת המשובים
-      final String subFolder = widget.rangeType == 'קצרים'
-          ? 'דיווח קצר'
-          : widget.rangeType == 'ארוכים'
-          ? 'דיווח רחוק'
-          : 'תרגילי הפתעה';
+      final String subFolder = widget.mode == 'surprise'
+          ? 'תרגילי הפתעה'
+          : (_rangeType == 'קצרים' ? 'דיווח קצר' : 'דיווח רחוק');
 
       final Map<String, dynamic> data = {
         // שדות סטנדרטיים של מערכת המשובים (תאימות מלאה)
-        'exercise': 'מטווחים',
-        'folder': 'מטווחי ירי',
+        'exercise': widget.mode == 'surprise' ? 'תרגילי הפתעה' : 'מטווחים',
+        'folder': widget.mode == 'surprise'
+            ? 'משוב תרגילי הפתעה'
+            : 'מטווחי ירי',
         'instructorName': instructorName,
         'instructorId': uid,
         'instructorRole': currentUser?.role ?? 'Instructor',
@@ -304,7 +399,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdAt': FieldValue.serverTimestamp(),
 
         // שדות ייחודיים למטווחים
-        'rangeType': widget.rangeType, // 'קצרים' / 'ארוכים' / 'הפתעה'
+        'rangeType': _rangeType, // 'קצרים' / 'ארוכים' / 'הפתעה'
         'rangeSubFolder': subFolder, // תת-תיקייה
         'settlement': selectedSettlement,
         'attendeesCount': attendeesCount,
@@ -334,6 +429,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               (stationIdx, hits) => MapEntry('station_$stationIdx', hits),
             ),
             'totalHits': _getTraineeTotalHits(index),
+            'number': traineeNumbers.length > index
+                ? traineeNumbers[index]
+                : index + 1,
           };
         }).toList(),
 
@@ -345,8 +443,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'criteriaList': [],
       };
 
-      // שמירה ב-Firestore תחת feedbacks (אינטגרציה מלאה)
-      await FirebaseFirestore.instance.collection('feedbacks').add(data);
+      // שמירה ב-Firestore תחת feedbacks (אינטגריה מלאה)
+      // If we are editing an existing temporary feedback, update it
+      if (widget.feedbackId != null) {
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(widget.feedbackId)
+            .update({
+              ...data,
+              'status': 'final',
+              'folder': 'מטווחי ירי',
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+      } else {
+        // new final save
+        await FirebaseFirestore.instance.collection('feedbacks').add({
+          ...data,
+          'status': 'final',
+        });
+      }
 
       if (!mounted) return;
 
@@ -378,44 +493,158 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       selectedSettlement != null &&
       attendeesCount > 0 &&
       stations.isNotEmpty &&
-      stations.first.name.isNotEmpty;
+      // at least one shooting session must have a name or manual station
+      stations.any((s) => s.name.trim().isNotEmpty || s.isManual);
 
-  void _saveTemporarily() {
-    final tempFeedback = {
+  Future<void> _saveTemporarily() async {
+    // Build data similar to final save but mark as temporary and store under feedbacks
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    // Determine exercise type and folder based on mode
+    final String exerciseType;
+    final String tempFolder;
+    final String type;
+
+    if (widget.mode == 'surprise') {
+      exerciseType = 'תרגילי הפתעה';
+      tempFolder = 'תרגילי הפתעה - משוב זמני';
+      type = 'surprise_exercise';
+    } else {
+      exerciseType = 'מטווחים';
+      tempFolder = 'מטווחים - משוב זמני';
+      type = 'range_training';
+    }
+
+    final Map<String, dynamic> data = {
+      'exercise': exerciseType,
+      'folder': tempFolder,
+      'status': 'temporary',
+      'type': type,
+      'instructorName': instructorName,
+      'instructorId': uid ?? '',
+      'instructorRole': currentUser?.role ?? 'Instructor',
+      'rangeType': _rangeType,
       'settlement': selectedSettlement,
       'attendeesCount': attendeesCount,
       'stations': stations.map((s) => s.toJson()).toList(),
-      'trainees': trainees.map((t) => t.toJson()).toList(),
-      'instructorName': instructorName,
-      'rangeType': widget.rangeType,
-      'savedAt': DateTime.now().toIso8601String(),
+      'trainees': trainees.asMap().entries.map((entry) {
+        final idx = entry.key;
+        final t = entry.value;
+        return {
+          'name': t.name,
+          'hits': t.hits.map((k, v) => MapEntry('station_$k', v)),
+          'totalHits': _getTraineeTotalHits(idx),
+          'number': traineeNumbers.length > idx ? traineeNumbers[idx] : idx + 1,
+        };
+      }).toList(),
+      'name': selectedSettlement ?? '',
+      'role': widget.mode == 'surprise' ? 'תרגיל הפתעה' : 'מטווח',
+      'scores': {},
+      'notes': {'temporary': 'שמירה זמנית'},
+      'criteriaList': [],
+      'createdAt': FieldValue.serverTimestamp(),
     };
 
-    FirebaseFirestore.instance
-        .collection('temporary_feedbacks')
-        .add(tempFeedback);
+    try {
+      if (_editingFeedbackId != null) {
+        // update existing temporary document
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(_editingFeedbackId)
+            .update(data);
+      } else {
+        final ref = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .add(data);
+        _editingFeedbackId = ref.id;
+      }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('המשוב נשמר באופן זמני')));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('המשוב נשמר באופן זמני')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה זמנית: $e')));
+    }
+  }
+
+  Future<void> _loadExistingTemporaryFeedback(String id) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(id)
+          .get();
+      if (!doc.exists) return;
+      final data = doc.data();
+      if (data == null) return;
+
+      setState(() {
+        selectedSettlement =
+            data['settlement'] as String? ?? selectedSettlement;
+        _settlementDisplayText = selectedSettlement ?? '';
+        attendeesCount =
+            (data['attendeesCount'] as num?)?.toInt() ?? attendeesCount;
+        instructorName = data['instructorName'] as String? ?? instructorName;
+
+        stations =
+            (data['stations'] as List?)?.map((e) {
+              final m = Map<String, dynamic>.from(e as Map);
+              return RangeStation(
+                name: m['name']?.toString() ?? '',
+                bulletsCount: (m['bulletsCount'] as num?)?.toInt() ?? 0,
+                timeSeconds: (m['timeSeconds'] as num?)?.toInt(),
+                hits: (m['hits'] as num?)?.toInt(),
+                isManual: m['isManual'] as bool? ?? false,
+                isLevelTester: m['isLevelTester'] as bool? ?? false,
+                selectedRubrics:
+                    (m['selectedRubrics'] as List?)
+                        ?.map((x) => x.toString())
+                        .toList() ??
+                    ['זמן', 'פגיעות'],
+              );
+            }).toList() ??
+            stations;
+
+        trainees =
+            (data['trainees'] as List?)?.map((e) {
+              final m = Map<String, dynamic>.from(e as Map);
+              final name = m['name']?.toString() ?? '';
+              final hitsRaw = m['hits'] as Map? ?? {};
+              final hits = <int, int>{};
+              hitsRaw.forEach((k, v) {
+                // keys may be 'station_0' or int
+                if (k is String && k.startsWith('station_')) {
+                  final idx = int.tryParse(k.replaceFirst('station_', '')) ?? 0;
+                  hits[idx] = (v as num?)?.toInt() ?? 0;
+                } else if (k is int) {
+                  hits[k] = (v as num?)?.toInt() ?? 0;
+                }
+              });
+              return Trainee(name: name, hits: hits);
+            }).toList() ??
+            trainees;
+        // rebuild sequential numbers according to loaded trainees
+        traineeNumbers = List<int>.generate(trainees.length, (i) => i + 1);
+      });
+    } catch (e) {
+      debugPrint('Error loading temp feedback $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // קביעת שם המטווח להצגה
-    final String rangeTitle = widget.rangeType == 'קצרים'
-        ? 'טווח קצר'
-        : widget.rangeType == 'ארוכים'
-        ? 'טווח רחוק'
-        : 'תרגילי הפתעה';
+    // קביעת שם המטווח/תרגיל להצגה
+    final String rangeTitle = widget.mode == 'surprise'
+        ? 'תרגילי הפתעה'
+        : (_rangeType == 'קצרים' ? 'טווח קצר' : 'טווח רחוק');
 
     return Scaffold(
       appBar: AppBar(
         title: Text(rangeTitle),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_forward),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const StandardBackButton(),
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -477,18 +706,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ),
               const SizedBox(height: 32),
 
-              // כותרת מקצים
+              // כותרת מקצים/עקרונות
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'מקצים',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  Text(
+                    _itemsLabel,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   ElevatedButton.icon(
                     onPressed: _addStation,
                     icon: const Icon(Icons.add),
-                    label: const Text('הוסף מקצה'),
+                    label: Text(_addItemLabel),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                     ),
@@ -512,7 +744,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         Row(
                           children: [
                             Text(
-                              'מקצה ${index + 1}',
+                              '$_itemLabel ${index + 1}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -545,35 +777,47 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             initialValue: station.name.isEmpty
                                 ? null
                                 : station.name,
-                            hint: const Text('בחר מקצה'),
-                            decoration: const InputDecoration(
-                              labelText: 'שם המקצה',
+                            hint: Text(
+                              widget.mode == 'surprise'
+                                  ? 'בחר עיקרון'
+                                  : 'בחר מקצה',
+                            ),
+                            decoration: InputDecoration(
+                              labelText: widget.mode == 'surprise'
+                                  ? 'שם העיקרון'
+                                  : 'שם המקצה',
                               border: OutlineInputBorder(),
                               isDense: true,
                             ),
-                            items: availableStations
-                                .map(
-                                  (s) => DropdownMenuItem(
-                                    value: s,
-                                    child: Text(s),
-                                  ),
-                                )
-                                .toList(),
+                            items:
+                                (widget.mode == 'surprise'
+                                        ? availablePrinciples
+                                        : availableStations)
+                                    .map(
+                                      (s) => DropdownMenuItem(
+                                        value: s,
+                                        child: Text(s),
+                                      ),
+                                    )
+                                    .toList(),
                             onChanged: (v) {
                               setState(() {
                                 station.name = v ?? '';
-                                // עדכון סוג המקצה לפי השם
-                                if (v == 'בוחן רמה') {
-                                  station.isLevelTester = true;
-                                  station.isManual = false;
-                                } else if (v == 'מקצה ידני') {
-                                  station.isManual = true;
-                                  station.isLevelTester = false;
-                                } else {
-                                  station.isLevelTester = false;
-                                  station.isManual = false;
+                                // עדכון סוג המקצה לפי השם (range mode only)
+                                if (widget.mode == 'range') {
+                                  if (v == 'בוחן רמה') {
+                                    station.isLevelTester = true;
+                                    station.isManual = false;
+                                  } else if (v == 'מקצה ידני') {
+                                    station.isManual = true;
+                                    station.isLevelTester = false;
+                                  } else {
+                                    station.isLevelTester = false;
+                                    station.isManual = false;
+                                  }
                                 }
                               });
+                              _scheduleAutosave();
                             },
                           ),
                         ],
@@ -623,8 +867,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ),
                             ],
                           ),
-                        ] else ...[
-                          // מקצים רגילים - כדורים
+                        ] else if (widget.mode == 'range') ...[
+                          // מקצים רגילים - כדורים (range mode only)
                           TextField(
                             decoration: const InputDecoration(
                               labelText: 'מספר כדורים',
@@ -642,6 +886,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             },
                           ),
                         ],
+                        // Surprise mode: no bullets field needed
                       ],
                     ),
                   ),
@@ -685,6 +930,34 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           )
                         : const Text(
                             'שמור מטווח',
+                            style: TextStyle(fontSize: 18),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+                // Finalize button: explicitly finalize temporary feedbacks
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _saveToFirestore,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.deepOrange,
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'שמור סופי',
                             style: TextStyle(fontSize: 18),
                           ),
                   ),
@@ -741,45 +1014,128 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       topRight: Radius.circular(8),
                     ),
                   ),
-                  child: const Text(
-                    'הזנת פגיעות - החלק ימינה לגלילה',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  child: Text(
+                    widget.mode == 'surprise'
+                        ? 'הזנת ציונים - החלק ימינה לגלילה'
+                        : 'הזנת פגיעות - החלק ימינה לגלילה',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                 ),
                 Expanded(
                   child: Row(
                     children: [
-                      // Sticky trainee names column (right side)
-                      Container(
-                        width: 120,
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(color: Colors.grey.shade300),
-                          ),
-                        ),
+                      // Frozen columns on the left: Number FIRST (appears RIGHT in RTL), then Name
+                      SizedBox(
+                        width: 80,
                         child: Column(
                           children: [
-                            // Header for trainee column
                             Container(
                               height: 60,
                               padding: const EdgeInsets.all(8.0),
                               decoration: BoxDecoration(
                                 color: Colors.blueGrey.shade50,
                                 border: Border(
+                                  right: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
                                   bottom: BorderSide(
                                     color: Colors.grey.shade300,
                                   ),
                                 ),
                               ),
                               child: const Text(
-                                'חניך',
+                                'מספר',
                                 style: TextStyle(fontWeight: FontWeight.bold),
                                 textAlign: TextAlign.center,
                               ),
                             ),
-                            // Trainee name fields
-                            ...trainees.map((trainee) {
+                            // Compact square Number input fields (editable, sequential by default)
+                            ...trainees.asMap().entries.map((entry) {
+                              final idx = entry.key;
+                              return Container(
+                                height: 60,
+                                padding: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: Colors.grey.shade200,
+                                    ),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 44,
+                                    height: 40,
+                                    child: TextField(
+                                      controller: TextEditingController(
+                                        text: traineeNumbers.length > idx
+                                            ? traineeNumbers[idx].toString()
+                                            : '${idx + 1}',
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      textAlign: TextAlign.center,
+                                      decoration: const InputDecoration(
+                                        hintText: '1',
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                      onChanged: (v) {
+                                        setState(() {
+                                          final val =
+                                              int.tryParse(v) ?? (idx + 1);
+                                          if (traineeNumbers.length > idx) {
+                                            traineeNumbers[idx] = val;
+                                          } else {
+                                            traineeNumbers = List<int>.generate(
+                                              trainees.length,
+                                              (i) => i + 1,
+                                            );
+                                            traineeNumbers[idx] = val;
+                                          }
+                                        });
+                                        _scheduleAutosave();
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                      // Second frozen column: Name (160px width)
+                      SizedBox(
+                        width: 160,
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 60,
+                              padding: const EdgeInsets.all(8.0),
+                              decoration: BoxDecoration(
+                                color: Colors.blueGrey.shade50,
+                                border: Border(
+                                  right: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                  bottom: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                ),
+                              ),
+                              child: const Text(
+                                'Name',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            // Name input fields
+                            ...trainees.asMap().entries.map((entry) {
+                              final trainee = entry.value;
                               return Container(
                                 height: 60,
                                 padding: const EdgeInsets.all(4.0),
@@ -791,6 +1147,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   ),
                                 ),
                                 child: TextField(
+                                  controller:
+                                      TextEditingController(text: trainee.name)
+                                        ..selection = TextSelection.collapsed(
+                                          offset: trainee.name.length,
+                                        ),
                                   decoration: const InputDecoration(
                                     hintText: 'שם חניך',
                                     isDense: true,
@@ -806,6 +1167,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     setState(() {
                                       trainee.name = v;
                                     });
+                                    _scheduleAutosave();
                                   },
                                 ),
                               );
@@ -851,7 +1213,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           children: [
                                             Text(
                                               station.name.isEmpty
-                                                  ? 'מקצה ${stationIndex + 1}'
+                                                  ? '$_itemLabel ${stationIndex + 1}'
                                                   : station.name,
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.bold,
@@ -861,14 +1223,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                            Text(
-                                              '(${station.bulletsCount})',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.grey.shade600,
+                                            if (widget.mode == 'range')
+                                              Text(
+                                                '(${station.bulletsCount})',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                                textAlign: TextAlign.center,
                                               ),
-                                              textAlign: TextAlign.center,
-                                            ),
                                           ],
                                         ),
                                       ),
@@ -905,26 +1268,51 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                               fontSize: 12,
                                             ),
                                             onChanged: (v) {
-                                              final hits = int.tryParse(v) ?? 0;
-                                              if (hits > station.bulletsCount) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                              final score =
+                                                  int.tryParse(v) ?? 0;
+
+                                              // Validation based on mode
+                                              if (widget.mode == 'surprise') {
+                                                // Surprise mode: 1-10 scale
+                                                if (score < 0 || score > 10) {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'ציון חייב להיות בין 1 ל-10',
+                                                      ),
+                                                      duration: Duration(
+                                                        seconds: 1,
+                                                      ),
                                                     ),
-                                                    duration: const Duration(
-                                                      seconds: 1,
+                                                  );
+                                                  return;
+                                                }
+                                              } else {
+                                                // Range mode: hits limited by bullets
+                                                if (score >
+                                                    station.bulletsCount) {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                      ),
+                                                      duration: const Duration(
+                                                        seconds: 1,
+                                                      ),
                                                     ),
-                                                  ),
-                                                );
-                                                return;
+                                                  );
+                                                  return;
+                                                }
                                               }
                                               setState(() {
                                                 trainee.hits[stationIndex] =
-                                                    hits;
+                                                    score;
                                               });
+                                              _scheduleAutosave();
                                             },
                                           ),
                                         );
@@ -933,133 +1321,267 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   ),
                                 );
                               }),
-                              // Summary columns
-                              Container(
-                                width: 100,
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    left: BorderSide(
-                                      color: Colors.grey.shade300,
+                              // Summary columns (conditional based on mode)
+                              if (widget.mode == 'surprise') ...[
+                                // Total Points column (Surprise mode)
+                                Container(
+                                  width: 100,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    // Header
-                                    Container(
-                                      height: 60,
-                                      padding: const EdgeInsets.all(4.0),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.shade50,
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: Colors.grey.shade300,
-                                          ),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        'פגיעות/\nכדורים',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 10,
-                                          color: Colors.blue,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    // Values
-                                    ...trainees.asMap().entries.map((entry) {
-                                      final traineeIndex = entry.key;
-                                      return Container(
+                                  child: Column(
+                                    children: [
+                                      // Header
+                                      Container(
                                         height: 60,
                                         padding: const EdgeInsets.all(4.0),
                                         decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
                                           border: Border(
                                             bottom: BorderSide(
-                                              color: Colors.grey.shade200,
+                                              color: Colors.grey.shade300,
                                             ),
                                           ),
                                         ),
-                                        child: Text(
-                                          '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blue,
-                                            fontSize: 11,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      );
-                                    }),
-                                  ],
-                                ),
-                              ),
-                              // Percentage column
-                              Container(
-                                width: 80,
-                                color: Colors.transparent,
-                                child: Column(
-                                  children: [
-                                    // Header
-                                    Container(
-                                      height: 60,
-                                      padding: const EdgeInsets.all(4.0),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade50,
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: Colors.grey.shade300,
-                                          ),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        'אחוז\nפגיעות',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 10,
-                                          color: Colors.green,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    // Values
-                                    ...trainees.asMap().entries.map((entry) {
-                                      final traineeIndex = entry.key;
-                                      final totalHits = _getTraineeTotalHits(
-                                        traineeIndex,
-                                      );
-                                      final totalBullets = _getTotalBullets();
-                                      final percentage = totalBullets > 0
-                                          ? (totalHits / totalBullets * 100)
-                                          : 0.0;
-                                      return Container(
-                                        height: 60,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade200,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '${percentage.toStringAsFixed(1)}%',
+                                        child: const Text(
+                                          'סך הכל\nנקודות',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 11,
-                                            color: percentage >= 70
-                                                ? Colors.green
-                                                : percentage >= 50
-                                                ? Colors.orange
-                                                : Colors.red,
+                                            fontSize: 10,
+                                            color: Colors.blue,
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
-                                      );
-                                    }),
-                                  ],
+                                      ),
+                                      // Values
+                                      ...trainees.asMap().entries.map((entry) {
+                                        final traineeIndex = entry.key;
+                                        final totalPoints =
+                                            _getTraineeTotalPoints(
+                                              traineeIndex,
+                                            );
+                                        return Container(
+                                          height: 60,
+                                          padding: const EdgeInsets.all(4.0),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            totalPoints.toString(),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue,
+                                              fontSize: 11,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                                // Average Points column (Surprise mode)
+                                Container(
+                                  width: 80,
+                                  color: Colors.transparent,
+                                  child: Column(
+                                    children: [
+                                      // Header
+                                      Container(
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.shade50,
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade300,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'ממוצע\nנקודות',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                            color: Colors.green,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                      // Values
+                                      ...trainees.asMap().entries.map((entry) {
+                                        final traineeIndex = entry.key;
+                                        final avgPoints =
+                                            _getTraineeAveragePoints(
+                                              traineeIndex,
+                                            );
+                                        return Container(
+                                          height: 60,
+                                          padding: const EdgeInsets.all(4.0),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            avgPoints > 0
+                                                ? avgPoints.toStringAsFixed(1)
+                                                : '—',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: avgPoints >= 7
+                                                  ? Colors.green
+                                                  : avgPoints >= 5
+                                                  ? Colors.orange
+                                                  : Colors.red,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ),
+                              ] else ...[
+                                // Bullets/Hits column (Range mode)
+                                Container(
+                                  width: 100,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      // Header
+                                      Container(
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade300,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'פגיעות/\nכדורים',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                            color: Colors.blue,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                      // Values
+                                      ...trainees.asMap().entries.map((entry) {
+                                        final traineeIndex = entry.key;
+                                        return Container(
+                                          height: 60,
+                                          padding: const EdgeInsets.all(4.0),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue,
+                                              fontSize: 11,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ),
+                                // Percentage column (Range mode)
+                                Container(
+                                  width: 80,
+                                  color: Colors.transparent,
+                                  child: Column(
+                                    children: [
+                                      // Header
+                                      Container(
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.shade50,
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade300,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'אחוז\nפגיעות',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                            color: Colors.green,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                      // Values
+                                      ...trainees.asMap().entries.map((entry) {
+                                        final traineeIndex = entry.key;
+                                        final totalHits = _getTraineeTotalHits(
+                                          traineeIndex,
+                                        );
+                                        final totalBullets = _getTotalBullets();
+                                        final percentage = totalBullets > 0
+                                            ? (totalHits / totalBullets * 100)
+                                            : 0.0;
+                                        return Container(
+                                          height: 60,
+                                          padding: const EdgeInsets.all(4.0),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${percentage.toStringAsFixed(1)}%',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                              color: percentage >= 70
+                                                  ? Colors.green
+                                                  : percentage >= 50
+                                                  ? Colors.orange
+                                                  : Colors.red,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1084,6 +1606,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   // Header row
                   Row(
                     children: [
+                      // First frozen column: Number (appears RIGHT in RTL)
+                      const SizedBox(
+                        width: 80,
+                        child: Text(
+                          'מספר',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      // Second frozen column: Name
                       const SizedBox(
                         width: 120,
                         child: Text(
@@ -1126,30 +1658,58 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   ),
                                 );
                               }),
-                              const SizedBox(
-                                width: 100,
-                                child: Text(
-                                  'פגיעות/כדורים',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
-                                    fontSize: 12,
+                              // Summary column headers (conditional based on mode)
+                              if (widget.mode == 'surprise') ...[
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'סך הכל נקודות',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
-                              ),
-                              const SizedBox(
-                                width: 100,
-                                child: Text(
-                                  'אחוז פגיעות',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                    fontSize: 12,
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'ממוצע נקודות',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
-                              ),
+                              ] else ...[
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'פגיעות/כדורים',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'אחוז פגיעות',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1165,6 +1725,46 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
                       child: Row(
                         children: [
+                          // First column: Number (appears RIGHT in RTL)
+                          SizedBox(
+                            width: 80,
+                            child: TextField(
+                              controller: TextEditingController(
+                                text: traineeNumbers.length > traineeIndex
+                                    ? traineeNumbers[traineeIndex].toString()
+                                    : '${traineeIndex + 1}',
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: 'מספר',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              textAlign: TextAlign.center,
+                              onChanged: (v) {
+                                final n = int.tryParse(v) ?? (traineeIndex + 1);
+                                setState(() {
+                                  // ensure list length
+                                  while (traineeNumbers.length <=
+                                      traineeIndex) {
+                                    traineeNumbers.add(
+                                      traineeNumbers.length + 1,
+                                    );
+                                  }
+                                  traineeNumbers[traineeIndex] = n;
+                                });
+                                _scheduleAutosave();
+                              },
+                            ),
+                          ),
+                          // Second column: Name
                           SizedBox(
                             width: 120,
                             child: TextField(
@@ -1182,6 +1782,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 setState(() {
                                   trainee.name = v;
                                 });
+                                _scheduleAutosave();
                               },
                             ),
                           ),
@@ -1214,66 +1815,137 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ],
                                         textAlign: TextAlign.center,
                                         onChanged: (v) {
-                                          final hits = int.tryParse(v) ?? 0;
-                                          if (hits > station.bulletsCount) {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                          final score = int.tryParse(v) ?? 0;
+
+                                          // Validation based on mode
+                                          if (widget.mode == 'surprise') {
+                                            // Surprise mode: 1-10 scale
+                                            if (score < 0 || score > 10) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'ציון חייב להיות בין 1 ל-10',
+                                                  ),
+                                                  duration: Duration(
+                                                    seconds: 1,
+                                                  ),
                                                 ),
-                                                duration: const Duration(
-                                                  seconds: 1,
+                                              );
+                                              return;
+                                            }
+                                          } else {
+                                            // Range mode: hits limited by bullets
+                                            if (score > station.bulletsCount) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                  ),
+                                                  duration: const Duration(
+                                                    seconds: 1,
+                                                  ),
                                                 ),
-                                              ),
-                                            );
-                                            return;
+                                              );
+                                              return;
+                                            }
                                           }
                                           setState(() {
-                                            trainee.hits[stationIndex] = hits;
+                                            trainee.hits[stationIndex] = score;
                                           });
+                                          _scheduleAutosave();
                                         },
                                       ),
                                     );
                                   }),
-                                  SizedBox(
-                                    width: 100,
-                                    child: Text(
-                                      '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 100,
-                                    child: Builder(
-                                      builder: (_) {
-                                        final totalHits = _getTraineeTotalHits(
+                                  // Summary columns (conditional based on mode)
+                                  if (widget.mode == 'surprise') ...[
+                                    // Total Points column (Surprise mode)
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        _getTraineeTotalPoints(
                                           traineeIndex,
-                                        );
-                                        final totalBullets = _getTotalBullets();
-                                        final percentage = totalBullets > 0
-                                            ? (totalHits / totalBullets * 100)
-                                            : 0.0;
-                                        return Text(
-                                          '${percentage.toStringAsFixed(1)}%',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: percentage >= 70
-                                                ? Colors.green
-                                                : percentage >= 50
-                                                ? Colors.orange
-                                                : Colors.red,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        );
-                                      },
+                                        ).toString(),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
-                                  ),
+                                    // Average Points column (Surprise mode)
+                                    SizedBox(
+                                      width: 100,
+                                      child: Builder(
+                                        builder: (_) {
+                                          final avgPoints =
+                                              _getTraineeAveragePoints(
+                                                traineeIndex,
+                                              );
+                                          return Text(
+                                            avgPoints > 0
+                                                ? avgPoints.toStringAsFixed(1)
+                                                : '—',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: avgPoints >= 7
+                                                  ? Colors.green
+                                                  : avgPoints >= 5
+                                                  ? Colors.orange
+                                                  : Colors.red,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    // Bullets/Hits column (Range mode)
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    // Percentage column (Range mode)
+                                    SizedBox(
+                                      width: 100,
+                                      child: Builder(
+                                        builder: (_) {
+                                          final totalHits =
+                                              _getTraineeTotalHits(
+                                                traineeIndex,
+                                              );
+                                          final totalBullets =
+                                              _getTotalBullets();
+                                          final percentage = totalBullets > 0
+                                              ? (totalHits / totalBullets * 100)
+                                              : 0.0;
+                                          return Text(
+                                            '${percentage.toStringAsFixed(1)}%',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: percentage >= 70
+                                                  ? Colors.green
+                                                  : percentage >= 50
+                                                  ? Colors.orange
+                                                  : Colors.red,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

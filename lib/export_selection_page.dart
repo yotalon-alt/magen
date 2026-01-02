@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'main.dart';
 import 'feedback_export_service.dart';
+import 'widgets/standard_back_button.dart';
 
 /// דף בחירת נתונים לייצוא - רק לאדמין
 class ExportSelectionPage extends StatefulWidget {
@@ -100,8 +101,50 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
     setState(() => _isExporting = true);
 
     try {
-      // ייצוא לקובץ XLSX מקומי
-      await FeedbackExportService.exportAllFeedbacksToXlsx();
+      // Prepare schema (page defines its own columns)
+      final keys = [
+        'id',
+        'role',
+        'name',
+        'exercise',
+        'scores',
+        'notes',
+        'criteriaList',
+        'createdAt',
+        'instructorName',
+        'instructorRole',
+        'commandText',
+        'commandStatus',
+        'folder',
+        'scenario',
+        'settlement',
+        'attendeesCount',
+      ];
+      final headers = [
+        'ID',
+        'תפקיד',
+        'שם',
+        'תרגיל',
+        'ציונים',
+        'הערות',
+        'קריטריונים',
+        'תאריך יצירה',
+        'מדריך',
+        'תפקיד מדריך',
+        'טקסט פקודה',
+        'סטטוס פקודה',
+        'תיקייה',
+        'תרחיש',
+        'יישוב',
+        'מספר נוכחים',
+      ];
+
+      await FeedbackExportService.exportWithSchema(
+        keys: keys,
+        headers: headers,
+        feedbacks: [selected],
+        fileNamePrefix: 'feedbacks_range',
+      );
 
       if (!mounted) return;
 
@@ -166,19 +209,136 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
       return;
     }
 
+    // Prepare schema (page defines its own columns)
+    final keys = [
+      'id',
+      'role',
+      'name',
+      'exercise',
+      'scores',
+      'notes',
+      'criteriaList',
+      'createdAt',
+      'instructorName',
+      'instructorRole',
+      'commandText',
+      'commandStatus',
+      'folder',
+      'scenario',
+      'settlement',
+      'attendeesCount',
+    ];
+    final headers = [
+      'ID',
+      'תפקיד',
+      'שם',
+      'תרגיל',
+      'ציונים',
+      'הערות',
+      'קריטריונים',
+      'תאריך יצירה',
+      'מדריך',
+      'תפקיד מדריך',
+      'טקסט פקודה',
+      'סטטוס פקודה',
+      'תיקייה',
+      'תרחיש',
+      'יישוב',
+      'מספר נוכחים',
+    ];
+
+    // Ask user to optionally select a subset of the filtered feedbacks.
+    final maybeSelectedIds = await showDialog<List<String>?>(
+      context: context,
+      builder: (ctx) {
+        final Set<String> selectedIds = {};
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('בחר משובים לייצוא (או לחץ "ייצא את כולם")'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: StatefulBuilder(
+                builder: (innerCtx, setInner) {
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: feedbacksList.length,
+                    itemBuilder: (_, i) {
+                      final f = feedbacksList[i];
+                      final id = f.id ?? i.toString();
+                      return CheckboxListTile(
+                        value: selectedIds.contains(id),
+                        title: Text('${f.name} — ${f.settlement}'),
+                        subtitle: Text(
+                          f.createdAt.toLocal().toString().split('.').first,
+                        ),
+                        onChanged: (v) => setInner(() {
+                          if (v == true) {
+                            selectedIds.add(id);
+                          } else {
+                            selectedIds.remove(id);
+                          }
+                        }),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('ביטול'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, selectedIds.toList()),
+                child: const Text('ייצא נבחרים'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // If dialog was cancelled, do nothing
+    if (maybeSelectedIds == null) return;
+
+    // Require explicit selections: do not export everything implicitly
+    if (maybeSelectedIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('לא נבחרו משובים לייצוא')));
+      return;
+    }
+
+    final selectedSet = maybeSelectedIds.toSet();
+    final List<FeedbackModel> toExport = feedbacksList
+        .where((f) => selectedSet.contains(f.id))
+        .toList();
+    if (toExport.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('לא נבחרו משובים תקפים לייצוא')),
+      );
+      return;
+    }
+
     setState(() => _isExporting = true);
 
     try {
-      // ייצוא לקובץ XLSX מקומי
-      await FeedbackExportService.exportAllFeedbacksToXlsx();
+      await FeedbackExportService.exportWithSchema(
+        keys: keys,
+        headers: headers,
+        feedbacks: toExport,
+        fileNamePrefix: 'feedbacks_range_multiple',
+      );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '${feedbacksList.length} משובים יוצאו בהצלחה לקובץ מקומי!',
-          ),
+          content: Text('${toExport.length} משובים יוצאו בהצלחה לקובץ מקומי!'),
           backgroundColor: Colors.green,
         ),
       );
@@ -213,10 +373,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('ייצוא משובי מטווחים'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-          ),
+          leading: const StandardBackButton(),
         ),
         body: _isExporting
             ? const Center(

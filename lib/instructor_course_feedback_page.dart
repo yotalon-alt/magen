@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart';
 import 'feedback_export_service.dart';
+import 'widgets/standard_back_button.dart';
 
 class InstructorCourseFeedbackPage extends StatefulWidget {
   final String? screeningId;
@@ -546,8 +547,7 @@ class _InstructorCourseFeedbackPageState
       child: Scaffold(
         appBar: AppBar(
           title: const Text('מיון לקורס מדריכים'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
+          leading: StandardBackButton(
             onPressed: () async {
               if (hasDraft) {
                 final shouldLeave = await showDialog<bool>(

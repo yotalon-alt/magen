@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
 import 'main.dart';
+import 'widgets/standard_back_button.dart';
 
 /// דף תת-תיקיות של "משובים כללי"
 /// מציג 2 אופציות: משובים רגילים ומיונים לקורס מדריכים
@@ -14,11 +15,7 @@ class GeneralFeedbacksSubFoldersPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('משובים – כללי'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -182,11 +179,7 @@ class _RegularFeedbacksListPageState extends State<RegularFeedbacksListPage> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('משובים רגילים'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
           actions: [
             IconButton(
               icon: _isRefreshing

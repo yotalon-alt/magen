@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'main.dart';
 import 'feedback_export_service.dart';
+import 'widgets/standard_back_button.dart';
 
 /// דף ייצוא משובים אוניברסלי - רק לאדמין
 /// תומך בבחירה מרובה, "בחר הכל", סינונים מתקדמים
@@ -178,8 +179,50 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
         throw Exception('אין משובים לייצוא');
       }
 
-      // ייצוא משובים לקובץ XLSX
-      await FeedbackExportService.exportAllFeedbacksToXlsx();
+      // Prepare schema (page defines its export columns)
+      final keys = [
+        'id',
+        'role',
+        'name',
+        'exercise',
+        'scores',
+        'notes',
+        'criteriaList',
+        'createdAt',
+        'instructorName',
+        'instructorRole',
+        'commandText',
+        'commandStatus',
+        'folder',
+        'scenario',
+        'settlement',
+        'attendeesCount',
+      ];
+      final headers = [
+        'ID',
+        'תפקיד',
+        'שם',
+        'תרגיל',
+        'ציונים',
+        'הערות',
+        'קריטריונים',
+        'תאריך יצירה',
+        'מדריך',
+        'תפקיד מדריך',
+        'טקסט פקודה',
+        'סטטוס פקודה',
+        'תיקייה',
+        'תרחיש',
+        'יישוב',
+        'מספר נוכחים',
+      ];
+
+      await FeedbackExportService.exportWithSchema(
+        keys: keys,
+        headers: headers,
+        feedbacks: filteredFeedbacks,
+        fileNamePrefix: 'feedbacks_unified',
+      );
 
       if (!mounted) return;
 
@@ -237,8 +280,50 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
         throw Exception('לא נמצאו משובים נבחרים');
       }
 
-      // ייצוא לקובץ XLSX מקומי
-      await FeedbackExportService.exportAllFeedbacksToXlsx();
+      // Prepare schema (page defines its export columns)
+      final keys = [
+        'id',
+        'role',
+        'name',
+        'exercise',
+        'scores',
+        'notes',
+        'criteriaList',
+        'createdAt',
+        'instructorName',
+        'instructorRole',
+        'commandText',
+        'commandStatus',
+        'folder',
+        'scenario',
+        'settlement',
+        'attendeesCount',
+      ];
+      final headers = [
+        'ID',
+        'תפקיד',
+        'שם',
+        'תרגיל',
+        'ציונים',
+        'הערות',
+        'קריטריונים',
+        'תאריך יצירה',
+        'מדריך',
+        'תפקיד מדריך',
+        'טקסט פקודה',
+        'סטטוס פקודה',
+        'תיקייה',
+        'תרחיש',
+        'יישוב',
+        'מספר נוכחים',
+      ];
+
+      await FeedbackExportService.exportWithSchema(
+        keys: keys,
+        headers: headers,
+        feedbacks: selectedFeedbacks,
+        fileNamePrefix: 'feedbacks_selected',
+      );
 
       if (!mounted) return;
 
@@ -290,10 +375,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text('ייצוא משובים (${_selectedFeedbackIds.length} נבחרו)'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-          ),
+          leading: const StandardBackButton(),
           actions: [
             // כפתור עזרה
             IconButton(

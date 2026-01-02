@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
 import '../instructor_course_feedback_page.dart';
+import '../widgets/standard_back_button.dart';
 
 class ScreeningsInProgressPage extends StatelessWidget {
   final String statusFilter;
@@ -18,7 +19,10 @@ class ScreeningsInProgressPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('משובים בתהליך – קורס מדריכים')),
+        appBar: AppBar(
+          title: const Text('משובים בתהליך – קורס מדריכים'),
+          leading: const StandardBackButton(),
+        ),
         body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: () {
             final uid =

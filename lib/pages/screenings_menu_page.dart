@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../instructor_course_feedback_page.dart';
 import 'screenings_in_progress_page.dart';
+import '../widgets/standard_back_button.dart';
 
 class ScreeningsMenuPage extends StatefulWidget {
   final String courseType; // expected: 'miunim'
@@ -18,11 +19,7 @@ class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('מיונים לקורס מדריכים'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),

@@ -10,11 +10,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'instructor_course_selection_feedbacks_page.dart';
 import 'pages/screenings_menu_page.dart';
-import 'voice_assistant.dart';
 import 'range_selection_page.dart';
 import 'feedback_export_service.dart';
 import 'export_selection_page.dart';
 import 'universal_export_page.dart';
+import 'surprise_drills_entry_page.dart';
+import 'widgets/standard_back_button.dart';
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -45,7 +46,7 @@ const List<String> feedbackFolders = <String>[
   'מיונים לקורס מדריכים',
   'משובים – כללי',
   'עבודה במבנה',
-  'משובים זמניים', // Temporary Feedbacks
+  'משוב תרגילי הפתעה',
 ];
 
 // Settlements list for dropdown (can be extended; empty list is valid)
@@ -877,7 +878,10 @@ class _ReadinessPageState extends State<ReadinessPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('מדד כשירות')),
+        appBar: AppBar(
+          title: const Text('מדד כשירות'),
+          leading: const StandardBackButton(),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
@@ -937,7 +941,10 @@ class AlertsPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('התראות מבצעיות')),
+        appBar: AppBar(
+          title: const Text('התראות מבצעיות'),
+          leading: const StandardBackButton(),
+        ),
         body: ListView(
           children: alerts.map((a) {
             if (a.containsKey('who')) {
@@ -982,7 +989,10 @@ class CommanderDashboardPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('לוח מבצע')),
+        appBar: AppBar(
+          title: const Text('לוח מבצע'),
+          leading: const StandardBackButton(),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView(
@@ -1069,321 +1079,6 @@ class _MainScreenState extends State<MainScreen> {
   final GlobalKey<NavigatorState> _materialsNavigatorKey =
       GlobalKey<NavigatorState>();
 
-  void _handleVoiceCommand(String command) {
-    VoiceCommandHandler.handleCommand(
-      context,
-      command,
-      selectedIndex,
-      _handleFeedbackFilter,
-      _handleStatisticsFilter,
-      _handleExerciseAction,
-      _handleMaterialsAction,
-      _handleNavigateBack,
-      _handleNavigateToPage,
-    );
-  }
-
-  void _handleNavigateBack() {
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-      debugPrint('🔙 Voice Command: Navigate back');
-    } else {
-      debugPrint('⚠️ Voice Command: Cannot pop, no route to go back');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('אין לאן לחזור'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  void _handleNavigateToPage(int pageIndex) {
-    if (pageIndex >= 0 && pageIndex < _pages.length) {
-      setState(() => selectedIndex = pageIndex);
-      debugPrint('📡 Voice Command: Navigate to page $pageIndex');
-    } else {
-      debugPrint('⚠️ Voice Command: Invalid page index $pageIndex');
-    }
-  }
-
-  void _handleFeedbackFilter(String filter) {
-    // Navigate to feedbacks page and apply filter
-    setState(() => selectedIndex = 2);
-    debugPrint('Feedback filter: $filter');
-
-    // Wait for page to build, then execute action
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-
-      // Action: Open first feedback
-      if (filter == 'action_open_first_feedback') {
-        if (feedbackStorage.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('אין משובים')));
-          return;
-        }
-        // Sort by date (oldest first) and open first
-        final sortedFeedbacks = List<FeedbackModel>.from(feedbackStorage)
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        Navigator.of(
-          context,
-        ).pushNamed('/feedback_details', arguments: sortedFeedbacks.first);
-        return;
-      }
-
-      // Action: Open last feedback
-      if (filter == 'action_open_last_feedback') {
-        if (feedbackStorage.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('אין משובים')));
-          return;
-        }
-        // Sort by date (newest first) and open first
-        final sortedFeedbacks = List<FeedbackModel>.from(feedbackStorage)
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        Navigator.of(
-          context,
-        ).pushNamed('/feedback_details', arguments: sortedFeedbacks.first);
-        return;
-      }
-
-      // Action: Search feedback by name
-      if (filter.startsWith('search_feedback_')) {
-        final name = filter.replaceFirst('search_feedback_', '');
-        final matchingFeedbacks = feedbackStorage
-            .where((f) => f.name.contains(name))
-            .toList();
-        if (matchingFeedbacks.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('לא נמצאו משובים עבור $name')));
-        } else if (matchingFeedbacks.length == 1) {
-          // Open the single matching feedback
-          Navigator.of(
-            context,
-          ).pushNamed('/feedback_details', arguments: matchingFeedbacks.first);
-        } else {
-          // Multiple matches - show count
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'נמצאו ${matchingFeedbacks.length} משובים עבור $name',
-              ),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-
-      // Action: Open any feedback (generic)
-      if (filter == 'action_open_feedback') {
-        if (feedbackStorage.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('אין משובים')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('לחץ על משוב ברשימה לפתיחה'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        return;
-      }
-
-      // Existing filter logic remains unchanged
-    });
-  }
-
-  void _handleStatisticsFilter(String filter) {
-    // Navigate to statistics page
-    setState(() => selectedIndex = 3);
-    debugPrint('Statistics filter: $filter');
-
-    // Wait for page to build, then apply filter
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      final statisticsState = _statisticsKey.currentState;
-      if (statisticsState == null) return;
-
-      // Action: Count feedbacks
-      if (filter == 'action_count_feedbacks') {
-        final total = feedbackStorage.length;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('סך הכל: $total משובים'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        return;
-      }
-
-      // Action: Count instructor course feedbacks
-      if (filter == 'action_count_instructor_feedbacks') {
-        final count = feedbackStorage
-            .where((f) => f.folder == 'מיונים לקורס מדריכים')
-            .length;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('משובי קורס מדריכים: $count'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        return;
-      }
-
-      // Action: Count exercise feedbacks (for current filtered exercise)
-      if (filter == 'action_count_exercise_feedbacks') {
-        final currentExercise = statisticsState.selectedExercise;
-        if (currentExercise == 'כל התרגילים') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('אנא בחר תרגיל קודם'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } else {
-          final count = feedbackStorage
-              .where((f) => f.exercise == currentExercise)
-              .length;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('משובים ב$currentExercise: $count'),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-
-      // Action: Clear all filters
-      if (filter == 'action_clear_filters') {
-        statisticsState.setState(() {
-          statisticsState.selectedRoleFilter = 'כל התפקידים';
-          statisticsState.selectedInstructor = 'כל המדריכים';
-          statisticsState.selectedExercise = 'כל התרגילים';
-          statisticsState.selectedSettlement = 'כל היישובים';
-          statisticsState.selectedFolder = 'כל התיקיות';
-          statisticsState.personFilter = '';
-          statisticsState.dateFrom = null;
-          statisticsState.dateTo = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('כל הסינונים אופסו'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
-
-      // Action: Open date filter (placeholder - manual action needed)
-      if (filter == 'action_filter_by_date') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('לחץ על כפתורי התאריך לבחירה'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-        return;
-      }
-
-      statisticsState.setState(() {
-        if (filter.contains('folder_')) {
-          // Extract folder name from filter
-          if (filter.contains('matawhim')) {
-            statisticsState.selectedFolder = 'מטווחי ירי';
-          } else if (filter.contains('hativah')) {
-            statisticsState.selectedFolder = 'מחלקות ההגנה – חטיבה 474';
-          } else if (filter.contains('binyan')) {
-            statisticsState.selectedFolder = 'עבודה במבנה';
-          } else if (filter.contains('mioonim_madrichim')) {
-            statisticsState.selectedFolder = 'מיונים לקורס מדריכים';
-          } else if (filter.contains('mioonim')) {
-            statisticsState.selectedFolder = 'מיונים – כללי';
-          } else if (filter.contains('general')) {
-            statisticsState.selectedFolder = 'משובים – כללי';
-          }
-        } else if (filter == 'filter_by_role') {
-          // Can't automatically select role without knowing which one
-          // User needs to specify in voice command
-        } else if (filter.contains('settlement_')) {
-          // Extract settlement name
-          final settlement = filter.replaceFirst('settlement_', '');
-          statisticsState.selectedSettlement = settlement;
-        } else if (filter.contains('exercise_')) {
-          // Filter by exercise
-          final exercise = filter.replaceFirst('exercise_', '');
-          if (exercise == 'maagal_patuach') {
-            statisticsState.selectedExercise = 'מעגל פתוח';
-          } else if (exercise == 'maagal_poruz') {
-            statisticsState.selectedExercise = 'מעגל פרוץ';
-          } else if (exercise == 'sarikot') {
-            statisticsState.selectedExercise = 'סריקות רחוב';
-          }
-        } else if (filter.contains('mioonim')) {
-          // מיונים – כללי בוטל; לא מבצעים פעולה
-          // השארנו במכוון ללא שינוי כדי להסיר רפרנס
-        }
-      });
-    });
-  }
-
-  void _handleExerciseAction(String action) {
-    // Navigate to exercises page first
-    setState(() => selectedIndex = 1);
-    debugPrint('Exercise action: $action');
-
-    // Wait for page to build, then open the specific exercise
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-
-      if (action == 'open_maagal_patuach') {
-        Navigator.of(
-          context,
-        ).pushNamed('/feedback_form', arguments: 'מעגל פתוח');
-      } else if (action == 'open_maagal_poruz') {
-        Navigator.of(
-          context,
-        ).pushNamed('/feedback_form', arguments: 'מעגל פרוץ');
-      } else if (action == 'open_sarikot') {
-        Navigator.of(
-          context,
-        ).pushNamed('/feedback_form', arguments: 'סריקות רחוב');
-      } else if (action == 'open_instructor_selection') {
-        Navigator.of(context).pushNamed('/screenings_menu');
-      }
-    });
-  }
-
-  void _handleMaterialsAction(String action) {
-    // Navigate to materials page first
-    setState(() => selectedIndex = 4);
-    debugPrint('Materials action: $action');
-
-    // Wait for page to build, then open the specific material
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-
-      if (action == 'open_maagal_patuach') {
-        Navigator.of(context).pushNamed('/maagal_patuach');
-      } else if (action == 'open_maagal_poruz') {
-        Navigator.of(context).pushNamed('/poruz');
-      } else if (action == 'open_sarikot') {
-        Navigator.of(context).pushNamed('/sarikot');
-      } else if (action == 'open_sheva') {
-        Navigator.of(context).pushNamed('/sheva');
-      } else if (action == 'open_saabal') {
-        Navigator.of(context).pushNamed('/saabal');
-      }
-    });
-  }
-
   @override
   void initState() {
     super.initState();
@@ -1409,6 +1104,11 @@ class _MainScreenState extends State<MainScreen> {
             case '/range_selection':
               return MaterialPageRoute(
                 builder: (_) => const RangeSelectionPage(),
+                settings: settings,
+              );
+            case '/surprise_drills':
+              return MaterialPageRoute(
+                builder: (_) => const SurpriseDrillsEntryPage(),
                 settings: settings,
               );
             case '/feedback_form':
@@ -1597,25 +1297,6 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   )
                 : IndexedStack(index: selectedIndex, children: _pages),
-          ),
-          // Voice Assistant Button - Fixed position bottom-left (safe zone)
-          Positioned(
-            bottom: 90,
-            left: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.blueGrey.shade900,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: VoiceAssistantButton(onVoiceCommand: _handleVoiceCommand),
-            ),
           ),
         ],
       ),
@@ -2069,10 +1750,14 @@ class ExercisesPage extends StatelessWidget {
       'סריקות רחוב',
       'מיונים לקורס מדריכים',
       'מטווחים',
+      'תרגילי הפתעה',
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('תרגילים')),
+      appBar: AppBar(
+        title: const Text('תרגילים'),
+        leading: const StandardBackButton(),
+      ),
       body: ListView.builder(
         itemCount: exercises.length,
         itemBuilder: (ctx, i) {
@@ -2101,6 +1786,8 @@ class ExercisesPage extends StatelessWidget {
                   Navigator.of(context).pushNamed('/screenings_menu');
                 } else if (ex == 'מטווחים') {
                   Navigator.of(context).pushNamed('/range_selection');
+                } else if (ex == 'תרגילי הפתעה') {
+                  Navigator.of(context).pushNamed('/surprise_drills');
                 } else {
                   Navigator.of(
                     context,
@@ -2342,11 +2029,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text('משוב - ${selectedExercise ?? ''}'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -2470,29 +2153,31 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               ),
               const SizedBox(height: 12),
 
-              // 4. יישוב (Dropdown בלבד)
-              const Text(
-                'יישוב',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue:
-                    settlement.isNotEmpty &&
-                        golanSettlements.contains(settlement)
-                    ? settlement
-                    : null,
-                hint: const Text('בחר יישוב'),
-                decoration: const InputDecoration(
-                  labelText: 'יישוב',
-                  border: OutlineInputBorder(),
+              // 4. יישוב (Dropdown בלבד) - ONLY if NOT 474 (474 has its own settlement field above)
+              if (selectedFolder != 'מחלקות ההגנה – חטיבה 474') ...[
+                const Text(
+                  'יישוב',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-                items: golanSettlements
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: (v) => setState(() => settlement = v ?? ''),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      settlement.isNotEmpty &&
+                          golanSettlements.contains(settlement)
+                      ? settlement
+                      : null,
+                  hint: const Text('בחר יישוב'),
+                  decoration: const InputDecoration(
+                    labelText: 'יישוב',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: golanSettlements
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) => setState(() => settlement = v ?? ''),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // 5. תרחיש
               TextField(
@@ -2749,19 +2434,68 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   icon: const Icon(Icons.download),
                   onPressed: () async {
                     try {
-                      await FeedbackExportService.exportAllFeedbacksToXlsx();
-                      if (!mounted) return;
-                      final message = kIsWeb
-                          ? 'הקובץ הורד בהצלחה'
-                          : 'הקובץ נשמר בהורדות';
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(message)));
+                      // Page defines the export schema (folders overview uses global schema)
+                      final keys = [
+                        'id',
+                        'role',
+                        'name',
+                        'exercise',
+                        'scores',
+                        'notes',
+                        'criteriaList',
+                        'createdAt',
+                        'instructorName',
+                        'instructorRole',
+                        'commandText',
+                        'commandStatus',
+                        'folder',
+                        'scenario',
+                        'settlement',
+                        'attendeesCount',
+                      ];
+                      final headers = [
+                        'ID',
+                        'תפקיד',
+                        'שם',
+                        'תרגיל',
+                        'ציונים',
+                        'הערות',
+                        'קריטריונים',
+                        'תאריך יצירה',
+                        'מדריך',
+                        'תפקיד מדריך',
+                        'טקסט פקודה',
+                        'סטטוס פקודה',
+                        'תיקייה',
+                        'תרחיש',
+                        'יישוב',
+                        'מספר נוכחים',
+                      ];
+
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await FeedbackExportService.exportWithSchema(
+                          keys: keys,
+                          headers: headers,
+                          feedbacks: feedbackStorage,
+                          fileNamePrefix: 'feedbacks_all',
+                        );
+
+                        if (!mounted) return;
+                        final message = kIsWeb
+                            ? 'הקובץ הורד בהצלחה'
+                            : 'הקובץ נשמר בהורדות';
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(message)),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('שגיאה בייצוא: $e')),
+                        );
+                      }
                     } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('שגיאה בייצוא: $e')),
-                      );
+                      // outer catch (should never reach here)
                     }
                   },
                   tooltip: 'ייצוא נתונים',
@@ -2924,12 +2658,70 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(_selectedFolder!),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
+          leading: StandardBackButton(
             onPressed: () => setState(() => _selectedFolder = null),
             tooltip: 'חזרה לתיקיות',
           ),
           actions: [
+            // Export button for Surprise Drills folder (Admin only)
+            if (_selectedFolder == 'משוב תרגילי הפתעה' &&
+                isAdmin &&
+                finalFilteredFeedbacks.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.download),
+                onPressed: () async {
+                  // Capture ScaffoldMessenger before async gap
+                  final messenger = ScaffoldMessenger.of(context);
+
+                  try {
+                    // Convert FeedbackModel list to Map list for export
+                    final feedbacksData = await Future.wait(
+                      finalFilteredFeedbacks.map((f) async {
+                        if (f.id != null && f.id!.isNotEmpty) {
+                          final doc = await FirebaseFirestore.instance
+                              .collection('feedbacks')
+                              .doc(f.id)
+                              .get();
+                          if (doc.exists) {
+                            return doc.data() ?? <String, dynamic>{};
+                          }
+                        }
+                        return <String, dynamic>{};
+                      }),
+                    );
+
+                    // Filter out empty maps
+                    final validData = feedbacksData
+                        .where((data) => data.isNotEmpty)
+                        .toList();
+
+                    if (validData.isEmpty) {
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('אין נתונים לייצוא')),
+                      );
+                      return;
+                    }
+
+                    await FeedbackExportService.exportSurpriseDrillsToXlsx(
+                      feedbacksData: validData,
+                      fileNamePrefix: 'surprise_drills',
+                    );
+
+                    if (!mounted) return;
+                    final message = kIsWeb
+                        ? 'הקובץ הורד בהצלחה'
+                        : 'הקובץ נשמר בהורדות';
+                    messenger.showSnackBar(SnackBar(content: Text(message)));
+                  } catch (e) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('שגיאה בייצוא: $e')),
+                    );
+                  }
+                },
+                tooltip: 'ייצוא תרגילי הפתעה',
+              ),
             IconButton(
               icon: _isRefreshing
                   ? const SizedBox(
@@ -3023,9 +2815,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           subtitle: Text(
                             '${f.exercise} • ${f.instructorName.isNotEmpty ? '${f.instructorName} • ' : ''}$date',
                           ),
-                          onTap: () => Navigator.of(
-                            context,
-                          ).pushNamed('/feedback_details', arguments: f),
+                          onTap: () {
+                            Navigator.of(
+                              context,
+                            ).pushNamed('/feedback_details', arguments: f);
+                          },
                         );
                       },
                     ),
@@ -3242,11 +3036,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('פרטי משוב'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_forward),
-          onPressed: () => Navigator.pop(context),
-          tooltip: 'חזרה',
-        ),
+        leading: const StandardBackButton(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(12.0),
@@ -3764,26 +3554,142 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       : () async {
                           setState(() => _isExporting = true);
                           try {
-                            await FeedbackExportService.exportAllFeedbacksToXlsx();
-                            if (!mounted) return;
-                            // ignore: use_build_context_synchronously
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('הקובץ נוצר בהצלחה!'),
-                                backgroundColor: Colors.green,
-                                duration: Duration(seconds: 3),
-                              ),
-                            );
-                          } catch (e) {
-                            if (!mounted) return;
-                            // ignore: use_build_context_synchronously
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('שגיאה בייצוא: $e'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 5),
-                              ),
-                            );
+                            final messenger = ScaffoldMessenger.of(context);
+
+                            // Check if this is a range/reporter feedback
+                            final isRangeFeedback =
+                                feedback.folder == 'מטווחי ירי' &&
+                                feedback.id != null &&
+                                feedback.id!.isNotEmpty;
+
+                            if (isRangeFeedback) {
+                              // Use reporter comparison export for range feedbacks
+                              try {
+                                // Fetch full document data from Firestore
+                                final doc = await FirebaseFirestore.instance
+                                    .collection('feedbacks')
+                                    .doc(feedback.id)
+                                    .get();
+
+                                if (!doc.exists || doc.data() == null) {
+                                  throw Exception('לא נמצאו נתוני משוב');
+                                }
+
+                                final feedbackData = doc.data()!;
+
+                                // Check if this feedback has trainee comparison data
+                                final hasComparisonData =
+                                    feedbackData['stations'] != null &&
+                                    feedbackData['trainees'] != null;
+
+                                if (hasComparisonData) {
+                                  await FeedbackExportService.exportReporterComparisonToGoogleSheets(
+                                    feedbackData: feedbackData,
+                                    fileNamePrefix: 'reporter_comparison',
+                                  );
+                                } else {
+                                  // Fallback to standard export if no comparison data
+                                  final keys = [
+                                    'id',
+                                    'role',
+                                    'name',
+                                    'exercise',
+                                    'scores',
+                                    'notes',
+                                    'criteriaList',
+                                    'createdAt',
+                                    'instructorName',
+                                    'instructorRole',
+                                    'commandText',
+                                    'commandStatus',
+                                    'folder',
+                                    'scenario',
+                                    'settlement',
+                                    'attendeesCount',
+                                  ];
+                                  final headers = [
+                                    'ID',
+                                    'תפקיד',
+                                    'שם',
+                                    'תרגיל',
+                                    'ציונים',
+                                    'הערות',
+                                    'קריטריונים',
+                                    'תאריך יצירה',
+                                    'מדריך',
+                                    'תפקיד מדריך',
+                                    'טקסט פקודה',
+                                    'סטטוס פקודה',
+                                    'תיקייה',
+                                    'תרחיש',
+                                    'יישוב',
+                                    'מספר נוכחים',
+                                  ];
+                                  await FeedbackExportService.exportWithSchema(
+                                    keys: keys,
+                                    headers: headers,
+                                    feedbacks: [feedback],
+                                    fileNamePrefix: 'feedback_single',
+                                  );
+                                }
+
+                                if (!mounted) return;
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text('הקובץ נוצר בהצלחה!'),
+                                    backgroundColor: Colors.green,
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
+                              } catch (e) {
+                                if (!mounted) return;
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text('שגיאה בייצוא: $e'),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 5),
+                                  ),
+                                );
+                              }
+                            } else {
+                              // DEDICATED export for single feedback details ("פרטי משוב" screen)
+                              // Structure: סוג משוב, שם המדריך המשב, שם, תפקיד, חטיבה, יישוב, תאריך
+                              // Then ONLY criteria that exist in THIS feedback
+                              // Then ציון ממוצע, then הערות
+                              try {
+                                debugPrint(
+                                  '📊 Exporting single feedback details',
+                                );
+                                debugPrint('   Screen: פרטי משוב');
+                                debugPrint(
+                                  '   Feedback: ${feedback.name} (${feedback.exercise})',
+                                );
+
+                                await FeedbackExportService.exportSingleFeedbackDetails(
+                                  feedback: feedback,
+                                  fileNamePrefix: 'משוב_${feedback.name}',
+                                );
+
+                                if (!mounted) return;
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text('הקובץ נוצר בהצלחה!'),
+                                    backgroundColor: Colors.green,
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
+                              } catch (e) {
+                                debugPrint('❌ Export error: $e');
+                                if (!mounted) return;
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text('שגיאה בייצוא: $e'),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 5),
+                                  ),
+                                );
+                              }
+                            }
                           } finally {
                             if (mounted) {
                               setState(() => _isExporting = false);
@@ -3914,7 +3820,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('סטטיסטיקה')),
+        appBar: AppBar(
+          title: const Text('סטטיסטיקה'),
+          leading: const StandardBackButton(),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -4143,7 +4052,10 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('סטטיסטיקת כל המשובים')),
+        appBar: AppBar(
+          title: const Text('סטטיסטיקת כל המשובים'),
+          leading: const StandardBackButton(),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView(
@@ -4886,7 +4798,10 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('סטטיסטיקת משובי מטווחים')),
+        appBar: AppBar(
+          title: const Text('סטטיסטיקת משובי מטווחים'),
+          leading: const StandardBackButton(),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView(
@@ -5405,7 +5320,10 @@ class MaterialsPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('חומר עיוני')),
+        appBar: AppBar(
+          title: const Text('חומר עיוני'),
+          leading: const StandardBackButton(),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView.separated(
@@ -5529,11 +5447,7 @@ class MaagalPatuachPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('מעגל פתוח'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Center(
           child: Padding(
@@ -5605,11 +5519,7 @@ class ShevaPrinciplesPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('שבע עקרונות לחימה'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -5672,11 +5582,7 @@ class SaabalPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('סעב"ל – סדר עדיפויות בלחימה'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -5734,11 +5640,7 @@ class MaagalPoruzPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('מעגל פרוץ'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -5862,11 +5764,7 @@ class SarikotFixedPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('סריקות רחוב'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'חזרה',
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),

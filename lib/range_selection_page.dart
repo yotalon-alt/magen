@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'range_training_page.dart';
+import 'range_temp_feedbacks_page.dart';
+import 'widgets/standard_back_button.dart';
 
 /// מסך בחירת סוג מטווח
 class RangeSelectionPage extends StatelessWidget {
@@ -12,10 +14,7 @@ class RangeSelectionPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('מטווחים'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: () => Navigator.pop(context),
-          ),
+          leading: const StandardBackButton(),
         ),
         body: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -50,14 +49,8 @@ class RangeSelectionPage extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // תרגילי הפתעה
-              _buildRangeTypeButton(
-                context,
-                title: 'תרגילי הפתעה',
-                icon: Icons.flash_on,
-                color: Colors.purple,
-                rangeType: 'הפתעה',
-              ),
+              // משוב זמני
+              _buildTempFeedbackButton(context),
             ],
           ),
         ),
@@ -105,6 +98,53 @@ class RangeSelectionPage extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const Icon(Icons.arrow_back_ios, color: Colors.white),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTempFeedbackButton(BuildContext context) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const RangeTempFeedbacksPage()),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green.withValues(alpha: 0.7), Colors.green],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_note, size: 32, color: Colors.white),
+                  const SizedBox(width: 16),
+                  const Text(
+                    'משוב זמני',
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,

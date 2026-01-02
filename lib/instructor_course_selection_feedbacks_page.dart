@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'main.dart'; // for currentUser
 import 'feedback_export_service.dart'; // for export functionality
+import 'widgets/standard_back_button.dart';
 
 /// דף תצוגת משובים למיונים לקורס מדריכים
 class InstructorCourseSelectionFeedbacksPage extends StatefulWidget {
@@ -21,10 +22,77 @@ class _InstructorCourseSelectionFeedbacksPageState
   Set<String> _selectedFeedbackIds = {}; // For export selection
 
   Future<void> _exportInstructorCourseFeedbacks() async {
+    // Show selection dialog with 3 options
+    final selection = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text(
+            'בחר קטגוריה לייצוא',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'איזו קטגוריה תרצה לייצא?',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'suitable'),
+                icon: const Icon(Icons.check_circle),
+                label: const Text('מתאימים לקורס מדריכים'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'not_suitable'),
+                icon: const Icon(Icons.cancel),
+                label: const Text('לא מתאימים לקורס מדריכים'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'both'),
+                icon: const Icon(Icons.list_alt),
+                label: const Text('שניהם (שני גיליונות)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selection == null) return; // User canceled
+
+    debugPrint('🔵 User selected: $selection');
+
     setState(() => _isLoading = true);
 
     try {
-      await FeedbackExportService.exportInstructorCourseFeedbacksToXlsx();
+      await FeedbackExportService.exportInstructorCourseSelection(selection);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -34,6 +102,7 @@ class _InstructorCourseSelectionFeedbacksPageState
         ),
       );
     } catch (e) {
+      debugPrint('❌ Export error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -50,18 +119,33 @@ class _InstructorCourseSelectionFeedbacksPageState
   }
 
   Future<void> _exportSelectedFeedbacks() async {
-    if (_selectedFeedbackIds.isEmpty) return;
+    if (_selectedFeedbackIds.isEmpty) {
+      debugPrint('⚠️ EXPORT_CLICKED: No feedbacks selected');
+      return;
+    }
+
+    final selectedFeedbacks = _feedbacks
+        .where((f) => _selectedFeedbackIds.contains(f['id']))
+        .toList();
+
+    final categoryLabel = _selectedCategory == 'suitable'
+        ? 'מתאימים'
+        : 'לא מתאימים';
+
+    debugPrint(
+      '🔵 EXPORT_CLICKED: screen=$_selectedCategory, count=${selectedFeedbacks.length}',
+    );
 
     setState(() => _isLoading = true);
 
     try {
-      final selectedFeedbacks = _feedbacks
-          .where((f) => _selectedFeedbackIds.contains(f['id']))
-          .toList();
       await FeedbackExportService.exportSelectedInstructorCourseFeedbacksToXlsx(
         selectedFeedbacks,
-        _selectedCategory == 'suitable' ? 'מתאימים' : 'לא מתאימים',
+        categoryLabel,
       );
+
+      debugPrint('✅ EXPORT_SUCCESS: $categoryLabel exported successfully');
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -70,11 +154,14 @@ class _InstructorCourseSelectionFeedbacksPageState
           duration: Duration(seconds: 3),
         ),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('❌ EXPORT_FAILED: error=$e');
+      debugPrint('Stack trace: $stackTrace');
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('שגיאה בייצוא: $e'),
+          content: Text('שגיאה בייצוא: ${e.toString()}'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 5),
         ),
@@ -140,101 +227,139 @@ class _InstructorCourseSelectionFeedbacksPageState
   }
 
   void _showExportSelectionDialog() {
-    _selectedFeedbackIds.clear(); // Reset selection
+    // Local state for this dialog (not shared with outer widget)
+    Set<String> localSelectedIds = {};
+    bool isExporting = false;
+
+    debugPrint('🔵 EXPORT_DIALOG_OPEN: selectedCount=0, isExporting=false');
 
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('בחר משובים לייצוא'),
-          content: StatefulBuilder(
-            builder: (context, setState) => SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Select All / None buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _selectedFeedbackIds = _feedbacks
-                                .map((f) => f['id'] as String)
-                                .toSet();
-                          });
-                        },
-                        child: const Text('בחר הכל'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _selectedFeedbackIds.clear();
-                          });
-                        },
-                        child: const Text('בטל בחירה'),
-                      ),
-                    ],
-                  ),
-                  const Divider(),
-                  // Feedback list with checkboxes
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _feedbacks.length,
-                      itemBuilder: (context, i) {
-                        final feedback = _feedbacks[i];
-                        final id = feedback['id'] as String;
-                        final candidateName =
-                            feedback['candidateName'] ?? 'לא ידוע';
-                        final candidateNumber =
-                            feedback['candidateNumber'] as int?;
-                        final isSelected = _selectedFeedbackIds.contains(id);
+        child: StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            // Log button state before rendering
+            final disabled = localSelectedIds.isEmpty || isExporting;
+            debugPrint(
+              '📊 EXPORT_DISABLED_REASON: selectedCount=${localSelectedIds.length}, isExporting=$isExporting, disabled=$disabled',
+            );
 
-                        return CheckboxListTile(
-                          title: Text(
-                            candidateNumber != null
-                                ? '$candidateName – $candidateNumber'
-                                : candidateName,
-                          ),
-                          subtitle: Text(
-                            'מדריך: ${feedback['instructorName'] ?? 'לא ידוע'}',
-                          ),
-                          value: isSelected,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              if (value == true) {
-                                _selectedFeedbackIds.add(id);
-                              } else {
-                                _selectedFeedbackIds.remove(id);
-                              }
+            return AlertDialog(
+              title: const Text('בחר משובים לייצוא'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Select All / None buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              localSelectedIds = _feedbacks
+                                  .map((f) => f['id'] as String)
+                                  .toSet();
                             });
                           },
-                        );
-                      },
+                          child: const Text('בחר הכל'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              localSelectedIds.clear();
+                            });
+                          },
+                          child: const Text('בטל בחירה'),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const Divider(),
+                    // Feedback list with checkboxes
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _feedbacks.length,
+                        itemBuilder: (context, i) {
+                          final feedback = _feedbacks[i];
+                          final id = feedback['id'] as String;
+                          final candidateName =
+                              feedback['candidateName'] ?? 'לא ידוע';
+                          final candidateNumber =
+                              feedback['candidateNumber'] as int?;
+                          final isSelected = localSelectedIds.contains(id);
+
+                          return CheckboxListTile(
+                            title: Text(
+                              candidateNumber != null
+                                  ? '$candidateName – $candidateNumber'
+                                  : candidateName,
+                            ),
+                            subtitle: Text(
+                              'מדריך: ${feedback['instructorName'] ?? 'לא ידוע'}',
+                            ),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  localSelectedIds.add(id);
+                                } else {
+                                  localSelectedIds.remove(id);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('ביטול'),
-            ),
-            ElevatedButton(
-              onPressed: _selectedFeedbackIds.isNotEmpty
-                  ? () async {
-                      Navigator.pop(ctx);
-                      await _exportSelectedFeedbacks();
-                    }
-                  : null,
-              child: const Text('ייצא לאקסל'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('ביטול'),
+                ),
+                ElevatedButton(
+                  onPressed: (localSelectedIds.isEmpty || isExporting)
+                      ? null
+                      : () async {
+                          debugPrint(
+                            '🔵 EXPORT_CLICK: selectedCount=${localSelectedIds.length}',
+                          );
+
+                          setDialogState(() {
+                            isExporting = true;
+                          });
+
+                          try {
+                            // Copy selected IDs to parent widget state for export
+                            _selectedFeedbackIds = localSelectedIds;
+                            Navigator.pop(ctx);
+                            await _exportSelectedFeedbacks();
+                          } finally {
+                            // Reset exporting flag (dialog is closed so state won't update, but for consistency)
+                            isExporting = false;
+                          }
+                        },
+                  child: isExporting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Text('ייצא לאקסל'),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -381,12 +506,12 @@ class _InstructorCourseSelectionFeedbacksPageState
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_forward, color: Colors.white),
+                StandardBackButton(
                   onPressed: () => setState(() {
                     _selectedCategory = null;
                     _feedbacks = [];
                   }),
+                  color: Colors.white,
                 ),
                 Expanded(
                   child: Text(
@@ -644,11 +769,7 @@ class _InstructorCourseSelectionFeedbacksPageState
     return Scaffold(
       appBar: AppBar(
         title: const Text('מיונים לקורס מדריכים'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_forward),
-          onPressed: () => Navigator.pop(context),
-          tooltip: 'חזרה',
-        ),
+        leading: const StandardBackButton(),
       ),
       body: _isLoading
           ? const Center(
