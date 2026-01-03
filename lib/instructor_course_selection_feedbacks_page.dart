@@ -180,24 +180,34 @@ class _InstructorCourseSelectionFeedbacksPageState
     });
 
     try {
-      // Fixed collection path - use top-level collections
-      final collectionPath = category == 'suitable'
-          ? 'instructor_course_selection_suitable'
-          : 'instructor_course_selection_not_suitable';
-      debugPrint('🔍 Loading feedbacks from: $collectionPath');
+      // ✅ CORRECT: Query instructor_course_feedbacks and filter by isSuitable field
+      final isSuitable = category == 'suitable';
+      debugPrint('\n🔍 ===== LOADING INSTRUCTOR COURSE FEEDBACKS =====');
+      debugPrint('QUERY: collection=instructor_course_feedbacks');
+      debugPrint('QUERY: where("isSuitable", "==", $isSuitable)');
+      debugPrint('QUERY: where("status", "==", "finalized")');
+      debugPrint('QUERY: orderBy("createdAt", descending: true)');
 
       final snapshot = await FirebaseFirestore.instance
-          .collection(collectionPath)
+          .collection('instructor_course_feedbacks')
+          .where('isSuitable', isEqualTo: isSuitable)
+          .where('status', isEqualTo: 'finalized')
           .orderBy('createdAt', descending: true)
           .get()
           .timeout(const Duration(seconds: 15));
+
+      debugPrint('RESULT: Got ${snapshot.docs.length} documents');
 
       final feedbacks = <Map<String, dynamic>>[];
       for (final doc in snapshot.docs) {
         final data = doc.data();
         data['id'] = doc.id;
         feedbacks.add(data);
+        debugPrint(
+          'DOC: ${doc.id} - ${data["candidateName"]} (suitable=${data["isSuitable"]})',
+        );
       }
+      debugPrint('===================================================\n');
 
       if (mounted) {
         setState(() {

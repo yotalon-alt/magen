@@ -109,6 +109,10 @@ class FeedbackModel {
   final String scenario;
   final String settlement;
   final int attendeesCount;
+  // New fields for proper filtering
+  final String module; // 'surprise_drill' or 'shooting_ranges'
+  final String type; // 'surprise_exercise' or 'range_feedback'
+  final bool isTemporary; // true for drafts, false for final
 
   const FeedbackModel({
     this.id,
@@ -128,6 +132,9 @@ class FeedbackModel {
     required this.scenario,
     required this.settlement,
     required this.attendeesCount,
+    this.module = '',
+    this.type = '',
+    this.isTemporary = false,
   });
 
   static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
@@ -189,6 +196,10 @@ class FeedbackModel {
       scenario: (m['scenario'] ?? '').toString(),
       settlement: (m['settlement'] ?? '').toString(),
       attendeesCount: (m['attendeesCount'] as num?)?.toInt() ?? 0,
+      module: (m['module'] ?? '').toString(),
+      type: (m['type'] ?? '').toString(),
+      isTemporary:
+          (m['isTemporary'] ?? m['status'] == 'temporary') as bool? ?? false,
     );
   }
 
@@ -209,6 +220,9 @@ class FeedbackModel {
     String? settlement,
     int? attendeesCount,
     String? id,
+    String? module,
+    String? type,
+    bool? isTemporary,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -227,6 +241,9 @@ class FeedbackModel {
       scenario: scenario ?? this.scenario,
       settlement: settlement ?? this.settlement,
       attendeesCount: attendeesCount ?? this.attendeesCount,
+      module: module ?? this.module,
+      type: type ?? this.type,
+      isTemporary: isTemporary ?? this.isTemporary,
     );
   }
 
@@ -248,6 +265,9 @@ class FeedbackModel {
       'scenario': scenario,
       'settlement': settlement,
       'attendeesCount': attendeesCount,
+      'module': module,
+      'type': type,
+      'isTemporary': isTemporary,
     };
   }
 }
@@ -2632,12 +2652,95 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     }
 
     // Show feedbacks for selected folder
-    // Include old feedbacks without folder in "משובים – כללי"
-    final filteredFeedbacks = _selectedFolder == 'משובים – כללי'
-        ? feedbackStorage
-              .where((f) => f.folder == _selectedFolder || f.folder.isEmpty)
-              .toList()
-        : feedbackStorage.where((f) => f.folder == _selectedFolder).toList();
+    // BACKWARD-COMPATIBLE FILTERING: Support both legacy and new schema
+    // Legacy docs: missing module/type fields, use folder only
+    // New docs: have module/type/isTemporary fields
+    List<FeedbackModel> filteredFeedbacks;
+
+    if (_selectedFolder == 'משובים – כללי') {
+      filteredFeedbacks = feedbackStorage
+          .where(
+            (f) =>
+                (f.folder == _selectedFolder || f.folder.isEmpty) &&
+                f.isTemporary == false,
+          )
+          .toList();
+    } else if (_selectedFolder == 'משוב תרגילי הפתעה') {
+      // SURPRISE DRILLS: Include BOTH new schema AND legacy docs
+      filteredFeedbacks = feedbackStorage.where((f) {
+        // Exclude temporary drafts
+        if (f.isTemporary == true) return false;
+
+        // NEW SCHEMA: Has module field populated
+        if (f.module.isNotEmpty) {
+          return f.module == 'surprise_drill';
+        }
+
+        // LEGACY SCHEMA: No module field, use folder
+        return f.folder == _selectedFolder;
+      }).toList();
+      debugPrint(
+        '\n========== SURPRISE DRILLS FILTER (BACKWARD-COMPATIBLE) ==========',
+      );
+      debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
+      debugPrint('Filtered surprise drills: ${filteredFeedbacks.length}');
+      final legacyCount = filteredFeedbacks
+          .where((f) => f.module.isEmpty)
+          .length;
+      final newCount = filteredFeedbacks
+          .where((f) => f.module.isNotEmpty)
+          .length;
+      debugPrint('  - Legacy docs (no module field): $legacyCount');
+      debugPrint('  - New schema docs: $newCount');
+      for (final f in filteredFeedbacks.take(3)) {
+        debugPrint(
+          '  - ${f.name}: module="${f.module}", type="${f.type}", folder="${f.folder}", isTemp=${f.isTemporary}',
+        );
+      }
+      debugPrint(
+        '================================================================\n',
+      );
+    } else if (_selectedFolder == 'מטווחי ירי') {
+      // SHOOTING RANGES: Include BOTH new schema AND legacy docs
+      filteredFeedbacks = feedbackStorage.where((f) {
+        // Exclude temporary drafts
+        if (f.isTemporary == true) return false;
+
+        // NEW SCHEMA: Has module field populated
+        if (f.module.isNotEmpty) {
+          return f.module == 'shooting_ranges';
+        }
+
+        // LEGACY SCHEMA: No module field, use folder
+        return f.folder == _selectedFolder;
+      }).toList();
+      debugPrint(
+        '\n========== SHOOTING RANGES FILTER (BACKWARD-COMPATIBLE) ==========',
+      );
+      debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
+      debugPrint('Filtered shooting ranges: ${filteredFeedbacks.length}');
+      final legacyCount = filteredFeedbacks
+          .where((f) => f.module.isEmpty)
+          .length;
+      final newCount = filteredFeedbacks
+          .where((f) => f.module.isNotEmpty)
+          .length;
+      debugPrint('  - Legacy docs (no module field): $legacyCount');
+      debugPrint('  - New schema docs: $newCount');
+      for (final f in filteredFeedbacks.take(3)) {
+        debugPrint(
+          '  - ${f.name}: module="${f.module}", type="${f.type}", folder="${f.folder}", isTemp=${f.isTemporary}',
+        );
+      }
+      debugPrint(
+        '================================================================\n',
+      );
+    } else {
+      // Other folders: use standard folder filtering + exclude temporary
+      filteredFeedbacks = feedbackStorage
+          .where((f) => f.folder == _selectedFolder && f.isTemporary == false)
+          .toList();
+    }
 
     final isRangeFolder = _selectedFolder == 'מטווחי ירי';
 

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart';
-import 'feedback_export_service.dart';
 import 'widgets/standard_back_button.dart';
 
 class InstructorCourseFeedbackPage extends StatefulWidget {
@@ -18,6 +17,8 @@ class _InstructorCourseFeedbackPageState
     extends State<InstructorCourseFeedbackPage> {
   String? _existingScreeningId;
   bool _loadingExisting = false;
+  bool _hasUnsavedChanges = false;
+  bool _isFormLocked = false;
   String? _selectedPikud;
   final List<String> _pikudOptions = ['פיקוד צפון', 'פיקוד מרכז', 'פיקוד דרום'];
 
@@ -57,7 +58,16 @@ class _InstructorCourseFeedbackPageState
   void _updateLevelTestRating() {
     setState(() {
       categories['בוחן רמה'] = _calculateLevelTestRating();
+      if (!_isFormLocked) _hasUnsavedChanges = true;
     });
+  }
+
+  void _markFormDirty() {
+    if (!_isFormLocked && !_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   static const Map<String, double> _categoryWeights = {
@@ -167,9 +177,10 @@ class _InstructorCourseFeedbackPageState
     }
   }
 
-  Future<bool> _saveFeedback({bool allowAutoFinalize = true}) async {
+  /// Save as TEMPORARY (draft) feedback
+  Future<bool> saveInstructorCourseTempFeedback() async {
     if (_isSaving) {
-      debugPrint('⚠️ Save already in progress');
+      debugPrint('⚠️ Temp save already in progress');
       return false;
     }
 
@@ -264,7 +275,20 @@ class _InstructorCourseFeedbackPageState
 
       await ref.update(payload);
 
+      debugPrint('\n========== TEMP SAVE: INSTRUCTOR COURSE ==========');
+      debugPrint('SAVE: collection=instructor_course_screenings');
+      debugPrint('SAVE: docId=$_existingScreeningId');
+      debugPrint('SAVE: status=draft');
+      debugPrint('SAVE: isTemporary=true (implicit)');
+      debugPrint('=================================================\n');
+
       if (!mounted) return true;
+
+      // Clear unsaved changes flag after successful save
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('נשמר כמשוב בתהליך (draft)'),
@@ -289,7 +313,8 @@ class _InstructorCourseFeedbackPageState
     }
   }
 
-  Future<void> _finalizeIfComplete() async {
+  /// Finalize and create FINAL feedback (move from temp to final)
+  Future<void> finalizeInstructorCourseFeedback() async {
     if (_existingScreeningId == null || _existingScreeningId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('לא ניתן לסיים ללא מזהה משוב')),
@@ -308,19 +333,105 @@ class _InstructorCourseFeedbackPageState
       );
       return;
     }
+
+    setState(() => _isSaving = true);
     try {
-      final saved = await _saveFeedback(allowAutoFinalize: false);
-      if (!saved) return;
-      setState(() => _isSaving = true);
-      await FeedbackExportService.finalizeScreeningAndCreateFeedback(
-        screeningId: _existingScreeningId!,
-      );
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) {
+        throw Exception('נדרשת התחברות');
+      }
+
+      // Build final feedback data
+      final Map<String, dynamic> fields = {};
+      categories.forEach((name, score) {
+        if (score > 0) {
+          final Map<String, dynamic> meta = {
+            'value': score,
+            'filledBy': uid,
+            'filledAt': FieldValue.serverTimestamp(),
+          };
+          if (name == 'בוחן רמה') {
+            final hits = int.tryParse(_hitsController.text);
+            final time = int.tryParse(_timeSecondsController.text);
+            if (hits != null) meta['hits'] = hits;
+            if (time != null) meta['timeSeconds'] = time;
+          }
+          fields[name] = meta;
+        }
+      });
+
+      final finalData = {
+        'status': 'finalized',
+        'courseType': 'miunim',
+        'createdAt': FieldValue.serverTimestamp(),
+        'finalizedAt': FieldValue.serverTimestamp(),
+        'createdBy': uid,
+        'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
+        'command': _selectedPikud ?? '',
+        'brigade': _hativaController.text.trim(),
+        'candidateName': _candidateNameController.text.trim(),
+        'candidateNumber': _candidateNumber ?? 0,
+        'title': _candidateNameController.text.trim(),
+        'fields': fields,
+        'finalWeightedScore': finalWeightedScore,
+        'isSuitable': isSuitableForInstructorCourse,
+        'module': 'instructor_course_selection',
+        'type': 'instructor_course_feedback',
+        'isTemporary': false,
+      };
+
+      // ✅ ATOMIC BATCH OPERATION: Create final + Delete temp in one transaction
+      debugPrint('\n========== ATOMIC BATCH: INSTRUCTOR COURSE ==========');
+      debugPrint('BATCH: Creating WriteBatch for atomic operation');
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1. Create document in FINAL collection with auto-generated ID
+      final finalRef = FirebaseFirestore.instance
+          .collection('instructor_course_feedbacks')
+          .doc(); // Auto-generate ID
+      batch.set(finalRef, finalData);
+      debugPrint('BATCH: SET final doc in instructor_course_feedbacks');
+      debugPrint('BATCH: finalDocId=${finalRef.id}');
+
+      // 2. Delete document from TEMP collection
+      final tempRef = FirebaseFirestore.instance
+          .collection('instructor_course_screenings')
+          .doc(_existingScreeningId);
+      batch.delete(tempRef);
+      debugPrint('BATCH: DELETE temp doc from instructor_course_screenings');
+      debugPrint('BATCH: tempDocId=$_existingScreeningId');
+
+      // 3. Commit batch - ALL OR NOTHING
+      debugPrint('BATCH: Committing batch (atomic operation)...');
+      await batch.commit();
+      debugPrint('✅ BATCH: Commit successful!');
+      debugPrint('RESULT: Final doc created: ${finalRef.id}');
+      debugPrint('RESULT: Temp doc deleted: $_existingScreeningId');
+      debugPrint('RESULT: module=instructor_course_selection');
+      debugPrint('RESULT: type=instructor_course_feedback');
+      debugPrint('RESULT: isTemporary=false');
+      debugPrint('RESULT: status=finalized');
+      debugPrint('=====================================================\n');
+
       if (!mounted) return;
+
+      // Clear unsaved changes and lock form
+      setState(() {
+        _hasUnsavedChanges = false;
+        _isFormLocked = true;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('המשוב נסגר והסיווג בוצע אוטומטית')),
+        const SnackBar(content: Text('המשוב נסגר והועבר למשובים סופיים')),
       );
+
+      // Navigate back after short delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
+      debugPrint('❌ Finalize error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('שגיאה בסיום המשוב: ${e.toString()}')),
@@ -368,8 +479,12 @@ class _InstructorCourseFeedbackPageState
                       ),
                       elevation: isSelected ? 4 : 1,
                     ),
-                    onPressed: () =>
-                        setState(() => categories[category] = score),
+                    onPressed: _isFormLocked
+                        ? null
+                        : () => setState(() {
+                            categories[category] = score;
+                            _markFormDirty();
+                          }),
                     child: Text(
                       score.toString(),
                       style: const TextStyle(
@@ -453,6 +568,7 @@ class _InstructorCourseFeedbackPageState
                   Expanded(
                     child: TextField(
                       controller: _hitsController,
+                      enabled: !_isFormLocked,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'מספר פגיעות',
@@ -470,6 +586,7 @@ class _InstructorCourseFeedbackPageState
                   Expanded(
                     child: TextField(
                       controller: _timeSecondsController,
+                      enabled: !_isFormLocked,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'זמן (שניות)',
@@ -549,13 +666,14 @@ class _InstructorCourseFeedbackPageState
           title: const Text('מיון לקורס מדריכים'),
           leading: StandardBackButton(
             onPressed: () async {
-              if (hasDraft) {
+              // Only show dialog if there are actual unsaved changes
+              if (_hasUnsavedChanges && !_isFormLocked) {
                 final shouldLeave = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text('יציאה ללא שמירה'),
                     content: const Text(
-                      'יש משוב בתהליך שלא נשמר. האם אתה בטוח שברצונך לצאת?',
+                      'יש שינויים שלא נשמרו. האם אתה בטוח שברצונך לצאת?',
                     ),
                     actions: [
                       TextButton(
@@ -583,6 +701,32 @@ class _InstructorCourseFeedbackPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_isFormLocked) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12.0),
+                    margin: const EdgeInsets.only(bottom: 16.0),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade700,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.lock, color: Colors.white),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'המשוב נסגר - לא ניתן לערוך',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (_loadingExisting) ...[
                   const Padding(
                     padding: EdgeInsets.only(bottom: 12.0),
@@ -625,24 +769,30 @@ class _InstructorCourseFeedbackPageState
                               child: Text(value),
                             );
                           }).toList(),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedPikud = newValue;
-                            });
-                          },
+                          onChanged: _isFormLocked
+                              ? null
+                              : (String? newValue) {
+                                  setState(() {
+                                    _selectedPikud = newValue;
+                                    _markFormDirty();
+                                  });
+                                },
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _hativaController,
+                          enabled: !_isFormLocked,
                           decoration: const InputDecoration(labelText: 'חטיבה'),
                           style: const TextStyle(
                             color: Colors.black87,
                             fontSize: 16,
                           ),
+                          onChanged: (_) => _markFormDirty(),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _candidateNameController,
+                          enabled: !_isFormLocked,
                           decoration: const InputDecoration(
                             labelText: 'שם מועמד',
                           ),
@@ -650,6 +800,7 @@ class _InstructorCourseFeedbackPageState
                             color: Colors.black87,
                             fontSize: 16,
                           ),
+                          onChanged: (_) => _markFormDirty(),
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<int>(
@@ -673,11 +824,14 @@ class _InstructorCourseFeedbackPageState
                               child: Text(value.toString()),
                             );
                           }).toList(),
-                          onChanged: (int? newValue) {
-                            setState(() {
-                              _candidateNumber = newValue;
-                            });
-                          },
+                          onChanged: _isFormLocked
+                              ? null
+                              : (int? newValue) {
+                                  setState(() {
+                                    _candidateNumber = newValue;
+                                    _markFormDirty();
+                                  });
+                                },
                         ),
                         const SizedBox(height: 12),
                         Container(
@@ -820,10 +974,10 @@ class _InstructorCourseFeedbackPageState
                 SizedBox(
                   height: 56,
                   child: ElevatedButton.icon(
-                    onPressed: _isSaving
+                    onPressed: (_isSaving || _isFormLocked)
                         ? null
                         : () async {
-                            await _saveFeedback();
+                            await saveInstructorCourseTempFeedback();
                           },
                     icon: _isSaving
                         ? const SizedBox(
@@ -861,9 +1015,9 @@ class _InstructorCourseFeedbackPageState
                 SizedBox(
                   height: 56,
                   child: ElevatedButton.icon(
-                    onPressed: _isSaving || !isFormValid
+                    onPressed: (_isSaving || !isFormValid || _isFormLocked)
                         ? null
-                        : _finalizeIfComplete,
+                        : finalizeInstructorCourseFeedback,
                     icon: const Icon(Icons.done_all),
                     label: const Text(
                       'סיים משוב',

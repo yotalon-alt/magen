@@ -233,15 +233,21 @@ class FeedbackExportService {
   static Future<List<Map<String, dynamic>>> _loadInstructorCourseFeedbacks(
     String category,
   ) async {
-    final collectionPath = category == 'suitable'
-        ? 'instructor_course_selection_suitable'
-        : 'instructor_course_selection_not_suitable';
+    // ✅ CORRECT: Query instructor_course_feedbacks and filter by isSuitable
+    final isSuitable = category == 'suitable';
+    debugPrint(
+      '\n🔍 EXPORT: Loading instructor course feedbacks (suitable=$isSuitable)',
+    );
 
     final snapshot = await FirebaseFirestore.instance
-        .collection(collectionPath)
+        .collection('instructor_course_feedbacks')
+        .where('isSuitable', isEqualTo: isSuitable)
+        .where('status', isEqualTo: 'finalized')
         .orderBy('createdAt', descending: true)
         .get()
         .timeout(const Duration(seconds: 15));
+
+    debugPrint('EXPORT: Got ${snapshot.docs.length} documents');
 
     final feedbacks = <Map<String, dynamic>>[];
     for (final doc in snapshot.docs) {
@@ -1668,32 +1674,34 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
 
-      // Determine which collections to export
-      final collectionsToExport = <Map<String, String>>[];
+      // ✅ CORRECT: Query instructor_course_feedbacks with isSuitable filter
+      final categoriesToExport = <Map<String, dynamic>>[];
       if (selection == 'suitable' || selection == 'both') {
-        collectionsToExport.add({
-          'collection': 'instructor_course_selection_suitable',
+        categoriesToExport.add({
+          'isSuitable': true,
           'sheet': 'מתאימים לקורס מדריכים',
         });
       }
       if (selection == 'not_suitable' || selection == 'both') {
-        collectionsToExport.add({
-          'collection': 'instructor_course_selection_not_suitable',
+        categoriesToExport.add({
+          'isSuitable': false,
           'sheet': 'לא מתאימים לקורס מדריכים',
         });
       }
 
-      debugPrint('📊 Exporting ${collectionsToExport.length} collection(s)');
+      debugPrint('📊 Exporting ${categoriesToExport.length} category(ies)');
 
-      for (final collectionInfo in collectionsToExport) {
-        final collectionPath = collectionInfo['collection']!;
-        final sheetName = collectionInfo['sheet']!;
+      for (final categoryInfo in categoriesToExport) {
+        final isSuitable = categoryInfo['isSuitable'] as bool;
+        final sheetName = categoryInfo['sheet'] as String;
 
-        debugPrint('📄 Processing collection: $collectionPath');
+        debugPrint('📄 Processing category: isSuitable=$isSuitable');
 
-        // Load data from Firestore
+        // ✅ Load data from instructor_course_feedbacks with isSuitable filter
         final snapshot = await FirebaseFirestore.instance
-            .collection(collectionPath)
+            .collection('instructor_course_feedbacks')
+            .where('isSuitable', isEqualTo: isSuitable)
+            .where('status', isEqualTo: 'finalized')
             .orderBy('createdAt', descending: true)
             .get()
             .timeout(const Duration(seconds: 15));
@@ -1706,11 +1714,11 @@ class FeedbackExportService {
         }
 
         debugPrint(
-          '✅ Loaded ${feedbacks.length} feedbacks from $collectionPath',
+          '✅ Loaded ${feedbacks.length} feedbacks (suitable=$isSuitable)',
         );
 
         if (feedbacks.isEmpty) {
-          debugPrint('⚠️ No feedbacks in $collectionPath, skipping...');
+          debugPrint('⚠️ No feedbacks for suitable=$isSuitable, skipping...');
           continue;
         }
 

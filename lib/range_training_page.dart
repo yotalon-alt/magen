@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser and golanSettlements
@@ -57,6 +58,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   String? selectedSettlement;
   String instructorName = '';
   int attendeesCount = 0;
+  late TextEditingController _attendeesCountController;
 
   late String _rangeType;
 
@@ -79,12 +81,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // editing document id stored in state so we can create/update temporary docs
   String? _editingFeedbackId;
 
-  // autosave timer (debounced saves)
-  Timer? _autosaveTimer;
-
-  // whether the current feedback has been finalized (final save)
-  final bool _isFinalized = false;
-
   bool _isSaving = false;
   // הייצוא יתבצע מדף המשובים בלבד
 
@@ -93,6 +89,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     super.initState();
     instructorName = currentUser?.name ?? '';
     _settlementDisplayText = selectedSettlement ?? '';
+    _attendeesCountController = TextEditingController(
+      text: attendeesCount.toString(),
+    );
     // מקצה ברירת מחדל אחד
     stations.add(RangeStation(name: '', bulletsCount: 0));
     _rangeType = widget.rangeType;
@@ -105,7 +104,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   @override
   void dispose() {
-    _autosaveTimer?.cancel();
+    // NO AUTOSAVE - user must explicitly click Temporary Save button
+    _attendeesCountController.dispose();
     super.dispose();
   }
 
@@ -189,22 +189,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           trainees.add(Trainee(name: '', hits: {}));
           traineeNumbers.add(i + 1);
         }
-        // schedule autosave after changes
-        _scheduleAutosave();
+        // NO AUTOSAVE - user must explicitly save
       } else if (count < trainees.length) {
         // הסרת חניכים
         trainees = trainees.sublist(0, count);
         traineeNumbers = List<int>.generate(trainees.length, (i) => i + 1);
-        _scheduleAutosave();
+        // NO AUTOSAVE - user must explicitly save
       }
-    });
-  }
-
-  void _scheduleAutosave() {
-    if (_isFinalized) return;
-    _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(milliseconds: 1500), () async {
-      await _saveTemporarily();
     });
   }
 
@@ -373,115 +364,252 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
     }
 
+    // ========== SAVE_CLICK DIAGNOSTICS ==========
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final email = FirebaseAuth.instance.currentUser?.email;
+    final saveType = widget.mode == 'surprise'
+        ? 'surprise'
+        : (_rangeType == 'קצרים' ? 'range_short' : 'range_long');
+
+    debugPrint('\n========== SAVE_CLICK ==========');
+    debugPrint('SAVE_CLICK type=$saveType mode=${widget.mode}');
+    debugPrint('SAVE_CLICK uid=$uid email=$email');
+    debugPrint('SAVE_CLICK platform=${kIsWeb ? "web" : "mobile"}');
+    debugPrint(
+      'SAVE_CLICK trainees=${trainees.length} stations=${stations.length}',
+    );
+    debugPrint('================================\n');
+
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('שגיאה: משתמש לא מחובר'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) {
-        throw Exception('משתמש לא מחובר');
-      }
-
-      // הכנת הנתונים לשמירה - אינטגרציה מלאה עם מערכת המשובים
+      // הכנת הנתונים לשמירה
       final String subFolder = widget.mode == 'surprise'
           ? 'תרגילי הפתעה'
           : (_rangeType == 'קצרים' ? 'דיווח קצר' : 'דיווח רחוק');
 
-      final Map<String, dynamic> data = {
-        // שדות סטנדרטיים של מערכת המשובים (תאימות מלאה)
-        'exercise': widget.mode == 'surprise' ? 'תרגילי הפתעה' : 'מטווחים',
-        'folder': widget.mode == 'surprise'
-            ? 'משוב תרגילי הפתעה'
-            : 'מטווחי ירי',
+      // Build trainees data - only include non-empty fields
+      final List<Map<String, dynamic>> traineesData = [];
+      for (int i = 0; i < trainees.length; i++) {
+        final trainee = trainees[i];
+        if (trainee.name.trim().isEmpty) continue; // Skip empty names
+
+        // Build hits map, only include non-zero values
+        final Map<String, int> hitsMap = {};
+        trainee.hits.forEach((stationIdx, hits) {
+          if (hits > 0) {
+            hitsMap['station_$stationIdx'] = hits;
+          }
+        });
+
+        traineesData.add({
+          'name': trainee.name.trim(),
+          'hits': hitsMap,
+          'totalHits': _getTraineeTotalHits(i),
+          'number': traineeNumbers.length > i ? traineeNumbers[i] : i + 1,
+        });
+      }
+
+      final Map<String, dynamic> baseData = {
         'instructorName': instructorName,
         'instructorId': uid,
+        'instructorEmail': email,
         'instructorRole': currentUser?.role ?? 'Instructor',
         'instructorUsername': currentUser?.username ?? '',
         'createdAt': FieldValue.serverTimestamp(),
-
-        // שדות ייחודיים למטווחים
-        'rangeType': _rangeType, // 'קצרים' / 'ארוכים' / 'הפתעה'
-        'rangeSubFolder': subFolder, // תת-תיקייה
+        'rangeType': _rangeType,
         'settlement': selectedSettlement,
         'attendeesCount': attendeesCount,
-
-        // תוכן מקצועי
-        'stations': stations
-            .map(
-              (s) => {
-                'name': s.name,
-                'bulletsCount': s.bulletsCount,
-                'timeSeconds': s.timeSeconds,
-                'hits': s.hits,
-                'isManual': s.isManual,
-                'isLevelTester': s.isLevelTester,
-                'selectedRubrics': s.selectedRubrics,
-              },
-            )
-            .toList(),
-
-        'trainees': trainees.asMap().entries.map((entry) {
-          final index = entry.key;
-          final trainee = entry.value;
-
-          return {
-            'name': trainee.name,
-            'hits': trainee.hits.map(
-              (stationIdx, hits) => MapEntry('station_$stationIdx', hits),
-            ),
-            'totalHits': _getTraineeTotalHits(index),
-            'number': traineeNumbers.length > index
-                ? traineeNumbers[index]
-                : index + 1,
-          };
-        }).toList(),
-
-        // שדות נוספים לשמירת תאימות מלאה
-        'name': selectedSettlement ?? '',
-        'role': 'מטווח',
-        'scores': {},
-        'notes': {'general': subFolder},
-        'criteriaList': [],
+        'stations': stations.map((s) => s.toJson()).toList(),
+        'trainees': traineesData,
+        'status': 'final',
       };
 
-      // שמירה ב-Firestore תחת feedbacks (אינטגריה מלאה)
-      // If we are editing an existing temporary feedback, update it
-      if (widget.feedbackId != null) {
-        await FirebaseFirestore.instance
-            .collection('feedbacks')
-            .doc(widget.feedbackId)
-            .update({
-              ...data,
-              'status': 'final',
-              'folder': 'מטווחי ירי',
-              'createdAt': FieldValue.serverTimestamp(),
-            });
+      // ========== SEPARATE COLLECTIONS FOR SURPRISE VS RANGE ==========
+      DocumentReference? docRef;
+      String collectionPath;
+      String successMessage;
+
+      if (widget.mode == 'surprise') {
+        // SURPRISE DRILLS: Save to dedicated collection
+        collectionPath = 'feedbacks';
+        final Map<String, dynamic> surpriseData = {
+          ...baseData,
+          // Required fields for Surprise Drills
+          'module': 'surprise_drill',
+          'type': 'surprise_exercise',
+          'isTemporary': false,
+          'exercise': 'תרגילי הפתעה',
+          'folder': 'משוב תרגילי הפתעה',
+          'name': selectedSettlement ?? '',
+          'role': 'תרגיל הפתעה',
+          'scores': {},
+          'notes': {'general': subFolder},
+          'criteriaList': [],
+        };
+
+        debugPrint('\n========== FINAL SAVE: SURPRISE DRILL ==========');
+        debugPrint('SAVE: collection=$collectionPath');
+        debugPrint('SAVE: module=surprise_drill');
+        debugPrint('SAVE: type=surprise_exercise');
+        debugPrint('SAVE: isTemporary=false');
+        debugPrint('SAVE: folder=משוב תרגילי הפתעה');
+
+        if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
+          docRef = FirebaseFirestore.instance
+              .collection(collectionPath)
+              .doc(widget.feedbackId);
+          debugPrint('SAVE: Updating existing doc=${docRef.path}');
+          await docRef.update(surpriseData);
+        } else {
+          debugPrint('SAVE: Creating NEW document in $collectionPath');
+          docRef = await FirebaseFirestore.instance
+              .collection(collectionPath)
+              .add(surpriseData);
+          debugPrint('SAVE: New doc created=${docRef.path}');
+        }
+
+        // Delete temporary draft if it exists
+        if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
+          try {
+            debugPrint('SAVE: Deleting temporary draft: $_editingFeedbackId');
+            await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(_editingFeedbackId)
+                .delete();
+            debugPrint('✅ SAVE: Temporary draft deleted successfully');
+          } catch (e) {
+            debugPrint('⚠️ SAVE: Failed to delete draft: $e');
+          }
+        }
+
+        debugPrint('===============================================\n');
+        successMessage = '✅ המשוב נשמר בהצלחה - תרגילי הפתעה';
       } else {
-        // new final save
-        await FirebaseFirestore.instance.collection('feedbacks').add({
-          ...data,
-          'status': 'final',
-        });
+        // SHOOTING RANGES: Save to dedicated collection
+        collectionPath = 'feedbacks';
+        final Map<String, dynamic> rangeData = {
+          ...baseData,
+          // Required fields for Shooting Ranges
+          'module': 'shooting_ranges',
+          'type': 'range_feedback',
+          'isTemporary': false,
+          'exercise': 'מטווחים',
+          'folder': 'מטווחי ירי',
+          'rangeSubFolder': subFolder,
+          'name': selectedSettlement ?? '',
+          'role': 'מטווח',
+          'scores': {},
+          'notes': {'general': subFolder},
+          'criteriaList': [],
+        };
+
+        debugPrint('\n========== FINAL SAVE: SHOOTING RANGE ==========');
+        debugPrint('SAVE: collection=$collectionPath');
+        debugPrint('SAVE: module=shooting_ranges');
+        debugPrint('SAVE: type=range_feedback');
+        debugPrint('SAVE: rangeType=$_rangeType');
+        debugPrint('SAVE: isTemporary=false');
+        debugPrint('SAVE: folder=מטווחי ירי');
+
+        if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
+          docRef = FirebaseFirestore.instance
+              .collection(collectionPath)
+              .doc(widget.feedbackId);
+          debugPrint('SAVE: Updating existing doc=${docRef.path}');
+          await docRef.update(rangeData);
+        } else {
+          debugPrint('SAVE: Creating NEW document in $collectionPath');
+          docRef = await FirebaseFirestore.instance
+              .collection(collectionPath)
+              .add(rangeData);
+          debugPrint('SAVE: New doc created=${docRef.path}');
+        }
+
+        // Delete temporary draft if it exists
+        if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
+          try {
+            debugPrint('SAVE: Deleting temporary draft: $_editingFeedbackId');
+            await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(_editingFeedbackId)
+                .delete();
+            debugPrint('✅ SAVE: Temporary draft deleted successfully');
+          } catch (e) {
+            debugPrint('⚠️ SAVE: Failed to delete draft: $e');
+          }
+        }
+
+        debugPrint('===============================================\n');
+        successMessage = '✅ המשוב נשמר בהצלחה - מטווחים';
+      }
+
+      debugPrint('SAVE: Write completed, path=${docRef.path}');
+
+      // ========== IMMEDIATE READBACK VERIFICATION ==========
+      try {
+        final snap = await docRef.get();
+        debugPrint('SAVE_READBACK: exists=${snap.exists}');
+        if (snap.exists) {
+          final savedData = snap.data() as Map<String, dynamic>?;
+          final savedTrainees = savedData?['trainees'] as List?;
+          debugPrint(
+            'SAVE_READBACK: traineesCount=${savedTrainees?.length ?? 0}',
+          );
+          debugPrint('✅ SAVE VERIFIED: Document persisted successfully');
+        } else {
+          debugPrint('❌ SAVE WARNING: Document not found on readback!');
+        }
+      } catch (readbackError) {
+        debugPrint('⚠️ SAVE: Readback verification failed: $readbackError');
       }
 
       if (!mounted) return;
 
+      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '✅ המשוב נשמר בהצלחה בנתיב: משובים → מטווחים → מטווחי ירי',
-          ),
-          duration: Duration(seconds: 3),
+        SnackBar(
+          content: Text(successMessage),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
         ),
       );
 
+      // Navigate back to appropriate feedbacks list
+      // Since we're using nested navigation, just pop back
       Navigator.pop(context);
-    } catch (e) {
+
+      debugPrint('SAVE: Navigation complete');
+      debugPrint('========== SAVE END ==========\n');
+    } catch (e, stackTrace) {
+      debugPrint('❌ ========== SAVE ERROR ==========');
+      debugPrint('SAVE_ERROR: $e');
+      debugPrint('SAVE_ERROR_STACK: $stackTrace');
+      debugPrint('===================================\n');
+
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: ${e.toString()}')));
+      // Show error with actual error message (don't swallow it)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בשמירה: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+
+      // Rethrow to ensure error is not swallowed
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -489,104 +617,470 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
   }
 
-  bool get _canSaveTemporarily =>
-      selectedSettlement != null &&
-      attendeesCount > 0 &&
-      stations.isNotEmpty &&
-      // at least one shooting session must have a name or manual station
-      stations.any((s) => s.name.trim().isNotEmpty || s.isManual);
-
   Future<void> _saveTemporarily() async {
-    // Build data similar to final save but mark as temporary and store under feedbacks
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    // ========== ATOMIC TEMPORARY SAVE ==========
+    // ONLY write path for temp saves - NO autosave, NO dispose save
+    // HARD VALIDATION + READ-BACK VERIFICATION + LOUD FAILURE
 
-    // Determine exercise type and folder based on mode
-    final String exerciseType;
-    final String tempFolder;
-    final String type;
-
-    if (widget.mode == 'surprise') {
-      exerciseType = 'תרגילי הפתעה';
-      tempFolder = 'תרגילי הפתעה - משוב זמני';
-      type = 'surprise_exercise';
-    } else {
-      exerciseType = 'מטווחים';
-      tempFolder = 'מטווחים - משוב זמני';
-      type = 'range_training';
+    // Set loading state
+    if (mounted) {
+      setState(() => _isSaving = true);
     }
 
-    final Map<String, dynamic> data = {
-      'exercise': exerciseType,
-      'folder': tempFolder,
-      'status': 'temporary',
-      'type': type,
-      'instructorName': instructorName,
-      'instructorId': uid ?? '',
-      'instructorRole': currentUser?.role ?? 'Instructor',
-      'rangeType': _rangeType,
-      'settlement': selectedSettlement,
-      'attendeesCount': attendeesCount,
-      'stations': stations.map((s) => s.toJson()).toList(),
-      'trainees': trainees.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final t = entry.value;
-        return {
-          'name': t.name,
-          'hits': t.hits.map((k, v) => MapEntry('station_$k', v)),
-          'totalHits': _getTraineeTotalHits(idx),
-          'number': traineeNumbers.length > idx ? traineeNumbers[idx] : idx + 1,
-        };
-      }).toList(),
-      'name': selectedSettlement ?? '',
-      'role': widget.mode == 'surprise' ? 'תרגיל הפתעה' : 'מטווח',
-      'scores': {},
-      'notes': {'temporary': 'שמירה זמנית'},
-      'criteriaList': [],
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-
     try {
-      if (_editingFeedbackId != null) {
-        // update existing temporary document
-        await FirebaseFirestore.instance
-            .collection('feedbacks')
-            .doc(_editingFeedbackId)
-            .update(data);
-      } else {
-        final ref = await FirebaseFirestore.instance
-            .collection('feedbacks')
-            .add(data);
-        _editingFeedbackId = ref.id;
+      debugPrint('\n========== TEMP_SAVE_ATOMIC START ==========');
+
+      // Step 1: Force UI commit by unfocusing ALL fields
+      FocusManager.instance.primaryFocus?.unfocus();
+      await Future.delayed(const Duration(milliseconds: 80));
+      debugPrint('TEMP_SAVE: UI committed (unfocused)');
+
+      debugPrint('TEMP_SAVE: attendeesCount=$attendeesCount');
+      debugPrint('TEMP_SAVE: trainees.length=${trainees.length}');
+      debugPrint('TEMP_SAVE: stations.length=${stations.length}');
+
+      // Step 2: Get user ID
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) {
+        debugPrint('❌ TEMP_SAVE: No user ID');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('שגיאה קריטית'),
+              content: const Text('משתמש לא מחובר - לא ניתן לשמור'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('הבנתי'),
+                ),
+              ],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_FAIL: No user ID');
       }
 
+      // Step 3: Build payload by serializing UI state directly
+      final String moduleType = widget.mode == 'surprise'
+          ? 'surprise_drill'
+          : 'shooting_ranges';
+      final String docId =
+          '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
+      _editingFeedbackId = docId;
+
+      debugPrint('TEMP_SAVE: module=$moduleType docId=$docId');
+      debugPrint(
+        'TEMP_SAVE: rangeType=$_rangeType settlement=$selectedSettlement',
+      );
+
+      // Serialize trainees from current UI state
+      final List<Map<String, dynamic>> traineesPayload = [];
+      for (int i = 0; i < trainees.length; i++) {
+        final t = trainees[i];
+        final hitsMap = <String, int>{};
+
+        // Serialize hits (station_index -> value)
+        for (final entry in t.hits.entries) {
+          final stationIdx = entry.key;
+          final value = entry.value;
+          if (value != 0) {
+            hitsMap['station_$stationIdx'] = value;
+          }
+        }
+
+        final payload = {'index': i, 'name': t.name.trim(), 'values': hitsMap};
+
+        traineesPayload.add(payload);
+        debugPrint(
+          'TEMP_SAVE: trainee[$i] name="${payload['name']}" values=${payload['values']}',
+        );
+      }
+
+      // Step 4: HARD VALIDATION - fail loudly if data is invalid
+      debugPrint('TEMP_SAVE: VALIDATION START');
+
+      // Assert: trainees list not empty
+      if (traineesPayload.isEmpty) {
+        debugPrint('❌ VALIDATION FAILED: No trainees');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('שגיאת ולידציה'),
+              content: const Text('אין חניכים לשמירה'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('הבנתי'),
+                ),
+              ],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VALIDATION_FAIL: trainees.length == 0');
+      }
+
+      // Assert: at least one trainee has name AND values
+      final hasValidData = traineesPayload.any((t) {
+        final name = (t['name'] as String?) ?? '';
+        final values = (t['values'] as Map?) ?? {};
+        return name.isNotEmpty && values.isNotEmpty;
+      });
+
+      if (!hasValidData) {
+        debugPrint('❌ VALIDATION FAILED: No trainee with name AND values');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('שגיאת ולידציה'),
+              content: const Text('חייב להיות לפחות חניך אחד עם שם וציונים'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('הבנתי'),
+                ),
+              ],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VALIDATION_FAIL: No valid trainee data');
+      }
+
+      debugPrint(
+        '✅ VALIDATION PASSED: trainees=${traineesPayload.length} hasValidData=true',
+      );
+
+      // Step 5: Build Firestore payload (MANDATORY schema)
+      // CRITICAL: folder must match what RangeTempFeedbacksPage queries
+      final String folderName = widget.mode == 'surprise'
+          ? 'תרגילי הפתעה - משוב זמני'
+          : 'מטווחים - משוב זמני';
+
+      final Map<String, dynamic> payload = {
+        'status': 'temporary',
+        'module': moduleType,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(), // Required for orderBy query
+        'trainees': traineesPayload,
+        'instructorId': uid,
+        'instructorName': instructorName,
+        'rangeType': _rangeType,
+        'settlement': selectedSettlement ?? '',
+        'stations': stations.map((s) => s.toJson()).toList(),
+        'attendeesCount': attendeesCount,
+        'isTemporary': true,
+        'folder': folderName,
+      };
+
+      debugPrint('TEMP_SAVE: payload keys=${payload.keys.toList()}');
+
+      // Step 6: Write to Firestore (ONCE)
+      final docRef = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(docId);
+      debugPrint('TEMP_SAVE: Writing to ${docRef.path}');
+
+      try {
+        await docRef.set(
+          payload,
+          SetOptions(merge: false),
+        ); // Overwrite completely
+        debugPrint('✅ TEMP_SAVE: Write complete');
+      } catch (e, st) {
+        debugPrint('❌ TEMP_SAVE_WRITE_FAIL: $e');
+        debugPrint('Stack: $st');
+        if (mounted) {
+          // Show both dialog AND SnackBar for visibility
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ שגיאה בשמירה: $e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('שגיאת כתיבה'),
+              content: Text('נכשל בכתיבה לFirestore: $e'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('הבנתי'),
+                ),
+              ],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_WRITE_FAIL: $e');
+      }
+
+      // Step 7: READ-BACK VERIFICATION (MANDATORY)
+      debugPrint('TEMP_SAVE: Read-back verification...');
+      final DocumentSnapshot verifySnap;
+      try {
+        verifySnap = await docRef.get();
+      } catch (e) {
+        debugPrint('❌ TEMP_SAVE_READBACK_FAIL: $e');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('שגיאת אימות'),
+              content: Text('נכשל בקריאה חוזרת: $e'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('הבנתי'),
+                ),
+              ],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_READBACK_FAIL: $e');
+      }
+
+      if (!verifySnap.exists) {
+        debugPrint('❌ VERIFY_FAIL: Document does not exist after write');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const AlertDialog(
+              title: Text('שגיאת אימות'),
+              content: Text('המסמך לא נמצא אחרי השמירה'),
+              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VERIFY_FAIL: Document not found');
+      }
+
+      final verifyData = verifySnap.data() as Map<String, dynamic>?;
+      if (verifyData == null) {
+        debugPrint('❌ VERIFY_FAIL: Document data is null');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const AlertDialog(
+              title: Text('שגיאת אימות'),
+              content: Text('נתוני המסמך ריקים'),
+              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VERIFY_FAIL: Data is null');
+      }
+
+      // Verify trainees array exists and has data
+      final verifyTrainees = verifyData['trainees'] as List?;
+      if (verifyTrainees == null || verifyTrainees.isEmpty) {
+        debugPrint('❌ VERIFY_FAIL: trainees missing or empty');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const AlertDialog(
+              title: Text('שגיאת אימות'),
+              content: Text('נתוני חניכים חסרים'),
+              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VERIFY_FAIL: trainees missing');
+      }
+
+      // Verify count matches
+      if (verifyTrainees.length != traineesPayload.length) {
+        debugPrint(
+          '❌ VERIFY_FAIL: Count mismatch: ${verifyTrainees.length} != ${traineesPayload.length}',
+        );
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('שגיאת אימות'),
+              content: Text(
+                'מספר חניכים לא תואם: ${verifyTrainees.length} != ${traineesPayload.length}',
+              ),
+              actions: const [
+                TextButton(onPressed: null, child: Text('הבנתי')),
+              ],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VERIFY_FAIL: Count mismatch');
+      }
+
+      // Verify at least one trainee has values map with numeric data
+      final hasNumericData = verifyTrainees.any((t) {
+        final values = (t as Map?)?['values'] as Map?;
+        return values != null && values.isNotEmpty;
+      });
+
+      if (!hasNumericData) {
+        debugPrint('❌ VERIFY_FAIL: No numeric data in trainees');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const AlertDialog(
+              title: Text('שגיאת אימות'),
+              content: Text('חסרים נתונים נומריים'),
+              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
+            ),
+          );
+        }
+        throw Exception('TEMP_SAVE_VERIFY_FAIL: No numeric data');
+      }
+
+      debugPrint(
+        '✅ VERIFY_OK: trainees=${verifyTrainees.length} valuesPresent=true',
+      );
+
+      // Step 8: Rehydrate UI from verified Firestore data
+      debugPrint('TEMP_SAVE: Rehydrating UI from Firestore data');
+
+      // Clear and rebuild trainees from verified data
+      trainees.clear();
+      traineeNumbers.clear();
+
+      for (final traineeData in verifyTrainees) {
+        final tMap = traineeData as Map<String, dynamic>;
+        final name = (tMap['name'] as String?) ?? '';
+        final idx = (tMap['index'] as num?)?.toInt() ?? 0;
+        final values = (tMap['values'] as Map<String, dynamic>?) ?? {};
+
+        // Rebuild hits map from values
+        final hits = <int, int>{};
+        for (final entry in values.entries) {
+          if (entry.key.startsWith('station_')) {
+            final stationIdx = int.tryParse(
+              entry.key.replaceFirst('station_', ''),
+            );
+            final value = (entry.value as num?)?.toInt() ?? 0;
+            if (stationIdx != null) {
+              hits[stationIdx] = value;
+            }
+          }
+        }
+
+        trainees.add(Trainee(name: name, hits: hits));
+        traineeNumbers.add(idx + 1);
+        debugPrint(
+          'TEMP_SAVE_REHYDRATE: trainee[$idx] name="$name" hits=$hits',
+        );
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+
+      debugPrint('TEMP_SAVE_OK trainees=${trainees.length} valuesPresent=true');
+      debugPrint(
+        'RANGE_DRAFT_OK path=${docRef.path} trainees=${trainees.length}',
+      );
+      debugPrint('   folder=${payload['folder']}');
+      debugPrint('   module=${payload['module']}');
+      debugPrint('   rangeType=${payload['rangeType']}');
+      debugPrint('   settlement=${payload['settlement']}');
+      debugPrint('   isTemporary=${payload['isTemporary']}');
+      debugPrint('   status=${payload['status']}');
+      debugPrint('========== TEMP_SAVE_ATOMIC END ==========\n');
+
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('המשוב נשמר באופן זמני')));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ שמירה זמנית הושלמה\nנתיב: ${docRef.path}'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה זמנית: $e')));
+      // Catch any uncaught errors
+      debugPrint('❌ TEMP_SAVE: Uncaught error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ שגיאה בשמירה: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      rethrow;
+    } finally {
+      // Always reset loading state
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
   Future<void> _loadExistingTemporaryFeedback(String id) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .doc(id)
-          .get();
-      if (!doc.exists) return;
-      final data = doc.data();
-      if (data == null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final email = FirebaseAuth.instance.currentUser?.email;
+    debugPrint('\n========== TEMP_LOAD START ==========');
+    debugPrint('TEMP_LOAD: user=$uid email=$email');
+    debugPrint('TEMP_LOAD: path=feedbacks/$id');
+    debugPrint('TEMP_LOAD: module=${widget.mode} rangeType=$_rangeType');
+    debugPrint('TEMP_LOAD: using direct docRef.get() (no query)');
 
+    try {
+      final docRef = FirebaseFirestore.instance.collection('feedbacks').doc(id);
+      debugPrint('TEMP_LOAD: fullPath=${docRef.path}');
+
+      final doc = await docRef.get();
+
+      debugPrint('TEMP_LOAD: got document, exists=${doc.exists}');
+
+      if (!doc.exists) {
+        debugPrint('⚠️ TEMP_LOAD: Document does not exist: $id');
+        debugPrint('========== TEMP_LOAD END (NOT FOUND) ==========\n');
+        return;
+      }
+
+      final data = doc.data();
+      if (data == null) {
+        debugPrint('⚠️ TEMP_LOAD: Document data is null: $id');
+        debugPrint('========== TEMP_LOAD END (NULL DATA) ==========\n');
+        return;
+      }
+
+      final rawTrainees = data['trainees'] as List?;
+      final rawStations = data['stations'] as List?;
+      final rawSettlement = data['settlement'] as String?;
+      final rawAttendeesCount = data['attendeesCount'] as num?;
+      debugPrint('TEMP_LOAD: doc.id=$id');
+      debugPrint('TEMP_LOAD: dataKeys=${data.keys.toList()}');
+      debugPrint('TEMP_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
+      debugPrint('TEMP_LOAD: rawStations.length=${rawStations?.length ?? -1}');
+      debugPrint('TEMP_LOAD: settlement=$rawSettlement');
+      debugPrint('TEMP_LOAD: attendeesCount=$rawAttendeesCount');
+      if (rawTrainees != null && rawTrainees.isNotEmpty) {
+        debugPrint('TEMP_LOAD: firstTraineeRaw=${rawTrainees[0]}');
+      }
+
+      debugPrint('TEMP_LOAD: Parsing data...');
       setState(() {
         selectedSettlement =
             data['settlement'] as String? ?? selectedSettlement;
         _settlementDisplayText = selectedSettlement ?? '';
         attendeesCount =
             (data['attendeesCount'] as num?)?.toInt() ?? attendeesCount;
+        // ✅ Update controller to reflect loaded value
+        _attendeesCountController.text = attendeesCount.toString();
+        debugPrint('   Loaded attendeesCount: $attendeesCount');
         instructorName = data['instructorName'] as String? ?? instructorName;
 
         stations =
@@ -626,11 +1120,28 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               return Trainee(name: name, hits: hits);
             }).toList() ??
             trainees;
+
+        debugPrint('TEMP_LOAD: Parsed ${trainees.length} trainees into model');
+        for (int i = 0; i < trainees.length && i < 3; i++) {
+          debugPrint(
+            'TEMP_LOAD:   Trainee $i: name="${trainees[i].name}", hits=${trainees[i].hits}',
+          );
+        }
+
         // rebuild sequential numbers according to loaded trainees
         traineeNumbers = List<int>.generate(trainees.length, (i) => i + 1);
+
+        debugPrint('TEMP_LOAD: ✅ Load complete');
+        debugPrint('TEMP_LOAD:   attendeesCount=$attendeesCount');
+        debugPrint('TEMP_LOAD:   trainees.length=${trainees.length}');
+        debugPrint('TEMP_LOAD:   stations.length=${stations.length}');
+        debugPrint('========== TEMP_LOAD END (SUCCESS) ==========\n');
       });
-    } catch (e) {
-      debugPrint('Error loading temp feedback $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ ========== TEMP_LOAD ERROR ==========');
+      debugPrint('Error: $e');
+      debugPrint('StackTrace: $stackTrace');
+      debugPrint('========================================\n');
     }
   }
 
@@ -693,6 +1204,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
               // כמות נוכחים
               TextField(
+                controller: _attendeesCountController,
                 decoration: const InputDecoration(
                   labelText: 'כמות נוכחים',
                   border: OutlineInputBorder(),
@@ -817,7 +1329,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   }
                                 }
                               });
-                              _scheduleAutosave();
+                              // NO AUTOSAVE - user must manually save
                             },
                           ),
                         ],
@@ -906,37 +1418,51 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 // טבלה דינמית
                 _buildTraineesTable(),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                // כפתור שמירה בלבד - ייצוא יבוצע מדף המשובים
+                // TWO BUTTONS: Temporary Save and Finalize Save
+                // Temporary Save button (validates and saves to temp)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveToFirestore,
+                    onPressed: _isSaving ? null : _saveTemporarily,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Colors.blueGrey,
                     ),
                     child: _isSaving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
                               ),
-                            ),
+                              SizedBox(width: 12),
+                              Text(
+                                'שומר זמנית...',
+                                style: TextStyle(fontSize: 18),
+                              ),
+                            ],
                           )
-                        : const Text(
-                            'שמור מטווח',
-                            style: TextStyle(fontSize: 18),
+                        : Text(
+                            widget.mode == 'surprise'
+                                ? 'שמירה זמנית - תרגיל הפתעה'
+                                : 'שמירה זמנית - מטווח',
+                            style: const TextStyle(fontSize: 18),
                           ),
                   ),
                 ),
 
                 const SizedBox(height: 12),
-                // Finalize button: explicitly finalize temporary feedbacks
+
+                // Finalize Save button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -946,37 +1472,44 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       backgroundColor: Colors.deepOrange,
                     ),
                     child: _isSaving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
                               ),
-                            ),
+                              SizedBox(width: 12),
+                              Text('שומר...', style: TextStyle(fontSize: 18)),
+                            ],
                           )
-                        : const Text(
-                            'שמור סופי',
-                            style: TextStyle(fontSize: 18),
+                        : Text(
+                            widget.mode == 'surprise'
+                                ? 'שמירה סופית - תרגיל הפתעה'
+                                : 'שמירה סופית - מטווח',
+                            style: const TextStyle(fontSize: 18),
                           ),
                   ),
                 ),
 
-                // הערה למשתמש
+                // הערות למשתמש
                 const SizedBox(height: 12),
                 const Text(
-                  'לייצוא לקובץ מקומי, עבור לדף המשובים ולחץ על המטווח השמור',
+                  'שמירה זמנית: שומר את הנתונים לטיוטה (עם אימות מלא). שמירה סופית: משלים את המשוב ושולח לארכיון.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
-              ],
-              // כפתור שמירה זמנית
-              if (attendeesCount > 0) ...[
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _canSaveTemporarily ? _saveTemporarily : null,
-                  child: const Text('שמור זמנית'),
+                const SizedBox(height: 8),
+                const Text(
+                  'לייצוא לקובץ מקומי, עבור לדף המשובים ולחץ על המטווח השמור',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ],
@@ -1098,7 +1631,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             traineeNumbers[idx] = val;
                                           }
                                         });
-                                        _scheduleAutosave();
+                                        // NO AUTOSAVE - user must manually save
                                       },
                                     ),
                                   ),
@@ -1167,7 +1700,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     setState(() {
                                       trainee.name = v;
                                     });
-                                    _scheduleAutosave();
+                                    // NO AUTOSAVE - user must manually save
                                   },
                                 ),
                               );
@@ -1248,6 +1781,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                           ),
                                           child: TextField(
+                                            controller:
+                                                TextEditingController(
+                                                    text:
+                                                        (trainee.hits[stationIndex] ??
+                                                                0) ==
+                                                            0
+                                                        ? ''
+                                                        : trainee
+                                                              .hits[stationIndex]
+                                                              .toString(),
+                                                  )
+                                                  ..selection =
+                                                      TextSelection.collapsed(
+                                                        offset:
+                                                            (trainee.hits[stationIndex] ??
+                                                                    0)
+                                                                .toString()
+                                                                .length,
+                                                      ),
                                             decoration: const InputDecoration(
                                               isDense: true,
                                               border: OutlineInputBorder(),
@@ -1312,7 +1864,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 trainee.hits[stationIndex] =
                                                     score;
                                               });
-                                              _scheduleAutosave();
+                                              // NO AUTOSAVE - user must manually save
                                             },
                                           ),
                                         );
@@ -1760,7 +2312,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   }
                                   traineeNumbers[traineeIndex] = n;
                                 });
-                                _scheduleAutosave();
+                                // NO AUTOSAVE - user must manually save
                               },
                             ),
                           ),
@@ -1782,7 +2334,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 setState(() {
                                   trainee.name = v;
                                 });
-                                _scheduleAutosave();
+                                // NO AUTOSAVE - user must manually save
                               },
                             ),
                           ),
@@ -1856,7 +2408,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           setState(() {
                                             trainee.hits[stationIndex] = score;
                                           });
-                                          _scheduleAutosave();
+                                          // NO AUTOSAVE - user must manually save
                                         },
                                       ),
                                     );
@@ -2000,6 +2552,17 @@ class Trainee {
 
   Map<String, dynamic> toJson() {
     return {'name': name, 'hits': hits};
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'hits': hits.map((k, v) => MapEntry('station_$k', v)),
+    };
+  }
+
+  bool hasAnyNonZeroField() {
+    return hits.values.any((v) => v != 0);
   }
 }
 
