@@ -38,29 +38,57 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && request.auth.uid == resource.data.instructorId;
     }
 
-    // Screening documents for instructor course (multi-day)
-    // Focused permissions per requirements
-    match /instructor_course_screenings/{screeningId} {
+    // ===== INSTRUCTOR COURSE SCREENING COLLECTIONS =====
+    // DRAFTS collection (in-progress/temporary feedbacks)
+    match /instructor_course_drafts/{draftId} {
       function isSignedIn() {
         return request.auth != null;
       }
       function isOwner() {
         return request.auth != null && resource.data.createdBy == request.auth.uid;
       }
+      function isOwnerCreate() {
+        return request.auth != null && request.resource.data.createdBy == request.auth.uid;
+      }
 
-      // 1) allow create for any signed-in user (no required fields on create)
+      // Allow create for any signed-in user
       allow create: if isSignedIn();
 
-      // 2) allow read for owner only (works for queries and gets)
-      allow read: if isOwner();
+      // Allow read for owner or admin
+      allow read: if isOwner() || isAdmin();
 
-      // 3) allow update for owner when status is draft (and also 'in_progress' to match app flow)
-      allow update: if isOwner() && (
+      // Allow update for owner when status is draft
+      allow update: if (isOwner() || isAdmin()) && (
         resource.data.status == 'draft' || resource.data.status == 'in_progress'
       );
 
-      // 4) deny deletes explicitly
-      allow delete: if false;
+      // Allow delete for owner or admin (needed for finalize operation)
+      allow delete: if isOwner() || isAdmin();
+    }
+
+    // FINALS collection (finalized instructor course feedbacks)
+    match /instructor_course_feedbacks/{feedbackId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      function isOwnerCreate() {
+        return request.auth != null && request.resource.data.createdBy == request.auth.uid;
+      }
+      function isOwner() {
+        return request.auth != null && resource.data.createdBy == request.auth.uid;
+      }
+
+      // Allow create for any signed-in instructor/admin
+      allow create: if isSignedIn();
+
+      // Allow read for any authenticated user
+      allow read: if request.auth != null;
+
+      // Allow update for owner or admin only
+      allow update: if isOwner() || isAdmin();
+
+      // Prevent deletion of final feedbacks
+      allow delete: if isAdmin();
     }
 
     // Candidate aggregate docs (if used)
@@ -68,6 +96,28 @@ service cloud.firestore {
       allow read: if isAdmin() || isInstructor();
       // Admin can write freely
       allow write: if isAdmin();
+    }
+
+    // ===== INSTRUCTOR COURSE EVALUATIONS (SINGLE COLLECTION) =====
+    // Unified collection for drafts and finals with status field
+    // Used by miunim (instructor course selection) module
+    match /instructor_course_evaluations/{evalId} {
+      // Allow create ONLY if ownerUid matches auth.uid
+      allow create: if request.auth != null 
+                    && request.resource.data.ownerUid == request.auth.uid;
+
+      // Allow read if owner OR if document is finalized
+      allow read: if request.auth != null 
+                  && (resource.data.ownerUid == request.auth.uid
+                      || resource.data.status == 'final');
+
+      // Allow update ONLY if owner
+      allow update: if request.auth != null 
+                    && resource.data.ownerUid == request.auth.uid;
+
+      // Allow delete ONLY if owner or admin
+      allow delete: if request.auth != null 
+                    && (resource.data.ownerUid == request.auth.uid || isAdmin());
     }
 
     // Nested screenings under courses/{courseId}/screenings/{screeningId}

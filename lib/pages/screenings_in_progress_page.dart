@@ -30,10 +30,10 @@ class ScreeningsInProgressPage extends StatelessWidget {
             if (uid == null || uid.isEmpty) {
               return Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
             }
-            // Safe stream: single filter; filter client-side to avoid composite index
+            // ✅ SIMPLE QUERY: Single where filter only (no orderBy to avoid composite index)
             return FirebaseFirestore.instance
-                .collection('instructor_course_screenings')
-                .where('createdBy', isEqualTo: uid)
+                .collection('instructor_course_evaluations')
+                .where('ownerUid', isEqualTo: uid)
                 .snapshots();
           }(),
           builder: (context, snapshot) {
@@ -52,23 +52,23 @@ class ScreeningsInProgressPage extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             final docs = snapshot.data?.docs ?? [];
-            // Client-side filter by courseType + status
+
+            // ✅ Filter by status in-memory to avoid composite index requirement
             final filtered = docs.where((d) {
               final m = d.data();
               final matchesCourse = m['courseType'] == courseType;
               final matchesStatus = m['status'] == statusFilter;
               return matchesCourse && matchesStatus;
             }).toList();
-            // Sort by updatedAt desc
+
+            // ✅ Sort by updatedAt descending in Dart (client-side)
             filtered.sort((a, b) {
-              final ta = a.data()['updatedAt'] as Timestamp?;
-              final tb = b.data()['updatedAt'] as Timestamp?;
-              final da = ta?.toDate();
-              final db = tb?.toDate();
-              if (da == null && db == null) return 0;
-              if (da == null) return 1;
-              if (db == null) return -1;
-              return db.compareTo(da);
+              final aUpdatedAt = a.data()['updatedAt'] as Timestamp?;
+              final bUpdatedAt = b.data()['updatedAt'] as Timestamp?;
+              if (aUpdatedAt == null && bUpdatedAt == null) return 0;
+              if (aUpdatedAt == null) return 1;
+              if (bUpdatedAt == null) return -1;
+              return bUpdatedAt.compareTo(aUpdatedAt); // descending
             });
             if (filtered.isEmpty) {
               return Center(

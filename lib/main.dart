@@ -3216,6 +3216,244 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               }),
             const SizedBox(height: 20),
 
+            // סיכום ופירוט עקרונות למשובי תרגילי הפתעה
+            ...(feedback.folder == 'משוב תרגילי הפתעה' ||
+                        feedback.module == 'surprise_drill') &&
+                    feedback.id != null &&
+                    feedback.id!.isNotEmpty
+                ? <Widget>[
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('feedbacks')
+                          .doc(feedback.id)
+                          .get(),
+                      builder: (context, snapshot) {
+                        debugPrint('\n🔍 SURPRISE DRILLS DETAILS SCREEN');
+                        debugPrint('   Feedback ID: ${feedback.id}');
+                        debugPrint('   Folder: ${feedback.folder}');
+                        debugPrint('   Module: ${feedback.module}');
+                        debugPrint(
+                          '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
+                        );
+
+                        if (!snapshot.hasData || !snapshot.data!.exists) {
+                          debugPrint('   ❌ No snapshot data or doc not exists');
+                          return const SizedBox.shrink();
+                        }
+
+                        final data =
+                            snapshot.data!.data() as Map<String, dynamic>?;
+                        if (data == null) {
+                          debugPrint('   ❌ Snapshot data is null');
+                          return const SizedBox.shrink();
+                        }
+
+                        debugPrint('   ✅ Document keys: ${data.keys.toList()}');
+
+                        final stations =
+                            (data['stations'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+                        final trainees =
+                            (data['trainees'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+
+                        debugPrint(
+                          '   Stations (principles) count: ${stations.length}',
+                        );
+                        debugPrint('   Trainees count: ${trainees.length}');
+
+                        if (stations.isEmpty && trainees.isEmpty) {
+                          debugPrint(
+                            '   ⚠️ Both stations and trainees are empty',
+                          );
+                          return const SizedBox.shrink();
+                        }
+
+                        // For surprise drills: stations = principles
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Show principles list
+                            if (stations.isNotEmpty) ...[
+                              const Text(
+                                'עקרונות',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ...stations.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final station = entry.value;
+                                final principleName =
+                                    station['name'] ?? 'עיקרון ${index + 1}';
+
+                                return Card(
+                                  color: Colors.blueGrey.shade700,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: const BoxDecoration(
+                                            color: Colors.orangeAccent,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '${index + 1}',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.black,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            principleName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // Show trainees table
+                            if (trainees.isNotEmpty) ...[
+                              const Text(
+                                'חניכים',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                color: Colors.blueGrey.shade800,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: DataTable(
+                                      headingRowColor: WidgetStateProperty.all(
+                                        Colors.blueGrey.shade700,
+                                      ),
+                                      columns: [
+                                        const DataColumn(
+                                          label: Text(
+                                            'שם',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                        ...stations.asMap().entries.map((
+                                          entry,
+                                        ) {
+                                          final station = entry.value;
+                                          final name =
+                                              station['name'] ??
+                                              'עיקרון ${entry.key + 1}';
+                                          return DataColumn(
+                                            label: Text(
+                                              name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          );
+                                        }),
+                                        const DataColumn(
+                                          label: Text(
+                                            'סה"כ',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      rows: trainees.map((trainee) {
+                                        final name = (trainee['name'] ?? '')
+                                            .toString();
+                                        final hitsMap =
+                                            (trainee['hits'] as Map?)
+                                                ?.cast<String, dynamic>() ??
+                                            {};
+                                        final totalHits =
+                                            (trainee['totalHits'] as num?)
+                                                ?.toInt() ??
+                                            0;
+
+                                        return DataRow(
+                                          cells: [
+                                            DataCell(
+                                              Text(
+                                                name,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            ...stations.asMap().entries.map((
+                                              entry,
+                                            ) {
+                                              final stationIdx = entry.key;
+                                              final score =
+                                                  (hitsMap['station_$stationIdx']
+                                                          as num?)
+                                                      ?.toInt() ??
+                                                  0;
+                                              return DataCell(
+                                                Text(
+                                                  score.toString(),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                            DataCell(
+                                              Text(
+                                                totalHits.toString(),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.orangeAccent,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                  ]
+                : [],
+
             // סיכום ופירוט מקצים למשובי מטווחים
             ...feedback.folder == 'מטווחי ירי' &&
                     feedback.id != null &&

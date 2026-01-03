@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser
 import 'feedback_export_service.dart'; // for export functionality
 import 'widgets/standard_back_button.dart';
@@ -180,31 +181,110 @@ class _InstructorCourseSelectionFeedbacksPageState
     });
 
     try {
-      // ✅ CORRECT: Query instructor_course_feedbacks and filter by isSuitable field
-      final isSuitable = category == 'suitable';
-      debugPrint('\n🔍 ===== LOADING INSTRUCTOR COURSE FEEDBACKS =====');
-      debugPrint('QUERY: collection=instructor_course_feedbacks');
-      debugPrint('QUERY: where("isSuitable", "==", $isSuitable)');
-      debugPrint('QUERY: where("status", "==", "finalized")');
-      debugPrint('QUERY: orderBy("createdAt", descending: true)');
+      debugPrint(
+        '\n🔍 ===== MIUNIM_LIST_LOAD: INSTRUCTOR COURSE FEEDBACKS =====',
+      );
 
+      // ✅ Query by ownerUid only to avoid composite index requirement
+      final uid = currentUser?.uid ?? FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      // Map category to isSuitable boolean
+      final isSuitable = category == 'suitable';
+      debugPrint(
+        '🔵 MIUNIM_LIST_READ: collection=instructor_course_evaluations ownerUid=$uid isSuitable=$isSuitable',
+      );
+      debugPrint(
+        '🔵 MIUNIM_LIST_READ: where("ownerUid", "==", "$uid") [NO orderBy - avoiding composite index]',
+      );
+
+      // ✅ SIMPLE QUERY: Single where filter only (no orderBy to avoid composite index)
       final snapshot = await FirebaseFirestore.instance
-          .collection('instructor_course_feedbacks')
-          .where('isSuitable', isEqualTo: isSuitable)
-          .where('status', isEqualTo: 'finalized')
-          .orderBy('createdAt', descending: true)
+          .collection('instructor_course_evaluations')
+          .where('ownerUid', isEqualTo: uid)
           .get()
           .timeout(const Duration(seconds: 15));
 
-      debugPrint('RESULT: Got ${snapshot.docs.length} documents');
+      debugPrint(
+        '🔵 MIUNIM_LIST_READ_RAW: Got ${snapshot.docs.length} documents (all statuses)',
+      );
+
+      // ✅ Filter by status='final' AND isSuitable in-memory to avoid composite index
+      final filtered = snapshot.docs.where((doc) {
+        final data = doc.data();
+        return data['status'] == 'final' && data['isSuitable'] == isSuitable;
+      }).toList();
+
+      // ✅ Sort by createdAt descending in Dart (client-side)
+      filtered.sort((a, b) {
+        final aCreatedAt = a.data()['createdAt'] as Timestamp?;
+        final bCreatedAt = b.data()['createdAt'] as Timestamp?;
+        if (aCreatedAt == null && bCreatedAt == null) return 0;
+        if (aCreatedAt == null) return 1;
+        if (bCreatedAt == null) return -1;
+        return bCreatedAt.compareTo(aCreatedAt); // descending
+      });
+
+      debugPrint(
+        '🔵 MIUNIM_LIST_READ_FILTERED: ${filtered.length} documents with status=final, isSuitable=$isSuitable (sorted client-side)',
+      );
 
       final feedbacks = <Map<String, dynamic>>[];
-      for (final doc in snapshot.docs) {
+      for (final doc in filtered) {
         final data = doc.data();
         data['id'] = doc.id;
+
+        // ✅ MAP SCORES: Extract from fields structure and flatten to scores map
+        final fields = data['fields'] as Map<String, dynamic>? ?? {};
+        final Map<String, dynamic> scores = {};
+        double totalScore = 0.0;
+        int scoreCount = 0;
+
+        // Map Hebrew category names to English keys for backward compatibility
+        final categoryMapping = {
+          'בוחן רמה': 'levelTest',
+          'הדרכה טובה': 'goodInstruction',
+          'הדרכת מבנה': 'structureInstruction',
+          'יבשים': 'dryPractice',
+          'תרגיל הפתעה': 'surpriseExercise',
+        };
+
+        fields.forEach((hebrewName, fieldData) {
+          if (fieldData is Map && fieldData.containsKey('value')) {
+            final value = fieldData['value'];
+            final numValue = (value is num) ? value.toDouble() : 0.0;
+
+            // Store with English key for UI compatibility
+            final englishKey = categoryMapping[hebrewName];
+            if (englishKey != null) {
+              scores[englishKey] = numValue;
+              if (numValue > 0) {
+                totalScore += numValue;
+                scoreCount++;
+              }
+            }
+
+            debugPrint(
+              '  SCORE_MAP: "$hebrewName" → "$englishKey" = $numValue',
+            );
+          } else {
+            debugPrint(
+              '  ⚠️ SCORE_PARSE_ERROR: Field "$hebrewName" has unexpected structure: $fieldData',
+            );
+          }
+        });
+
+        // Calculate average score
+        final averageScore = scoreCount > 0 ? totalScore / scoreCount : 0.0;
+        data['scores'] = scores;
+        data['averageScore'] = averageScore;
+
         feedbacks.add(data);
         debugPrint(
-          'DOC: ${doc.id} - ${data["candidateName"]} (suitable=${data["isSuitable"]})',
+          'DOC: ${doc.id} - ${data["candidateName"]} (suitable=${data["isSuitable"]}) avg=$averageScore scores=${scores.length}',
         );
       }
       debugPrint('===================================================\n');
@@ -217,6 +297,55 @@ class _InstructorCourseSelectionFeedbacksPageState
       }
 
       debugPrint('✅ Loaded ${feedbacks.length} feedbacks');
+    } on FirebaseException catch (e) {
+      debugPrint('❌ FirebaseException: ${e.code}');
+      debugPrint('   Message: ${e.message}');
+
+      if (e.code == 'failed-precondition' ||
+          e.message?.contains('index') == true) {
+        debugPrint('\n❌❌❌ UNEXPECTED INDEX ERROR! ❌❌❌');
+        debugPrint('Query should NOT require composite index!');
+        debugPrint('Using single where filter: ownerUid == <currentUser.uid>');
+        debugPrint('Error: ${e.code} - ${e.message}');
+        debugPrint('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌\n');
+
+        if (mounted) {
+          setState(() {
+            _feedbacks = [];
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('שגיאת Firestore: ${e.code}\n${e.message ?? ""}'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 10),
+              margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+              action: SnackBarAction(
+                label: 'סגור',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
+            ),
+          );
+        }
+      } else {
+        debugPrint('❌ Other Firebase error: ${e.code}');
+        if (mounted) {
+          setState(() {
+            _feedbacks = [];
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('שגיאת Firebase: ${e.message}'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+            ),
+          );
+        }
+      }
     } catch (e) {
       debugPrint('❌ Error loading feedbacks: $e');
       if (mounted) {
@@ -653,6 +782,11 @@ class _InstructorCourseSelectionFeedbacksPageState
     final averageScore = feedback['averageScore'] ?? 0.0;
     final scores = feedback['scores'] as Map<String, dynamic>? ?? {};
 
+    debugPrint('\n📋 FEEDBACK_DETAILS_OPEN: ${feedback['id']}');
+    debugPrint('   candidateName=$candidateName');
+    debugPrint('   averageScore=$averageScore');
+    debugPrint('   scores=$scores');
+
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
@@ -702,11 +836,23 @@ class _InstructorCourseSelectionFeedbacksPageState
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 8),
-                _buildScoreRow('בוחן רמה', scores['levelTest']),
-                _buildScoreRow('הדרכה טובה', scores['goodInstruction']),
-                _buildScoreRow('הדרכת מבנה', scores['structureInstruction']),
-                _buildScoreRow('יבשים', scores['dryPractice']),
-                _buildScoreRow('תרגיל הפתעה', scores['surpriseExercise']),
+                _buildScoreRow('בוחן רמה', scores['levelTest'], 'levelTest'),
+                _buildScoreRow(
+                  'הדרכה טובה',
+                  scores['goodInstruction'],
+                  'goodInstruction',
+                ),
+                _buildScoreRow(
+                  'הדרכת מבנה',
+                  scores['structureInstruction'],
+                  'structureInstruction',
+                ),
+                _buildScoreRow('יבשים', scores['dryPractice'], 'dryPractice'),
+                _buildScoreRow(
+                  'תרגיל הפתעה',
+                  scores['surpriseExercise'],
+                  'surpriseExercise',
+                ),
                 const Divider(),
                 _buildDetailRow(
                   'ממוצע',
@@ -758,7 +904,25 @@ class _InstructorCourseSelectionFeedbacksPageState
     );
   }
 
-  Widget _buildScoreRow(String label, dynamic score) {
+  Widget _buildScoreRow(String label, dynamic score, [String? scoreKey]) {
+    // Parse score value with proper type handling
+    String displayValue;
+    if (score == null) {
+      debugPrint('  ⚠️ SCORE_DISPLAY: $label ($scoreKey) = null → showing "—"');
+      displayValue = '—';
+    } else if (score is num) {
+      final numScore = score.toDouble();
+      displayValue = numScore == numScore.toInt()
+          ? numScore.toInt().toString()
+          : numScore.toStringAsFixed(1);
+      debugPrint('  ✅ SCORE_DISPLAY: $label ($scoreKey) = $displayValue');
+    } else {
+      debugPrint(
+        '  ⚠️ SCORE_DISPLAY: $label ($scoreKey) has unexpected type ${score.runtimeType} → showing "—"',
+      );
+      displayValue = '—';
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -766,7 +930,7 @@ class _InstructorCourseSelectionFeedbacksPageState
         children: [
           Text(label),
           Text(
-            score?.toString() ?? '0',
+            displayValue,
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ],

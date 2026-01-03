@@ -73,16 +73,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // רשימת מקצים - כל מקצה מכיל שם + מספר כדורים
   List<RangeStation> stations = [];
 
-  // רשימת חניכים - כל חניך מכיל שם + פגיעות למקצה
-  List<Trainee> trainees = [];
-  // sequential numbers for trainees (editable but reset on list changes)
-  List<int> traineeNumbers = [];
+  // ✅ SINGLE SOURCE OF TRUTH: List of trainee row models
+  // Contains ALL data for table: index, name, and all numeric values
+  List<TraineeRowModel> traineeRows = [];
 
   // editing document id stored in state so we can create/update temporary docs
   String? _editingFeedbackId;
 
   bool _isSaving = false;
   // הייצוא יתבצע מדף המשובים בלבד
+
+  // ✅ AUTOSAVE TIMER: Debounced autosave (600ms delay)
+  Timer? _autoSaveTimer;
 
   @override
   void initState() {
@@ -100,11 +102,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     if (_editingFeedbackId != null) {
       _loadExistingTemporaryFeedback(_editingFeedbackId!);
     }
+    // ✅ Initialize autosave timer (will be scheduled on data changes)
+  }
+
+  /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 600ms of inactivity
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 600), () {
+      debugPrint('🔄 AUTOSAVE: Timer triggered');
+      _saveTemporarily();
+    });
   }
 
   @override
   void dispose() {
-    // NO AUTOSAVE - user must explicitly click Temporary Save button
+    _autoSaveTimer?.cancel();
     _attendeesCountController.dispose();
     super.dispose();
   }
@@ -182,21 +194,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     setState(() {
       attendeesCount = count;
 
-      // יצירת רשימת חניכים לפי הכמות
-      if (count > trainees.length) {
-        // הוספת חניכים
-        for (int i = trainees.length; i < count; i++) {
-          trainees.add(Trainee(name: '', hits: {}));
-          traineeNumbers.add(i + 1);
+      // ✅ Update traineeRows to match count
+      if (count > traineeRows.length) {
+        // Add new rows
+        for (int i = traineeRows.length; i < count; i++) {
+          traineeRows.add(TraineeRowModel(index: i, name: ''));
         }
-        // NO AUTOSAVE - user must explicitly save
-      } else if (count < trainees.length) {
-        // הסרת חניכים
-        trainees = trainees.sublist(0, count);
-        traineeNumbers = List<int>.generate(trainees.length, (i) => i + 1);
-        // NO AUTOSAVE - user must explicitly save
+      } else if (count < traineeRows.length) {
+        // Remove excess rows
+        traineeRows = traineeRows.sublist(0, count);
       }
     });
+    // ✅ Schedule autosave
+    _scheduleAutoSave();
   }
 
   void _addStation() {
@@ -224,30 +234,33 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
 
     setState(() {
-      // מחיקת המקצה מכל החניכים
-      for (var trainee in trainees) {
-        trainee.hits.remove(index);
-        // עדכון אינדקסים של מקצים שאחריו
-        final updatedHits = <int, int>{};
-        trainee.hits.forEach((key, value) {
-          if (key > index) {
-            updatedHits[key - 1] = value;
+      // ✅ Remove station data from all trainee rows and shift indices
+      for (var row in traineeRows) {
+        row.values.remove(index);
+        // Shift indices down for stations after removed one
+        final updatedValues = <int, int>{};
+        row.values.forEach((stationIdx, value) {
+          if (stationIdx > index) {
+            updatedValues[stationIdx - 1] = value;
           } else {
-            updatedHits[key] = value;
+            updatedValues[stationIdx] = value;
           }
         });
-        trainee.hits = updatedHits;
+        row.values.clear();
+        row.values.addAll(updatedValues);
       }
 
       stations.removeAt(index);
     });
+    // ✅ Schedule autosave
+    _scheduleAutoSave();
   }
 
   int _getTraineeTotalHits(int traineeIndex) {
-    if (traineeIndex >= trainees.length) return 0;
+    if (traineeIndex >= traineeRows.length) return 0;
 
     int total = 0;
-    trainees[traineeIndex].hits.forEach((stationIndex, hits) {
+    traineeRows[traineeIndex].values.forEach((stationIndex, hits) {
       total += hits;
     });
     return total;
@@ -264,11 +277,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // Calculate total points for a trainee (surprise mode only)
   // Sum of all filled principle scores
   int _getTraineeTotalPoints(int traineeIndex) {
-    if (traineeIndex >= trainees.length) return 0;
+    if (traineeIndex >= traineeRows.length) return 0;
     if (widget.mode != 'surprise') return 0;
 
     int total = 0;
-    trainees[traineeIndex].hits.forEach((stationIndex, score) {
+    traineeRows[traineeIndex].values.forEach((stationIndex, score) {
       if (score > 0) {
         total += score;
       }
@@ -279,12 +292,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // Calculate average points for a trainee (surprise mode only)
   // Average of filled principle scores (ignores empty/0 scores)
   double _getTraineeAveragePoints(int traineeIndex) {
-    if (traineeIndex >= trainees.length) return 0.0;
+    if (traineeIndex >= traineeRows.length) return 0.0;
     if (widget.mode != 'surprise') return 0.0;
 
     int total = 0;
     int count = 0;
-    trainees[traineeIndex].hits.forEach((stationIndex, score) {
+    traineeRows[traineeIndex].values.forEach((stationIndex, score) {
       if (score > 0) {
         total += score;
         count++;
@@ -355,8 +368,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
 
     // וידוא שכל החניכים מוגדרים
-    for (int i = 0; i < trainees.length; i++) {
-      if (trainees[i].name.trim().isEmpty) {
+    for (int i = 0; i < traineeRows.length; i++) {
+      if (traineeRows[i].name.trim().isEmpty) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('אנא הזן שם לחניך ${i + 1}')));
@@ -376,7 +389,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     debugPrint('SAVE_CLICK uid=$uid email=$email');
     debugPrint('SAVE_CLICK platform=${kIsWeb ? "web" : "mobile"}');
     debugPrint(
-      'SAVE_CLICK trainees=${trainees.length} stations=${stations.length}',
+      'SAVE_CLICK trainees=${traineeRows.length} stations=${stations.length}',
     );
     debugPrint('================================\n');
 
@@ -398,25 +411,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           ? 'תרגילי הפתעה'
           : (_rangeType == 'קצרים' ? 'דיווח קצר' : 'דיווח רחוק');
 
-      // Build trainees data - only include non-empty fields
+      // ✅ Build trainees data from traineeRows model
       final List<Map<String, dynamic>> traineesData = [];
-      for (int i = 0; i < trainees.length; i++) {
-        final trainee = trainees[i];
-        if (trainee.name.trim().isEmpty) continue; // Skip empty names
+      for (int i = 0; i < traineeRows.length; i++) {
+        final row = traineeRows[i];
+        if (row.name.trim().isEmpty) continue; // Skip empty names
 
-        // Build hits map, only include non-zero values
+        // Build hits map from values, only include non-zero
         final Map<String, int> hitsMap = {};
-        trainee.hits.forEach((stationIdx, hits) {
-          if (hits > 0) {
-            hitsMap['station_$stationIdx'] = hits;
+        row.values.forEach((stationIdx, value) {
+          if (value > 0) {
+            hitsMap['station_$stationIdx'] = value;
           }
         });
 
         traineesData.add({
-          'name': trainee.name.trim(),
+          'name': row.name.trim(),
           'hits': hitsMap,
           'totalHits': _getTraineeTotalHits(i),
-          'number': traineeNumbers.length > i ? traineeNumbers[i] : i + 1,
+          'number': i + 1,
         });
       }
 
@@ -479,6 +492,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           debugPrint('SAVE: New doc created=${docRef.path}');
         }
 
+        // ✅ FINALIZE LOG
+        debugPrint(
+          'FINALIZE_SAVE path=${docRef.path} module=surprise_drill type=surprise_exercise isTemporary=false',
+        );
+
         // Delete temporary draft if it exists
         if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
           try {
@@ -535,6 +553,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               .add(rangeData);
           debugPrint('SAVE: New doc created=${docRef.path}');
         }
+
+        // ✅ FINALIZE LOG
+        debugPrint(
+          'FINALIZE_SAVE path=${docRef.path} module=shooting_ranges type=range_feedback isTemporary=false rangeType=$_rangeType',
+        );
 
         // Delete temporary draft if it exists
         if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
@@ -618,145 +641,55 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Future<void> _saveTemporarily() async {
-    // ========== ATOMIC TEMPORARY SAVE ==========
-    // ONLY write path for temp saves - NO autosave, NO dispose save
-    // HARD VALIDATION + READ-BACK VERIFICATION + LOUD FAILURE
+    // ✅ ATOMIC DRAFT SAVE: Single document with full traineeRows data
+    // Updates same draftId, never creates duplicates
+    // Comprehensive debug logging for verification
 
-    // Set loading state
-    if (mounted) {
-      setState(() => _isSaving = true);
+    if (_isSaving) {
+      debugPrint('⚠️ DRAFT_SAVE: Already saving, skipping...');
+      return; // Prevent concurrent saves
     }
 
+    setState(() => _isSaving = true);
+
     try {
-      debugPrint('\n========== TEMP_SAVE_ATOMIC START ==========');
+      debugPrint('\n========== ✅ DRAFT_SAVE START ==========');
+      debugPrint('DRAFT_SAVE: mode=${widget.mode} rangeType=$_rangeType');
+      debugPrint('DRAFT_SAVE: platform=${kIsWeb ? "web" : "mobile"}');
 
-      // Step 1: Force UI commit by unfocusing ALL fields
-      FocusManager.instance.primaryFocus?.unfocus();
-      await Future.delayed(const Duration(milliseconds: 80));
-      debugPrint('TEMP_SAVE: UI committed (unfocused)');
-
-      debugPrint('TEMP_SAVE: attendeesCount=$attendeesCount');
-      debugPrint('TEMP_SAVE: trainees.length=${trainees.length}');
-      debugPrint('TEMP_SAVE: stations.length=${stations.length}');
-
-      // Step 2: Get user ID
+      // Get user ID
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null || uid.isEmpty) {
-        debugPrint('❌ TEMP_SAVE: No user ID');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text('שגיאה קריטית'),
-              content: const Text('משתמש לא מחובר - לא ניתן לשמור'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('הבנתי'),
-                ),
-              ],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_FAIL: No user ID');
+        debugPrint('❌ DRAFT_SAVE: No user ID, aborting');
+        return;
       }
 
-      // Step 3: Build payload by serializing UI state directly
+      // Build deterministic draft ID
       final String moduleType = widget.mode == 'surprise'
           ? 'surprise_drill'
           : 'shooting_ranges';
-      final String docId =
+      final String draftId =
           '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
-      _editingFeedbackId = docId;
+      _editingFeedbackId = draftId;
 
-      debugPrint('TEMP_SAVE: module=$moduleType docId=$docId');
-      debugPrint(
-        'TEMP_SAVE: rangeType=$_rangeType settlement=$selectedSettlement',
-      );
+      debugPrint('DRAFT_SAVE: uid=$uid');
+      debugPrint('DRAFT_SAVE: draftId=$draftId');
 
-      // Serialize trainees from current UI state
+      // ✅ Serialize traineeRows to Firestore format
       final List<Map<String, dynamic>> traineesPayload = [];
-      for (int i = 0; i < trainees.length; i++) {
-        final t = trainees[i];
-        final hitsMap = <String, int>{};
-
-        // Serialize hits (station_index -> value)
-        for (final entry in t.hits.entries) {
-          final stationIdx = entry.key;
-          final value = entry.value;
-          if (value != 0) {
-            hitsMap['station_$stationIdx'] = value;
-          }
-        }
-
-        final payload = {'index': i, 'name': t.name.trim(), 'values': hitsMap};
-
-        traineesPayload.add(payload);
+      debugPrint(
+        'DRAFT_SAVE: Serializing ${traineeRows.length} trainee rows...',
+      );
+      for (int i = 0; i < traineeRows.length; i++) {
+        final row = traineeRows[i];
+        final rowData = row.toFirestore();
+        traineesPayload.add(rowData);
         debugPrint(
-          'TEMP_SAVE: trainee[$i] name="${payload['name']}" values=${payload['values']}',
+          'DRAFT_SAVE:   row[$i]: name="${row.name}" values=${row.values}',
         );
       }
 
-      // Step 4: HARD VALIDATION - fail loudly if data is invalid
-      debugPrint('TEMP_SAVE: VALIDATION START');
-
-      // Assert: trainees list not empty
-      if (traineesPayload.isEmpty) {
-        debugPrint('❌ VALIDATION FAILED: No trainees');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text('שגיאת ולידציה'),
-              content: const Text('אין חניכים לשמירה'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('הבנתי'),
-                ),
-              ],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VALIDATION_FAIL: trainees.length == 0');
-      }
-
-      // Assert: at least one trainee has name AND values
-      final hasValidData = traineesPayload.any((t) {
-        final name = (t['name'] as String?) ?? '';
-        final values = (t['values'] as Map?) ?? {};
-        return name.isNotEmpty && values.isNotEmpty;
-      });
-
-      if (!hasValidData) {
-        debugPrint('❌ VALIDATION FAILED: No trainee with name AND values');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text('שגיאת ולידציה'),
-              content: const Text('חייב להיות לפחות חניך אחד עם שם וציונים'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('הבנתי'),
-                ),
-              ],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VALIDATION_FAIL: No valid trainee data');
-      }
-
-      debugPrint(
-        '✅ VALIDATION PASSED: trainees=${traineesPayload.length} hasValidData=true',
-      );
-
-      // Step 5: Build Firestore payload (MANDATORY schema)
-      // CRITICAL: folder must match what RangeTempFeedbacksPage queries
+      // Build complete payload
       final String folderName = widget.mode == 'surprise'
           ? 'תרגילי הפתעה - משוב זמני'
           : 'מטווחים - משוב זמני';
@@ -764,263 +697,100 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final Map<String, dynamic> payload = {
         'status': 'temporary',
         'module': moduleType,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'createdAt': FieldValue.serverTimestamp(), // Required for orderBy query
-        'trainees': traineesPayload,
+        'isTemporary': true,
+        'folder': folderName,
         'instructorId': uid,
         'instructorName': instructorName,
         'rangeType': _rangeType,
         'settlement': selectedSettlement ?? '',
-        'stations': stations.map((s) => s.toJson()).toList(),
         'attendeesCount': attendeesCount,
-        'isTemporary': true,
-        'folder': folderName,
+        'stations': stations.map((s) => s.toJson()).toList(),
+        'trainees': traineesPayload,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
       };
 
-      debugPrint('TEMP_SAVE: payload keys=${payload.keys.toList()}');
+      debugPrint('DRAFT_SAVE: payload.attendeesCount=$attendeesCount');
+      debugPrint(
+        'DRAFT_SAVE: payload.trainees.length=${traineesPayload.length}',
+      );
+      debugPrint('DRAFT_SAVE: payload.stations.length=${stations.length}');
+      debugPrint('DRAFT_SAVE: payload.folder=$folderName');
 
-      // Step 6: Write to Firestore (ONCE)
+      // Write to Firestore (overwrite completely)
       final docRef = FirebaseFirestore.instance
           .collection('feedbacks')
-          .doc(docId);
-      debugPrint('TEMP_SAVE: Writing to ${docRef.path}');
+          .doc(draftId);
+      debugPrint('DRAFT_SAVE: Writing to ${docRef.path}');
 
-      try {
-        await docRef.set(
-          payload,
-          SetOptions(merge: false),
-        ); // Overwrite completely
-        debugPrint('✅ TEMP_SAVE: Write complete');
-      } catch (e, st) {
-        debugPrint('❌ TEMP_SAVE_WRITE_FAIL: $e');
-        debugPrint('Stack: $st');
-        if (mounted) {
-          // Show both dialog AND SnackBar for visibility
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('❌ שגיאה בשמירה: $e'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-            ),
-          );
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text('שגיאת כתיבה'),
-              content: Text('נכשל בכתיבה לFirestore: $e'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('הבנתי'),
-                ),
-              ],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_WRITE_FAIL: $e');
-      }
+      await docRef.set(payload, SetOptions(merge: false));
+      debugPrint('✅ DRAFT_SAVE: Write complete');
 
-      // Step 7: READ-BACK VERIFICATION (MANDATORY)
-      debugPrint('TEMP_SAVE: Read-back verification...');
-      final DocumentSnapshot verifySnap;
-      try {
-        verifySnap = await docRef.get();
-      } catch (e) {
-        debugPrint('❌ TEMP_SAVE_READBACK_FAIL: $e');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text('שגיאת אימות'),
-              content: Text('נכשל בקריאה חוזרת: $e'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('הבנתי'),
-                ),
-              ],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_READBACK_FAIL: $e');
-      }
+      // ✅ READ-BACK VERIFICATION
+      debugPrint('DRAFT_SAVE: Read-back verification...');
+      final verifySnap = await docRef.get();
 
       if (!verifySnap.exists) {
-        debugPrint('❌ VERIFY_FAIL: Document does not exist after write');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => const AlertDialog(
-              title: Text('שגיאת אימות'),
-              content: Text('המסמך לא נמצא אחרי השמירה'),
-              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VERIFY_FAIL: Document not found');
+        debugPrint('❌ DRAFT_SAVE: Document NOT FOUND after write!');
+        throw Exception('Draft document not persisted');
       }
 
-      final verifyData = verifySnap.data() as Map<String, dynamic>?;
+      final verifyData = verifySnap.data();
       if (verifyData == null) {
-        debugPrint('❌ VERIFY_FAIL: Document data is null');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => const AlertDialog(
-              title: Text('שגיאת אימות'),
-              content: Text('נתוני המסמך ריקים'),
-              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VERIFY_FAIL: Data is null');
+        debugPrint('❌ DRAFT_SAVE: Document data is NULL!');
+        throw Exception('Draft data is null');
       }
 
-      // Verify trainees array exists and has data
       final verifyTrainees = verifyData['trainees'] as List?;
+      debugPrint(
+        'DRAFT_SAVE: Verified trainees.length=${verifyTrainees?.length ?? 0}',
+      );
       if (verifyTrainees == null || verifyTrainees.isEmpty) {
-        debugPrint('❌ VERIFY_FAIL: trainees missing or empty');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => const AlertDialog(
-              title: Text('שגיאת אימות'),
-              content: Text('נתוני חניכים חסרים'),
-              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VERIFY_FAIL: trainees missing');
+        debugPrint('❌ DRAFT_SAVE: Trainees array is empty!');
+        throw Exception('Trainees not saved');
       }
 
-      // Verify count matches
-      if (verifyTrainees.length != traineesPayload.length) {
+      // Check first trainee has data
+      if (verifyTrainees.isNotEmpty) {
+        final firstTrainee = verifyTrainees[0] as Map?;
+        final firstName = firstTrainee?['name'];
+        final firstValues = firstTrainee?['values'];
         debugPrint(
-          '❌ VERIFY_FAIL: Count mismatch: ${verifyTrainees.length} != ${traineesPayload.length}',
-        );
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text('שגיאת אימות'),
-              content: Text(
-                'מספר חניכים לא תואם: ${verifyTrainees.length} != ${traineesPayload.length}',
-              ),
-              actions: const [
-                TextButton(onPressed: null, child: Text('הבנתי')),
-              ],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VERIFY_FAIL: Count mismatch');
-      }
-
-      // Verify at least one trainee has values map with numeric data
-      final hasNumericData = verifyTrainees.any((t) {
-        final values = (t as Map?)?['values'] as Map?;
-        return values != null && values.isNotEmpty;
-      });
-
-      if (!hasNumericData) {
-        debugPrint('❌ VERIFY_FAIL: No numeric data in trainees');
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => const AlertDialog(
-              title: Text('שגיאת אימות'),
-              content: Text('חסרים נתונים נומריים'),
-              actions: [TextButton(onPressed: null, child: Text('הבנתי'))],
-            ),
-          );
-        }
-        throw Exception('TEMP_SAVE_VERIFY_FAIL: No numeric data');
-      }
-
-      debugPrint(
-        '✅ VERIFY_OK: trainees=${verifyTrainees.length} valuesPresent=true',
-      );
-
-      // Step 8: Rehydrate UI from verified Firestore data
-      debugPrint('TEMP_SAVE: Rehydrating UI from Firestore data');
-
-      // Clear and rebuild trainees from verified data
-      trainees.clear();
-      traineeNumbers.clear();
-
-      for (final traineeData in verifyTrainees) {
-        final tMap = traineeData as Map<String, dynamic>;
-        final name = (tMap['name'] as String?) ?? '';
-        final idx = (tMap['index'] as num?)?.toInt() ?? 0;
-        final values = (tMap['values'] as Map<String, dynamic>?) ?? {};
-
-        // Rebuild hits map from values
-        final hits = <int, int>{};
-        for (final entry in values.entries) {
-          if (entry.key.startsWith('station_')) {
-            final stationIdx = int.tryParse(
-              entry.key.replaceFirst('station_', ''),
-            );
-            final value = (entry.value as num?)?.toInt() ?? 0;
-            if (stationIdx != null) {
-              hits[stationIdx] = value;
-            }
-          }
-        }
-
-        trainees.add(Trainee(name: name, hits: hits));
-        traineeNumbers.add(idx + 1);
-        debugPrint(
-          'TEMP_SAVE_REHYDRATE: trainee[$idx] name="$name" hits=$hits',
+          'DRAFT_SAVE: First trainee: name="$firstName" values=$firstValues',
         );
       }
 
-      if (mounted) {
-        setState(() {});
-      }
+      debugPrint('✅ DRAFT_SAVE: Verification PASSED');
+      debugPrint('DRAFT_SAVE: Draft saved at ${docRef.path}');
+      debugPrint('DRAFT_SAVE: traineeRows.length=${traineeRows.length}');
+      debugPrint('========== ✅ DRAFT_SAVE END ==========\n');
 
-      debugPrint('TEMP_SAVE_OK trainees=${trainees.length} valuesPresent=true');
-      debugPrint(
-        'RANGE_DRAFT_OK path=${docRef.path} trainees=${trainees.length}',
+      if (!mounted) return;
+
+      // Show subtle success indicator (don't spam user)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ שמירה אוטומטית'),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.green,
+        ),
       );
-      debugPrint('   folder=${payload['folder']}');
-      debugPrint('   module=${payload['module']}');
-      debugPrint('   rangeType=${payload['rangeType']}');
-      debugPrint('   settlement=${payload['settlement']}');
-      debugPrint('   isTemporary=${payload['isTemporary']}');
-      debugPrint('   status=${payload['status']}');
-      debugPrint('========== TEMP_SAVE_ATOMIC END ==========\n');
+    } catch (e, stackTrace) {
+      debugPrint('\n========== ❌ DRAFT_SAVE ERROR ==========');
+      debugPrint('DRAFT_SAVE_ERROR: $e');
+      debugPrint('DRAFT_SAVE_ERROR_STACK: $stackTrace');
+      debugPrint('==========================================\n');
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ שמירה זמנית הושלמה\nנתיב: ${docRef.path}'),
-          backgroundColor: Colors.green,
+          content: Text('❌ שגיאה בשמירה: $e'),
+          backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
       );
-    } catch (e) {
-      // Catch any uncaught errors
-      debugPrint('❌ TEMP_SAVE: Uncaught error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ שגיאה בשמירה: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-      rethrow;
     } finally {
-      // Always reset loading state
       if (mounted) {
         setState(() => _isSaving = false);
       }
@@ -1028,120 +798,125 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Future<void> _loadExistingTemporaryFeedback(String id) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    final email = FirebaseAuth.instance.currentUser?.email;
-    debugPrint('\n========== TEMP_LOAD START ==========');
-    debugPrint('TEMP_LOAD: user=$uid email=$email');
-    debugPrint('TEMP_LOAD: path=feedbacks/$id');
-    debugPrint('TEMP_LOAD: module=${widget.mode} rangeType=$_rangeType');
-    debugPrint('TEMP_LOAD: using direct docRef.get() (no query)');
+    // ✅ ATOMIC DRAFT LOAD: Load doc, rebuild traineeRows from Firestore
+    // NO default empty rows after load - only what's in the document
+    // Comprehensive debug logging for verification
+
+    debugPrint('\n========== ✅ DRAFT_LOAD START ==========');
+    debugPrint('DRAFT_LOAD: id=$id');
+    debugPrint('DRAFT_LOAD: mode=${widget.mode} rangeType=$_rangeType');
+    debugPrint('DRAFT_LOAD: platform=${kIsWeb ? "web" : "mobile"}');
 
     try {
       final docRef = FirebaseFirestore.instance.collection('feedbacks').doc(id);
-      debugPrint('TEMP_LOAD: fullPath=${docRef.path}');
+      debugPrint('DRAFT_LOAD: path=${docRef.path}');
 
       final doc = await docRef.get();
-
-      debugPrint('TEMP_LOAD: got document, exists=${doc.exists}');
+      debugPrint('DRAFT_LOAD: doc.exists=${doc.exists}');
 
       if (!doc.exists) {
-        debugPrint('⚠️ TEMP_LOAD: Document does not exist: $id');
-        debugPrint('========== TEMP_LOAD END (NOT FOUND) ==========\n');
+        debugPrint('⚠️ DRAFT_LOAD: Document does not exist');
+        debugPrint('========== ✅ DRAFT_LOAD END (NOT FOUND) ==========\n');
         return;
       }
 
       final data = doc.data();
       if (data == null) {
-        debugPrint('⚠️ TEMP_LOAD: Document data is null: $id');
-        debugPrint('========== TEMP_LOAD END (NULL DATA) ==========\n');
+        debugPrint('⚠️ DRAFT_LOAD: Document data is null');
+        debugPrint('========== ✅ DRAFT_LOAD END (NULL DATA) ==========\n');
         return;
       }
+
+      debugPrint('DRAFT_LOAD: dataKeys=${data.keys.toList()}');
 
       final rawTrainees = data['trainees'] as List?;
       final rawStations = data['stations'] as List?;
       final rawSettlement = data['settlement'] as String?;
       final rawAttendeesCount = data['attendeesCount'] as num?;
-      debugPrint('TEMP_LOAD: doc.id=$id');
-      debugPrint('TEMP_LOAD: dataKeys=${data.keys.toList()}');
-      debugPrint('TEMP_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
-      debugPrint('TEMP_LOAD: rawStations.length=${rawStations?.length ?? -1}');
-      debugPrint('TEMP_LOAD: settlement=$rawSettlement');
-      debugPrint('TEMP_LOAD: attendeesCount=$rawAttendeesCount');
+
+      debugPrint('DRAFT_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
+      debugPrint('DRAFT_LOAD: rawStations.length=${rawStations?.length ?? -1}');
+      debugPrint('DRAFT_LOAD: settlement=$rawSettlement');
+      debugPrint('DRAFT_LOAD: attendeesCount=$rawAttendeesCount');
+
       if (rawTrainees != null && rawTrainees.isNotEmpty) {
-        debugPrint('TEMP_LOAD: firstTraineeRaw=${rawTrainees[0]}');
+        debugPrint('DRAFT_LOAD: firstTraineeRaw=${rawTrainees[0]}');
       }
 
-      debugPrint('TEMP_LOAD: Parsing data...');
-      setState(() {
-        selectedSettlement =
-            data['settlement'] as String? ?? selectedSettlement;
-        _settlementDisplayText = selectedSettlement ?? '';
-        attendeesCount =
-            (data['attendeesCount'] as num?)?.toInt() ?? attendeesCount;
-        // ✅ Update controller to reflect loaded value
-        _attendeesCountController.text = attendeesCount.toString();
-        debugPrint('   Loaded attendeesCount: $attendeesCount');
-        instructorName = data['instructorName'] as String? ?? instructorName;
+      // ✅ Parse and rebuild traineeRows from Firestore data
+      final List<TraineeRowModel> loadedRows = [];
+      if (rawTrainees != null) {
+        for (int i = 0; i < rawTrainees.length; i++) {
+          final rawRow = rawTrainees[i];
+          if (rawRow is Map<String, dynamic>) {
+            final row = TraineeRowModel.fromFirestore(rawRow);
+            loadedRows.add(row);
+            debugPrint(
+              'DRAFT_LOAD:   row[$i]: name="${row.name}" values=${row.values}',
+            );
+          }
+        }
+      }
 
-        stations =
-            (data['stations'] as List?)?.map((e) {
-              final m = Map<String, dynamic>.from(e as Map);
-              return RangeStation(
-                name: m['name']?.toString() ?? '',
-                bulletsCount: (m['bulletsCount'] as num?)?.toInt() ?? 0,
-                timeSeconds: (m['timeSeconds'] as num?)?.toInt(),
-                hits: (m['hits'] as num?)?.toInt(),
-                isManual: m['isManual'] as bool? ?? false,
-                isLevelTester: m['isLevelTester'] as bool? ?? false,
-                selectedRubrics:
-                    (m['selectedRubrics'] as List?)
-                        ?.map((x) => x.toString())
-                        .toList() ??
-                    ['זמן', 'פגיעות'],
-              );
-            }).toList() ??
-            stations;
+      debugPrint('DRAFT_LOAD: Loaded ${loadedRows.length} trainee rows');
 
-        trainees =
-            (data['trainees'] as List?)?.map((e) {
-              final m = Map<String, dynamic>.from(e as Map);
-              final name = m['name']?.toString() ?? '';
-              final hitsRaw = m['hits'] as Map? ?? {};
-              final hits = <int, int>{};
-              hitsRaw.forEach((k, v) {
-                // keys may be 'station_0' or int
-                if (k is String && k.startsWith('station_')) {
-                  final idx = int.tryParse(k.replaceFirst('station_', '')) ?? 0;
-                  hits[idx] = (v as num?)?.toInt() ?? 0;
-                } else if (k is int) {
-                  hits[k] = (v as num?)?.toInt() ?? 0;
-                }
-              });
-              return Trainee(name: name, hits: hits);
-            }).toList() ??
-            trainees;
-
-        debugPrint('TEMP_LOAD: Parsed ${trainees.length} trainees into model');
-        for (int i = 0; i < trainees.length && i < 3; i++) {
-          debugPrint(
-            'TEMP_LOAD:   Trainee $i: name="${trainees[i].name}", hits=${trainees[i].hits}',
+      // ✅ Parse stations
+      final List<RangeStation> loadedStations = [];
+      if (rawStations != null) {
+        for (final stationData in rawStations) {
+          final m = Map<String, dynamic>.from(stationData as Map);
+          loadedStations.add(
+            RangeStation(
+              name: m['name']?.toString() ?? '',
+              bulletsCount: (m['bulletsCount'] as num?)?.toInt() ?? 0,
+              timeSeconds: (m['timeSeconds'] as num?)?.toInt(),
+              hits: (m['hits'] as num?)?.toInt(),
+              isManual: m['isManual'] as bool? ?? false,
+              isLevelTester: m['isLevelTester'] as bool? ?? false,
+              selectedRubrics:
+                  (m['selectedRubrics'] as List?)
+                      ?.map((x) => x.toString())
+                      .toList() ??
+                  ['זמן', 'פגיעות'],
+            ),
           );
         }
+      }
 
-        // rebuild sequential numbers according to loaded trainees
-        traineeNumbers = List<int>.generate(trainees.length, (i) => i + 1);
+      // ✅ UPDATE STATE: Replace all data with loaded data
+      setState(() {
+        // Update metadata
+        selectedSettlement = rawSettlement ?? selectedSettlement;
+        _settlementDisplayText = selectedSettlement ?? '';
+        attendeesCount = rawAttendeesCount?.toInt() ?? attendeesCount;
+        _attendeesCountController.text = attendeesCount.toString();
+        instructorName = data['instructorName'] as String? ?? instructorName;
 
-        debugPrint('TEMP_LOAD: ✅ Load complete');
-        debugPrint('TEMP_LOAD:   attendeesCount=$attendeesCount');
-        debugPrint('TEMP_LOAD:   trainees.length=${trainees.length}');
-        debugPrint('TEMP_LOAD:   stations.length=${stations.length}');
-        debugPrint('========== TEMP_LOAD END (SUCCESS) ==========\n');
+        // ✅ Replace traineeRows with loaded data (NO default empty rows)
+        traineeRows = loadedRows;
+
+        // Replace stations with loaded data
+        stations = loadedStations.isNotEmpty ? loadedStations : stations;
+
+        debugPrint('DRAFT_LOAD: State updated');
+        debugPrint('DRAFT_LOAD:   attendeesCount=$attendeesCount');
+        debugPrint('DRAFT_LOAD:   traineeRows.length=${traineeRows.length}');
+        debugPrint('DRAFT_LOAD:   stations.length=${stations.length}');
       });
+
+      debugPrint('✅ DRAFT_LOAD: Load complete');
+      debugPrint('DRAFT_LOAD: traineeRows.length=${traineeRows.length}');
+      for (int i = 0; i < traineeRows.length && i < 3; i++) {
+        debugPrint(
+          'DRAFT_LOAD:   traineeRows[$i]: name="${traineeRows[i].name}" values=${traineeRows[i].values}',
+        );
+      }
+      debugPrint('========== ✅ DRAFT_LOAD END (SUCCESS) ==========\n');
     } catch (e, stackTrace) {
-      debugPrint('❌ ========== TEMP_LOAD ERROR ==========');
-      debugPrint('Error: $e');
-      debugPrint('StackTrace: $stackTrace');
-      debugPrint('========================================\n');
+      debugPrint('\n========== ❌ DRAFT_LOAD ERROR ==========');
+      debugPrint('DRAFT_LOAD_ERROR: $e');
+      debugPrint('DRAFT_LOAD_ERROR_STACK: $stackTrace');
+      debugPrint('==========================================\n');
     }
   }
 
@@ -1420,48 +1195,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
                 const SizedBox(height: 24),
 
-                // TWO BUTTONS: Temporary Save and Finalize Save
-                // Temporary Save button (validates and saves to temp)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveTemporarily,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.blueGrey,
-                    ),
-                    child: _isSaving
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'שומר זמנית...',
-                                style: TextStyle(fontSize: 18),
-                              ),
-                            ],
-                          )
-                        : Text(
-                            widget.mode == 'surprise'
-                                ? 'שמירה זמנית - תרגיל הפתעה'
-                                : 'שמירה זמנית - מטווח',
-                            style: const TextStyle(fontSize: 18),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
                 // Finalize Save button
                 SizedBox(
                   width: double.infinity,
@@ -1501,13 +1234,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 // הערות למשתמש
                 const SizedBox(height: 12),
                 const Text(
-                  'שמירה זמנית: שומר את הנתונים לטיוטה (עם אימות מלא). שמירה סופית: משלים את המשוב ושולח לארכיון.',
+                  'שמירה אוטומטית: הנתונים נשמרים אוטומטית לטיוטה. שמירה סופית: משלים את המשוב ושולח לארכיון.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'לייצוא לקובץ מקומי, עבור לדף המשובים ולחץ על המטווח השמור',
+                  'לייצוא לקובץ מקומי, עבור לדף המשובים ולחץ על המשוב השמור',
                   style: TextStyle(fontSize: 11, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
@@ -1520,7 +1253,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Widget _buildTraineesTable() {
-    if (trainees.isEmpty) {
+    if (traineeRows.isEmpty) {
       return const Center(child: Text('אין חניכים להצגה'));
     }
 
@@ -1584,7 +1317,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ),
                             ),
                             // Compact square Number input fields (editable, sequential by default)
-                            ...trainees.asMap().entries.map((entry) {
+                            ...traineeRows.asMap().entries.map((entry) {
                               final idx = entry.key;
                               return Container(
                                 height: 60,
@@ -1602,9 +1335,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     height: 40,
                                     child: TextField(
                                       controller: TextEditingController(
-                                        text: traineeNumbers.length > idx
-                                            ? traineeNumbers[idx].toString()
-                                            : '${idx + 1}',
+                                        text: '${idx + 1}',
                                       ),
                                       keyboardType: TextInputType.number,
                                       inputFormatters: [
@@ -1618,20 +1349,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         contentPadding: EdgeInsets.zero,
                                       ),
                                       onChanged: (v) {
-                                        setState(() {
-                                          final val =
-                                              int.tryParse(v) ?? (idx + 1);
-                                          if (traineeNumbers.length > idx) {
-                                            traineeNumbers[idx] = val;
-                                          } else {
-                                            traineeNumbers = List<int>.generate(
-                                              trainees.length,
-                                              (i) => i + 1,
-                                            );
-                                            traineeNumbers[idx] = val;
-                                          }
-                                        });
-                                        // NO AUTOSAVE - user must manually save
+                                        // Numbers are for display only
+                                        // Trainee identity is by row index
                                       },
                                     ),
                                   ),
@@ -1667,8 +1386,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ),
                             ),
                             // Name input fields
-                            ...trainees.asMap().entries.map((entry) {
-                              final trainee = entry.value;
+                            ...traineeRows.asMap().entries.map((entry) {
+                              final row = entry.value;
                               return Container(
                                 height: 60,
                                 padding: const EdgeInsets.all(4.0),
@@ -1681,9 +1400,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 ),
                                 child: TextField(
                                   controller:
-                                      TextEditingController(text: trainee.name)
+                                      TextEditingController(text: row.name)
                                         ..selection = TextSelection.collapsed(
-                                          offset: trainee.name.length,
+                                          offset: row.name.length,
                                         ),
                                   decoration: const InputDecoration(
                                     hintText: 'שם חניך',
@@ -1698,9 +1417,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   style: const TextStyle(fontSize: 12),
                                   onChanged: (v) {
                                     setState(() {
-                                      trainee.name = v;
+                                      row.name = v;
                                     });
-                                    // NO AUTOSAVE - user must manually save
+                                    // ✅ Trigger autosave
+                                    _scheduleAutoSave();
                                   },
                                 ),
                               );
@@ -1769,7 +1489,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                       // Trainee input fields for this station
-                                      ...trainees.map((trainee) {
+                                      ...traineeRows.asMap().entries.map((
+                                        entry,
+                                      ) {
+                                        final row = entry.value;
+                                        final currentValue = row.getValue(
+                                          stationIndex,
+                                        );
                                         return Container(
                                           height: 60,
                                           padding: const EdgeInsets.all(4.0),
@@ -1783,22 +1509,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           child: TextField(
                                             controller:
                                                 TextEditingController(
-                                                    text:
-                                                        (trainee.hits[stationIndex] ??
-                                                                0) ==
-                                                            0
+                                                    text: currentValue == 0
                                                         ? ''
-                                                        : trainee
-                                                              .hits[stationIndex]
+                                                        : currentValue
                                                               .toString(),
                                                   )
                                                   ..selection =
                                                       TextSelection.collapsed(
-                                                        offset:
-                                                            (trainee.hits[stationIndex] ??
-                                                                    0)
-                                                                .toString()
-                                                                .length,
+                                                        offset: currentValue
+                                                            .toString()
+                                                            .length,
                                                       ),
                                             decoration: const InputDecoration(
                                               isDense: true,
@@ -1861,10 +1581,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 }
                                               }
                                               setState(() {
-                                                trainee.hits[stationIndex] =
-                                                    score;
+                                                row.setValue(
+                                                  stationIndex,
+                                                  score,
+                                                );
                                               });
-                                              // NO AUTOSAVE - user must manually save
+                                              // ✅ Trigger autosave
+                                              _scheduleAutoSave();
                                             },
                                           ),
                                         );
@@ -1910,7 +1633,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                       // Values
-                                      ...trainees.asMap().entries.map((entry) {
+                                      ...traineeRows.asMap().entries.map((
+                                        entry,
+                                      ) {
                                         final traineeIndex = entry.key;
                                         final totalPoints =
                                             _getTraineeTotalPoints(
@@ -1969,7 +1694,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                       // Values
-                                      ...trainees.asMap().entries.map((entry) {
+                                      ...traineeRows.asMap().entries.map((
+                                        entry,
+                                      ) {
                                         final traineeIndex = entry.key;
                                         final avgPoints =
                                             _getTraineeAveragePoints(
@@ -2041,7 +1768,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                       // Values
-                                      ...trainees.asMap().entries.map((entry) {
+                                      ...traineeRows.asMap().entries.map((
+                                        entry,
+                                      ) {
                                         final traineeIndex = entry.key;
                                         return Container(
                                           height: 60,
@@ -2096,7 +1825,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                       // Values
-                                      ...trainees.asMap().entries.map((entry) {
+                                      ...traineeRows.asMap().entries.map((
+                                        entry,
+                                      ) {
                                         final traineeIndex = entry.key;
                                         final totalHits = _getTraineeTotalHits(
                                           traineeIndex,
@@ -2270,9 +2001,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   ),
                   const Divider(),
                   // Trainee rows
-                  ...trainees.asMap().entries.map((entry) {
+                  ...traineeRows.asMap().entries.map((entry) {
                     final traineeIndex = entry.key;
-                    final trainee = entry.value;
+                    final row = entry.value;
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
                       child: Row(
@@ -2282,9 +2013,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             width: 80,
                             child: TextField(
                               controller: TextEditingController(
-                                text: traineeNumbers.length > traineeIndex
-                                    ? traineeNumbers[traineeIndex].toString()
-                                    : '${traineeIndex + 1}',
+                                text: '${traineeIndex + 1}',
                               ),
                               decoration: const InputDecoration(
                                 hintText: 'מספר',
@@ -2301,18 +2030,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ],
                               textAlign: TextAlign.center,
                               onChanged: (v) {
-                                final n = int.tryParse(v) ?? (traineeIndex + 1);
-                                setState(() {
-                                  // ensure list length
-                                  while (traineeNumbers.length <=
-                                      traineeIndex) {
-                                    traineeNumbers.add(
-                                      traineeNumbers.length + 1,
-                                    );
-                                  }
-                                  traineeNumbers[traineeIndex] = n;
-                                });
-                                // NO AUTOSAVE - user must manually save
+                                // Numbers are for display only
                               },
                             ),
                           ),
@@ -2320,6 +2038,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           SizedBox(
                             width: 120,
                             child: TextField(
+                              controller: TextEditingController(text: row.name)
+                                ..selection = TextSelection.collapsed(
+                                  offset: row.name.length,
+                                ),
                               decoration: const InputDecoration(
                                 hintText: 'שם חניך',
                                 isDense: true,
@@ -2332,9 +2054,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               textAlign: TextAlign.center,
                               onChanged: (v) {
                                 setState(() {
-                                  trainee.name = v;
+                                  row.name = v;
                                 });
-                                // NO AUTOSAVE - user must manually save
+                                // ✅ Trigger autosave
+                                _scheduleAutoSave();
                               },
                             ),
                           ),
@@ -2348,9 +2071,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   ) {
                                     final stationIndex = stationEntry.key;
                                     final station = stationEntry.value;
+                                    final currentValue = row.getValue(
+                                      stationIndex,
+                                    );
                                     return SizedBox(
                                       width: 80,
                                       child: TextField(
+                                        controller: TextEditingController(
+                                          text: currentValue > 0
+                                              ? currentValue.toString()
+                                              : '',
+                                        ),
                                         decoration: const InputDecoration(
                                           isDense: true,
                                           border: OutlineInputBorder(),
@@ -2406,9 +2137,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             }
                                           }
                                           setState(() {
-                                            trainee.hits[stationIndex] = score;
+                                            row.setValue(stationIndex, score);
                                           });
-                                          // NO AUTOSAVE - user must manually save
+                                          // ✅ Trigger autosave
+                                          _scheduleAutoSave();
                                         },
                                       ),
                                     );
@@ -2513,6 +2245,66 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         }
       },
     );
+  }
+}
+
+/// TraineeRowModel - Single Source of Truth for trainee table row
+/// Contains ALL data needed for one trainee row: index, name, and all numeric values
+class TraineeRowModel {
+  final int index;
+  String name;
+  final Map<int, int> values; // stationIndex -> value (hits or score)
+
+  TraineeRowModel({
+    required this.index,
+    required this.name,
+    Map<int, int>? values,
+  }) : values = values ?? {};
+
+  // Get value for a specific station/principle
+  int getValue(int stationIndex) => values[stationIndex] ?? 0;
+
+  // Set value for a specific station/principle
+  void setValue(int stationIndex, int value) {
+    if (value == 0) {
+      values.remove(stationIndex);
+    } else {
+      values[stationIndex] = value;
+    }
+  }
+
+  // Check if has any non-zero data
+  bool hasData() => name.trim().isNotEmpty || values.values.any((v) => v != 0);
+
+  // Serialize to Firestore format
+  Map<String, dynamic> toFirestore() {
+    final valuesMap = <String, int>{};
+    values.forEach((stationIdx, val) {
+      if (val != 0) {
+        valuesMap['station_$stationIdx'] = val;
+      }
+    });
+    return {'index': index, 'name': name.trim(), 'values': valuesMap};
+  }
+
+  // Deserialize from Firestore format
+  static TraineeRowModel fromFirestore(Map<String, dynamic> data) {
+    final index = (data['index'] as num?)?.toInt() ?? 0;
+    final name = (data['name'] as String?) ?? '';
+    final valuesRaw = (data['values'] as Map<String, dynamic>?) ?? {};
+
+    final values = <int, int>{};
+    valuesRaw.forEach((key, val) {
+      if (key.startsWith('station_')) {
+        final stationIdx = int.tryParse(key.replaceFirst('station_', ''));
+        final value = (val as num?)?.toInt() ?? 0;
+        if (stationIdx != null && value != 0) {
+          values[stationIdx] = value;
+        }
+      }
+    });
+
+    return TraineeRowModel(index: index, name: name, values: values);
   }
 }
 

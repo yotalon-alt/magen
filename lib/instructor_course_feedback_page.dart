@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -58,7 +59,10 @@ class _InstructorCourseFeedbackPageState
   void _updateLevelTestRating() {
     setState(() {
       categories['בוחן רמה'] = _calculateLevelTestRating();
-      if (!_isFormLocked) _hasUnsavedChanges = true;
+      if (!_isFormLocked) {
+        _hasUnsavedChanges = true;
+        _scheduleAutosave();
+      }
     });
   }
 
@@ -67,6 +71,142 @@ class _InstructorCourseFeedbackPageState
       setState(() {
         _hasUnsavedChanges = true;
       });
+    }
+  }
+
+  /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 700ms of inactivity
+  void _scheduleAutosave() {
+    if (_isFormLocked) return; // Don't autosave locked forms
+
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 700), () {
+      debugPrint('🔄 AUTOSAVE: Timer triggered');
+      _autosaveDraft();
+    });
+  }
+
+  /// ✅ AUTOSAVE TO DRAFT: Save current state to draft document
+  Future<void> _autosaveDraft() async {
+    if (_isAutosaving || _isSaving || _isFormLocked) {
+      debugPrint('⚠️ AUTOSAVE: Skipping (already saving or locked)');
+      return;
+    }
+
+    // Don't autosave if no required details filled
+    if (!hasRequiredDetails) {
+      debugPrint('⚠️ AUTOSAVE: Skipping (required details not filled)');
+      return;
+    }
+
+    setState(() => _isAutosaving = true);
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) {
+        debugPrint('❌ AUTOSAVE: No user ID');
+        return;
+      }
+
+      debugPrint('\n========== ✅ AUTOSAVE START ==========');
+
+      // ✅ Create stable draft ID once per form session
+      if (_stableDraftId == null) {
+        // Use existing ID if editing, otherwise create new
+        _stableDraftId =
+            _existingScreeningId ??
+            'eval_${uid}_${DateTime.now().millisecondsSinceEpoch}';
+        _existingScreeningId = _stableDraftId;
+        debugPrint('AUTOSAVE: Using evalId=$_stableDraftId');
+      }
+
+      // Build fields map
+      final Map<String, dynamic> fields = {};
+      categories.forEach((name, score) {
+        if (score > 0) {
+          final Map<String, dynamic> meta = {
+            'value': score,
+            'filledBy': uid,
+            'filledAt': FieldValue.serverTimestamp(),
+          };
+          if (name == 'בוחן רמה') {
+            final hits = int.tryParse(_hitsController.text);
+            final time = int.tryParse(_timeSecondsController.text);
+            if (hits != null) meta['hits'] = hits;
+            if (time != null) meta['timeSeconds'] = time;
+          }
+          fields[name] = meta;
+        }
+      });
+
+      final draftData = {
+        'status': 'draft',
+        'ownerUid': uid, // Required for rules and queries
+        'courseType': 'miunim',
+        'createdAt': _existingScreeningId == _stableDraftId
+            ? FieldValue.serverTimestamp()
+            : null,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdBy': uid,
+        'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
+        'command': _selectedPikud ?? '',
+        'brigade': _hativaController.text.trim(),
+        'candidateName': _candidateNameController.text.trim(),
+        'candidateNumber': _candidateNumber ?? 0,
+        'title': _candidateNameController.text.trim(),
+        'fields': fields,
+        'finalWeightedScore': finalWeightedScore,
+        'isSuitable': isSuitableForInstructorCourse,
+        'module': 'instructor_course_selection',
+        'type': 'instructor_course_feedback',
+      };
+      // Remove null createdAt if this is an update
+      if (draftData['createdAt'] == null) {
+        draftData.remove('createdAt');
+      }
+
+      // ✅ Save to single collection: instructor_course_evaluations
+      final docRef = FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .doc(_stableDraftId);
+
+      final draftDocPath = docRef.path;
+      debugPrint(
+        '🔵 MIUNIM_AUTOSAVE_WRITE: collection=instructor_course_evaluations',
+      );
+      debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: docPath=$draftDocPath');
+      debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: evalId=$_stableDraftId');
+      debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: status=draft, ownerUid=$uid');
+      await docRef.set(draftData, SetOptions(merge: true));
+      debugPrint('✅ AUTOSAVE: Save complete');
+
+      // Verify save
+      final verifySnap = await docRef.get();
+      if (!verifySnap.exists) {
+        debugPrint('❌ AUTOSAVE: Document not found after save!');
+        throw Exception('Draft not persisted');
+      }
+
+      final verifyData = verifySnap.data();
+      final verifyChecksum =
+          'fields=${verifyData?['fields']?.length ?? 0}, candidate=${verifyData?['candidateName']}';
+      debugPrint('✅ AUTOSAVE: Verification PASSED');
+      debugPrint('AUTOSAVE: Checksum=$verifyChecksum');
+      debugPrint('========== ✅ AUTOSAVE END ==========\n');
+
+      if (mounted) {
+        setState(() {
+          _hasUnsavedChanges = false;
+        });
+      }
+    } catch (e, stackTrace) {
+      debugPrint('\n========== ❌ AUTOSAVE ERROR ==========');
+      debugPrint('AUTOSAVE_ERROR: $e');
+      debugPrint('AUTOSAVE_ERROR_STACK: $stackTrace');
+      debugPrint('========================================\n');
+    } finally {
+      if (mounted) {
+        setState(() => _isAutosaving = false);
+      }
     }
   }
 
@@ -79,6 +219,9 @@ class _InstructorCourseFeedbackPageState
   };
 
   bool _isSaving = false;
+  Timer? _autosaveTimer;
+  bool _isAutosaving = false;
+  String? _stableDraftId; // Stable draft document ID for this session
 
   double get finalWeightedScore {
     for (final category in _categoryWeights.keys) {
@@ -113,6 +256,7 @@ class _InstructorCourseFeedbackPageState
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     _hativaController.dispose();
     _candidateNameController.dispose();
     _hitsController.dispose();
@@ -133,7 +277,7 @@ class _InstructorCourseFeedbackPageState
     setState(() => _loadingExisting = true);
     try {
       final snap = await FirebaseFirestore.instance
-          .collection('instructor_course_screenings')
+          .collection('instructor_course_evaluations')
           .doc(id)
           .get()
           .timeout(const Duration(seconds: 10));
@@ -177,150 +321,10 @@ class _InstructorCourseFeedbackPageState
     }
   }
 
-  /// Save as TEMPORARY (draft) feedback
-  Future<bool> saveInstructorCourseTempFeedback() async {
-    if (_isSaving) {
-      debugPrint('⚠️ Temp save already in progress');
-      return false;
-    }
+  // ✅ AUTOSAVE: Old temporary save method removed - autosave handles drafts automatically
 
-    // If no draft exists yet, check if all required details are filled
-    if (!hasDraft && !hasRequiredDetails) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('יש למלא את כל פרטי המיון לפני שמירה'),
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-          ),
-        );
-      }
-      return false;
-    }
-
-    // If draft exists but required details are missing, don't save
-    if (hasDraft && !hasRequiredDetails) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('לא ניתן לשמור ללא פרטי המיון המלאים'),
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-          ),
-        );
-      }
-      return false;
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null || uid.isEmpty) {
-        throw Exception('נדרשת התחברות');
-      }
-      final coll = FirebaseFirestore.instance.collection(
-        'instructor_course_screenings',
-      );
-
-      // Create new draft if none exists
-      if (!hasDraft) {
-        final ref = coll.doc();
-        _existingScreeningId = ref.id;
-        // Create initial draft document
-        await ref.set({
-          'status': 'draft',
-          'courseType': 'miunim',
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'createdBy': uid,
-          'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
-          'command': _selectedPikud ?? '',
-          'brigade': _hativaController.text.trim(),
-          'candidateName': _candidateNameController.text.trim(),
-          'candidateNumber': _candidateNumber ?? 0,
-          'title': _candidateNameController.text.trim(),
-        });
-      }
-
-      // Update existing draft
-      final ref = coll.doc(_existingScreeningId);
-      final Map<String, dynamic> fields = {};
-      categories.forEach((name, score) {
-        if (score > 0) {
-          final Map<String, dynamic> meta = {
-            'value': score,
-            'filledBy': uid,
-            'filledAt': FieldValue.serverTimestamp(),
-          };
-          if (name == 'בוחן רמה') {
-            final hits = int.tryParse(_hitsController.text);
-            final time = int.tryParse(_timeSecondsController.text);
-            if (hits != null) meta['hits'] = hits;
-            if (time != null) meta['timeSeconds'] = time;
-          }
-          fields[name] = meta;
-        }
-      });
-
-      final payload = {
-        'updatedAt': FieldValue.serverTimestamp(),
-        'updatedBy': uid,
-        'command': _selectedPikud ?? '',
-        'brigade': _hativaController.text.trim(),
-        'candidateName': _candidateNameController.text.trim(),
-        'candidateNumber': _candidateNumber ?? 0,
-        'title': _candidateNameController.text.trim(),
-        if (fields.isNotEmpty) 'fields': fields,
-      };
-
-      await ref.update(payload);
-
-      debugPrint('\n========== TEMP SAVE: INSTRUCTOR COURSE ==========');
-      debugPrint('SAVE: collection=instructor_course_screenings');
-      debugPrint('SAVE: docId=$_existingScreeningId');
-      debugPrint('SAVE: status=draft');
-      debugPrint('SAVE: isTemporary=true (implicit)');
-      debugPrint('=================================================\n');
-
-      if (!mounted) return true;
-
-      // Clear unsaved changes flag after successful save
-      setState(() {
-        _hasUnsavedChanges = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('נשמר כמשוב בתהליך (draft)'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return true;
-    } catch (e) {
-      if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('שגיאה בשמירה: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
-        ),
-      );
-      return false;
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  /// Finalize and create FINAL feedback (move from temp to final)
+  /// ✅ FINALIZE: Convert draft to final in same collection
   Future<void> finalizeInstructorCourseFeedback() async {
-    if (_existingScreeningId == null || _existingScreeningId!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('לא ניתן לסיים ללא מזהה משוב')),
-      );
-      return;
-    }
     if (!hasRequiredDetails) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('יש למלא את כל פרטי המיון לפני שמירה')),
@@ -341,6 +345,23 @@ class _InstructorCourseFeedbackPageState
         throw Exception('נדרשת התחברות');
       }
 
+      debugPrint('\n========== FINALIZE: INSTRUCTOR COURSE ==========');
+
+      // ✅ STEP 1: Force immediate autosave if dirty
+      if (_hasUnsavedChanges) {
+        debugPrint('FINALIZE: Forcing immediate save of pending changes');
+        await _autosaveDraft();
+      }
+
+      // Ensure we have a draft ID
+      if (_stableDraftId == null) {
+        debugPrint('❌ FINALIZE: No draft ID found');
+        throw Exception('לא נמצא מזהה משוב');
+      }
+
+      final draftId = _stableDraftId!;
+      debugPrint('FINALIZE_START draftId=$draftId');
+
       // Build final feedback data
       final Map<String, dynamic> fields = {};
       categories.forEach((name, score) {
@@ -360,59 +381,54 @@ class _InstructorCourseFeedbackPageState
         }
       });
 
-      final finalData = {
-        'status': 'finalized',
-        'courseType': 'miunim',
-        'createdAt': FieldValue.serverTimestamp(),
-        'finalizedAt': FieldValue.serverTimestamp(),
-        'createdBy': uid,
-        'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
-        'command': _selectedPikud ?? '',
-        'brigade': _hativaController.text.trim(),
-        'candidateName': _candidateNameController.text.trim(),
-        'candidateNumber': _candidateNumber ?? 0,
-        'title': _candidateNameController.text.trim(),
-        'fields': fields,
-        'finalWeightedScore': finalWeightedScore,
-        'isSuitable': isSuitableForInstructorCourse,
-        'module': 'instructor_course_selection',
-        'type': 'instructor_course_feedback',
-        'isTemporary': false,
-      };
+      // ✅ STEP 2: Atomic commit - update status to 'final' with isSuitable flag
+      final docRef = FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .doc(draftId);
 
-      // ✅ ATOMIC BATCH OPERATION: Create final + Delete temp in one transaction
-      debugPrint('\n========== ATOMIC BATCH: INSTRUCTOR COURSE ==========');
-      debugPrint('BATCH: Creating WriteBatch for atomic operation');
+      final finalDocPath = docRef.path;
+      debugPrint(
+        '🟢 MIUNIM_FINALIZE_WRITE: collection=instructor_course_evaluations',
+      );
+      debugPrint('🟢 MIUNIM_FINALIZE_WRITE: docPath=$finalDocPath');
+      debugPrint('🟢 MIUNIM_FINALIZE_WRITE: evalId=$draftId');
+      debugPrint(
+        '🟢 MIUNIM_FINALIZE_WRITE: status=final, isSuitable=$isSuitableForInstructorCourse, ownerUid=$uid',
+      );
 
-      final batch = FirebaseFirestore.instance.batch();
+      try {
+        await docRef.update({
+          'status': 'final',
+          'ownerUid': uid, // Ensure ownerUid is set
+          'finalizedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'fields': fields,
+          'finalWeightedScore': finalWeightedScore,
+          'isSuitable': isSuitableForInstructorCourse,
+          'command': _selectedPikud ?? '',
+          'brigade': _hativaController.text.trim(),
+          'candidateName': _candidateNameController.text.trim(),
+          'candidateNumber': _candidateNumber ?? 0,
+          'title': _candidateNameController.text.trim(),
+        });
 
-      // 1. Create document in FINAL collection with auto-generated ID
-      final finalRef = FirebaseFirestore.instance
-          .collection('instructor_course_feedbacks')
-          .doc(); // Auto-generate ID
-      batch.set(finalRef, finalData);
-      debugPrint('BATCH: SET final doc in instructor_course_feedbacks');
-      debugPrint('BATCH: finalDocId=${finalRef.id}');
-
-      // 2. Delete document from TEMP collection
-      final tempRef = FirebaseFirestore.instance
-          .collection('instructor_course_screenings')
-          .doc(_existingScreeningId);
-      batch.delete(tempRef);
-      debugPrint('BATCH: DELETE temp doc from instructor_course_screenings');
-      debugPrint('BATCH: tempDocId=$_existingScreeningId');
-
-      // 3. Commit batch - ALL OR NOTHING
-      debugPrint('BATCH: Committing batch (atomic operation)...');
-      await batch.commit();
-      debugPrint('✅ BATCH: Commit successful!');
-      debugPrint('RESULT: Final doc created: ${finalRef.id}');
-      debugPrint('RESULT: Temp doc deleted: $_existingScreeningId');
-      debugPrint('RESULT: module=instructor_course_selection');
-      debugPrint('RESULT: type=instructor_course_feedback');
-      debugPrint('RESULT: isTemporary=false');
-      debugPrint('RESULT: status=finalized');
-      debugPrint('=====================================================\n');
+        debugPrint('✅ MIUNIM_SAVE_OK: evalId=$draftId, docPath=$finalDocPath');
+        debugPrint(
+          '✅ MIUNIM_SAVE_OK: status=final, isSuitable=$isSuitableForInstructorCourse',
+        );
+        debugPrint('=================================================\n');
+      } catch (e) {
+        debugPrint('❌ MIUNIM_FINALIZE_ERROR: $e');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאה בשמירת המשוב: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        return; // Do NOT navigate away on error
+      }
 
       if (!mounted) return;
 
@@ -481,10 +497,13 @@ class _InstructorCourseFeedbackPageState
                     ),
                     onPressed: _isFormLocked
                         ? null
-                        : () => setState(() {
-                            categories[category] = score;
-                            _markFormDirty();
-                          }),
+                        : () {
+                            setState(() {
+                              categories[category] = score;
+                              _markFormDirty();
+                            });
+                            _scheduleAutosave();
+                          },
                     child: Text(
                       score.toString(),
                       style: const TextStyle(
@@ -971,47 +990,42 @@ class _InstructorCourseFeedbackPageState
                   ),
                 ),
                 const SizedBox(height: 32),
-                SizedBox(
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    onPressed: (_isSaving || _isFormLocked)
-                        ? null
-                        : () async {
-                            await saveInstructorCourseTempFeedback();
-                          },
-                    icon: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                        : const Icon(Icons.save),
-                    label: Text(
-                      _isSaving ? 'שומר...' : 'שמור משוב',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                // ✅ AUTOSAVE INFO: Show autosave status to user
+                if (_isAutosaving)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'שומר אוטומטית...',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isSuitableForInstructorCourse
-                          ? Colors.green
-                          : Colors.orange,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 4,
+                  )
+                else if (!_hasUnsavedChanges && _stableDraftId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.check_circle, size: 16, color: Colors.green),
+                        SizedBox(width: 8),
+                        Text(
+                          'השינויים נשמרו',
+                          style: TextStyle(fontSize: 12, color: Colors.green),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 SizedBox(
                   height: 56,
                   child: ElevatedButton.icon(
