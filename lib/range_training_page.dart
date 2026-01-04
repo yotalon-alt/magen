@@ -191,6 +191,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   void _updateAttendeesCount(int count) {
+    debugPrint('\n🔍 DEBUG: _updateAttendeesCount called with count=$count');
+    debugPrint(
+      '   Before update: traineeRows.length=${traineeRows.length}, stations.length=${stations.length}',
+    );
+
     setState(() {
       attendeesCount = count;
 
@@ -205,11 +210,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         traineeRows = traineeRows.sublist(0, count);
       }
     });
+
+    debugPrint(
+      '   After update: traineeRows.length=${traineeRows.length}, attendeesCount=$attendeesCount',
+    );
+    debugPrint('   traineeRows isEmpty: ${traineeRows.isEmpty}');
+
     // ✅ Schedule autosave
     _scheduleAutoSave();
   }
 
   void _addStation() {
+    debugPrint('\n🔍 DEBUG: _addStation called');
+    debugPrint('   Before add: stations.length=${stations.length}');
+
     setState(() {
       stations.add(
         RangeStation(
@@ -223,6 +237,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ),
       );
     });
+
+    debugPrint('   After add: stations.length=${stations.length}');
   }
 
   void _removeStation(int index) {
@@ -904,6 +920,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('DRAFT_LOAD:   stations.length=${stations.length}');
       });
 
+      // ✅ FORCE REBUILD: Ensure UI updates with loaded data
+      debugPrint('DRAFT_LOAD: Forcing rebuild...');
+      if (mounted) {
+        setState(() {}); // Explicit rebuild trigger
+      }
+
       debugPrint('✅ DRAFT_LOAD: Load complete');
       debugPrint('DRAFT_LOAD: traineeRows.length=${traineeRows.length}');
       for (int i = 0; i < traineeRows.length && i < 3; i++) {
@@ -1253,8 +1275,55 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Widget _buildTraineesTable() {
+    debugPrint('\n🔍 DEBUG: _buildTraineesTable called');
+    debugPrint('   traineeRows.length=${traineeRows.length}');
+    debugPrint('   traineeRows.isEmpty=${traineeRows.isEmpty}');
+    debugPrint('   attendeesCount=$attendeesCount');
+    debugPrint('   stations.length=${stations.length}');
+
     if (traineeRows.isEmpty) {
-      return const Center(child: Text('אין חניכים להצגה'));
+      return Center(
+        child: Card(
+          color: Colors.orange.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.person_off, size: 48, color: Colors.orange),
+                const SizedBox(height: 16),
+                const Text(
+                  'אין חניכים במקצה זה',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'כמות נוכחים: $attendeesCount',
+                  style: const TextStyle(color: Colors.black54),
+                ),
+                if (attendeesCount > 0) ...[
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Force reinitialize traineeRows
+                      _updateAttendeesCount(attendeesCount);
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('רענן רשימת חניכים'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return LayoutBuilder(
