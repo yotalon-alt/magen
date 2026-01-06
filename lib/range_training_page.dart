@@ -83,8 +83,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   bool _isSaving = false;
   // הייצוא יתבצע מדף המשובים בלבד
 
-  // ✅ AUTOSAVE TIMER: Debounced autosave (600ms delay)
+  // ✅ AUTOSAVE TIMER: Debounced autosave (700ms delay)
   Timer? _autoSaveTimer;
+
+  // ✅ STABLE CONTROLLERS: Prevent focus loss on rebuild
+  // Key format: "trainee_{idx}" for name fields, "trainee_{idx}_station_{stationIdx}" for numeric fields
+  final Map<String, TextEditingController> _textControllers = {};
+  final Map<String, FocusNode> _focusNodes = {};
 
   @override
   void initState() {
@@ -105,19 +110,64 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // ✅ Initialize autosave timer (will be scheduled on data changes)
   }
 
-  /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 600ms of inactivity
+  /// ✅ GET OR CREATE STABLE CONTROLLER: Returns existing or creates new controller
+  TextEditingController _getController(String key, String initialValue) {
+    if (!_textControllers.containsKey(key)) {
+      _textControllers[key] = TextEditingController(text: initialValue);
+    } else {
+      // Update text if it changed (e.g., loaded from Firestore)
+      if (_textControllers[key]!.text != initialValue) {
+        _textControllers[key]!.text = initialValue;
+      }
+    }
+    return _textControllers[key]!;
+  }
+
+  /// ✅ GET OR CREATE STABLE FOCUS NODE: Returns existing or creates new focus node with blur listener
+  FocusNode _getFocusNode(String key) {
+    if (!_focusNodes.containsKey(key)) {
+      final node = FocusNode();
+      node.addListener(() {
+        if (!node.hasFocus) {
+          // ✅ IMMEDIATE SAVE ON FOCUS LOSS: User finished editing this field
+          debugPrint('🔵 FOCUS LOST: $key → triggering immediate save');
+          _saveImmediately();
+        }
+      });
+      _focusNodes[key] = node;
+    }
+    return _focusNodes[key]!;
+  }
+
+  /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 700ms of inactivity
   void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer(const Duration(milliseconds: 600), () {
-      debugPrint('🔄 AUTOSAVE: Timer triggered');
+    _autoSaveTimer = Timer(const Duration(milliseconds: 700), () {
+      debugPrint('🔄 AUTOSAVE: Timer triggered (700ms debounce)');
       _saveTemporarily();
     });
+  }
+
+  /// ✅ IMMEDIATE SAVE: Triggered when user leaves a field (focus loss)
+  void _saveImmediately() {
+    _autoSaveTimer?.cancel(); // Cancel pending debounced save
+    debugPrint('⚡ IMMEDIATE SAVE: Saving now');
+    _saveTemporarily();
   }
 
   @override
   void dispose() {
     _autoSaveTimer?.cancel();
     _attendeesCountController.dispose();
+    // ✅ Dispose all controllers and focus nodes
+    for (final controller in _textControllers.values) {
+      controller.dispose();
+    }
+    for (final node in _focusNodes.values) {
+      node.dispose();
+    }
+    _textControllers.clear();
+    _focusNodes.clear();
     super.dispose();
   }
 
@@ -660,13 +710,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // ✅ ATOMIC DRAFT SAVE: Single document with full traineeRows data
     // Updates same draftId, never creates duplicates
     // Comprehensive debug logging for verification
+    // ✅ NO REBUILD: Doesn't call setState during background auto-save
 
     if (_isSaving) {
       debugPrint('⚠️ DRAFT_SAVE: Already saving, skipping...');
       return; // Prevent concurrent saves
     }
 
-    setState(() => _isSaving = true);
+    // ✅ Track saving state WITHOUT rebuilding (prevents focus loss)
+    _isSaving = true;
 
     try {
       debugPrint('\n========== ✅ DRAFT_SAVE START ==========');
@@ -677,6 +729,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null || uid.isEmpty) {
         debugPrint('❌ DRAFT_SAVE: No user ID, aborting');
+        _isSaving = false;
         return;
       }
 
@@ -807,9 +860,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      // ✅ NO REBUILD: Reset flag WITHOUT setState to prevent focus loss
+      _isSaving = false;
     }
   }
 
@@ -1275,7 +1327,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Widget _buildTraineesTable() {
+    // ✅ CONSTANT ROW HEIGHT for perfect alignment
+    const double rowH = 44.0;
+
+    final screenWidth = MediaQuery.sizeOf(context).width;
     debugPrint('\n🔍 DEBUG: _buildTraineesTable called');
+    debugPrint('   screenWidth=$screenWidth');
     debugPrint('   traineeRows.length=${traineeRows.length}');
     debugPrint('   traineeRows.isEmpty=${traineeRows.isEmpty}');
     debugPrint('   attendeesCount=$attendeesCount');
@@ -1331,606 +1388,210 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final isMobile = constraints.maxWidth < 600;
 
         if (isMobile) {
-          // Mobile layout: Horizontal scroll with sticky trainee names
-          return Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade400, width: 1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(8.0),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(8),
-                      topRight: Radius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    widget.mode == 'surprise'
-                        ? 'הזנת ציונים - החלק ימינה לגלילה'
-                        : 'הזנת פגיעות - החלק ימינה לגלילה',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                Expanded(
-                  child: Row(
+          // ✅ Mobile layout: Synced vertical scrolling with frozen name column
+          final verticalController = ScrollController();
+
+          return SizedBox(
+            height: 320,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade400, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  // Header row with frozen columns and scrollable headers
+                  Row(
                     children: [
-                      // Frozen columns on the left: Number FIRST (appears RIGHT in RTL), then Name
-                      SizedBox(
-                        width: 80,
-                        child: Column(
-                          children: [
-                            Container(
-                              height: 60,
-                              padding: const EdgeInsets.all(8.0),
-                              decoration: BoxDecoration(
-                                color: Colors.blueGrey.shade50,
-                                border: Border(
-                                  right: BorderSide(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  bottom: BorderSide(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                ),
-                              ),
-                              child: const Text(
-                                'מספר',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            // Compact square Number input fields (editable, sequential by default)
-                            ...traineeRows.asMap().entries.map((entry) {
-                              final idx = entry.key;
-                              return Container(
-                                height: 60,
-                                padding: const EdgeInsets.all(4.0),
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    bottom: BorderSide(
-                                      color: Colors.grey.shade200,
-                                    ),
-                                  ),
-                                ),
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 44,
-                                    height: 40,
-                                    child: TextField(
-                                      controller: TextEditingController(
-                                        text: '${idx + 1}',
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.digitsOnly,
-                                      ],
-                                      textAlign: TextAlign.center,
-                                      decoration: const InputDecoration(
-                                        hintText: '1',
-                                        isDense: true,
-                                        border: OutlineInputBorder(),
-                                        contentPadding: EdgeInsets.zero,
-                                      ),
-                                      onChanged: (v) {
-                                        // Numbers are for display only
-                                        // Trainee identity is by row index
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      ),
-                      // Second frozen column: Name (160px width)
-                      SizedBox(
+                      // Frozen header: Name column (160px width)
+                      Container(
                         width: 160,
-                        child: Column(
-                          children: [
-                            Container(
-                              height: 60,
-                              padding: const EdgeInsets.all(8.0),
-                              decoration: BoxDecoration(
-                                color: Colors.blueGrey.shade50,
-                                border: Border(
-                                  right: BorderSide(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  bottom: BorderSide(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                ),
-                              ),
-                              child: const Text(
-                                'Name',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
+                        height: 56,
+                        padding: const EdgeInsets.all(8.0),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.shade50,
+                          border: Border(
+                            right: BorderSide(color: Colors.grey.shade300),
+                            bottom: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(8),
+                          ),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'שם חניך',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
                             ),
-                            // Name input fields
-                            ...traineeRows.asMap().entries.map((entry) {
-                              final row = entry.value;
-                              return Container(
-                                height: 60,
-                                padding: const EdgeInsets.all(4.0),
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    bottom: BorderSide(
-                                      color: Colors.grey.shade200,
-                                    ),
-                                  ),
-                                ),
-                                child: TextField(
-                                  controller:
-                                      TextEditingController(text: row.name)
-                                        ..selection = TextSelection.collapsed(
-                                          offset: row.name.length,
-                                        ),
-                                  decoration: const InputDecoration(
-                                    hintText: 'שם חניך',
-                                    isDense: true,
-                                    border: OutlineInputBorder(),
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 8,
-                                    ),
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 12),
-                                  onChanged: (v) {
-                                    setState(() {
-                                      row.name = v;
-                                    });
-                                    // ✅ Trigger autosave
-                                    _scheduleAutoSave();
-                                  },
-                                ),
-                              );
-                            }),
-                          ],
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
-                      // Scrollable stations columns
+                      // Scrollable headers for stations
                       Expanded(
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
+                          physics: const ClampingScrollPhysics(),
                           child: Row(
                             children: [
                               ...stations.asMap().entries.map((entry) {
                                 final stationIndex = entry.key;
                                 final station = entry.value;
                                 return Container(
-                                  width: 120,
+                                  width: 100,
+                                  height: 56,
+                                  padding: const EdgeInsets.all(4.0),
                                   decoration: BoxDecoration(
+                                    color: Colors.blueGrey.shade50,
                                     border: Border(
                                       left: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                      bottom: BorderSide(
                                         color: Colors.grey.shade300,
                                       ),
                                     ),
                                   ),
                                   child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      // Station header
-                                      Container(
-                                        height: 60,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blueGrey.shade50,
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
+                                      Text(
+                                        station.name.isEmpty
+                                            ? '$_itemLabel ${stationIndex + 1}'
+                                            : station.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11,
                                         ),
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              station.name.isEmpty
-                                                  ? '$_itemLabel ${stationIndex + 1}'
-                                                  : station.name,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 11,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            if (widget.mode == 'range')
-                                              Text(
-                                                '(${station.bulletsCount})',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.grey.shade600,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                              ),
-                                          ],
-                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: false,
                                       ),
-                                      // Trainee input fields for this station
-                                      ...traineeRows.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final row = entry.value;
-                                        final currentValue = row.getValue(
-                                          stationIndex,
-                                        );
-                                        return Container(
-                                          height: 60,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade200,
-                                              ),
-                                            ),
+                                      if (widget.mode == 'range')
+                                        Text(
+                                          '(${station.bulletsCount})',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600,
                                           ),
-                                          child: TextField(
-                                            controller:
-                                                TextEditingController(
-                                                    text: currentValue == 0
-                                                        ? ''
-                                                        : currentValue
-                                                              .toString(),
-                                                  )
-                                                  ..selection =
-                                                      TextSelection.collapsed(
-                                                        offset: currentValue
-                                                            .toString()
-                                                            .length,
-                                                      ),
-                                            decoration: const InputDecoration(
-                                              isDense: true,
-                                              border: OutlineInputBorder(),
-                                              hintText: '0',
-                                              contentPadding:
-                                                  EdgeInsets.symmetric(
-                                                    horizontal: 4,
-                                                    vertical: 8,
-                                                  ),
-                                            ),
-                                            keyboardType: TextInputType.number,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter
-                                                  .digitsOnly,
-                                            ],
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                            ),
-                                            onChanged: (v) {
-                                              final score =
-                                                  int.tryParse(v) ?? 0;
-
-                                              // Validation based on mode
-                                              if (widget.mode == 'surprise') {
-                                                // Surprise mode: 1-10 scale
-                                                if (score < 0 || score > 10) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text(
-                                                        'ציון חייב להיות בין 1 ל-10',
-                                                      ),
-                                                      duration: Duration(
-                                                        seconds: 1,
-                                                      ),
-                                                    ),
-                                                  );
-                                                  return;
-                                                }
-                                              } else {
-                                                // Range mode: hits limited by bullets
-                                                if (score >
-                                                    station.bulletsCount) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                                      ),
-                                                      duration: const Duration(
-                                                        seconds: 1,
-                                                      ),
-                                                    ),
-                                                  );
-                                                  return;
-                                                }
-                                              }
-                                              setState(() {
-                                                row.setValue(
-                                                  stationIndex,
-                                                  score,
-                                                );
-                                              });
-                                              // ✅ Trigger autosave
-                                              _scheduleAutoSave();
-                                            },
-                                          ),
-                                        );
-                                      }),
+                                          textAlign: TextAlign.center,
+                                        ),
                                     ],
                                   ),
                                 );
                               }),
-                              // Summary columns (conditional based on mode)
+                              // Summary column headers
                               if (widget.mode == 'surprise') ...[
-                                // Total Points column (Surprise mode)
                                 Container(
-                                  width: 100,
+                                  width: 90,
+                                  height: 56,
+                                  padding: const EdgeInsets.all(4.0),
                                   decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
                                     border: Border(
                                       left: BorderSide(
                                         color: Colors.grey.shade300,
                                       ),
+                                      bottom: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
                                     ),
                                   ),
-                                  child: Column(
-                                    children: [
-                                      // Header
-                                      Container(
-                                        height: 60,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade50,
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'סך הכל\nנקודות',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                            color: Colors.blue,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
+                                  child: const Center(
+                                    child: Text(
+                                      'סך נקודות',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                        color: Colors.blue,
                                       ),
-                                      // Values
-                                      ...traineeRows.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final traineeIndex = entry.key;
-                                        final totalPoints =
-                                            _getTraineeTotalPoints(
-                                              traineeIndex,
-                                            );
-                                        return Container(
-                                          height: 60,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade200,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            totalPoints.toString(),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.blue,
-                                              fontSize: 11,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        );
-                                      }),
-                                    ],
+                                      textAlign: TextAlign.center,
+                                      softWrap: false,
+                                    ),
                                   ),
                                 ),
-                                // Average Points column (Surprise mode)
                                 Container(
                                   width: 80,
-                                  color: Colors.transparent,
-                                  child: Column(
-                                    children: [
-                                      // Header
-                                      Container(
-                                        height: 60,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.shade50,
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'ממוצע\nנקודות',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                            color: Colors.green,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
+                                  height: 56,
+                                  padding: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade50,
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Colors.grey.shade300,
                                       ),
-                                      // Values
-                                      ...traineeRows.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final traineeIndex = entry.key;
-                                        final avgPoints =
-                                            _getTraineeAveragePoints(
-                                              traineeIndex,
-                                            );
-                                        return Container(
-                                          height: 60,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade200,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            avgPoints > 0
-                                                ? avgPoints.toStringAsFixed(1)
-                                                : '—',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 11,
-                                              color: avgPoints >= 7
-                                                  ? Colors.green
-                                                  : avgPoints >= 5
-                                                  ? Colors.orange
-                                                  : Colors.red,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        );
-                                      }),
-                                    ],
+                                    ),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      'ממוצע',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                        color: Colors.green,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      softWrap: false,
+                                    ),
                                   ),
                                 ),
                               ] else ...[
-                                // Bullets/Hits column (Range mode)
                                 Container(
-                                  width: 100,
+                                  width: 90,
+                                  height: 56,
+                                  padding: const EdgeInsets.all(4.0),
                                   decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
                                     border: Border(
                                       left: BorderSide(
                                         color: Colors.grey.shade300,
                                       ),
+                                      bottom: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
                                     ),
                                   ),
-                                  child: Column(
-                                    children: [
-                                      // Header
-                                      Container(
-                                        height: 60,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade50,
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'פגיעות/\nכדורים',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                            color: Colors.blue,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
+                                  child: const Center(
+                                    child: Text(
+                                      'פגיעות/כדורים',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                        color: Colors.blue,
                                       ),
-                                      // Values
-                                      ...traineeRows.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final traineeIndex = entry.key;
-                                        return Container(
-                                          height: 60,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade200,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.blue,
-                                              fontSize: 11,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        );
-                                      }),
-                                    ],
+                                      textAlign: TextAlign.center,
+                                      softWrap: false,
+                                    ),
                                   ),
                                 ),
-                                // Percentage column (Range mode)
                                 Container(
-                                  width: 80,
-                                  color: Colors.transparent,
-                                  child: Column(
-                                    children: [
-                                      // Header
-                                      Container(
-                                        height: 60,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.shade50,
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'אחוז\nפגיעות',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                            color: Colors.green,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
+                                  width: 70,
+                                  height: 56,
+                                  padding: const EdgeInsets.all(4.0),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade50,
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Colors.grey.shade300,
                                       ),
-                                      // Values
-                                      ...traineeRows.asMap().entries.map((
-                                        entry,
-                                      ) {
-                                        final traineeIndex = entry.key;
-                                        final totalHits = _getTraineeTotalHits(
-                                          traineeIndex,
-                                        );
-                                        final totalBullets = _getTotalBullets();
-                                        final percentage = totalBullets > 0
-                                            ? (totalHits / totalBullets * 100)
-                                            : 0.0;
-                                        return Container(
-                                          height: 60,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade200,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '${percentage.toStringAsFixed(1)}%',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 11,
-                                              color: percentage >= 70
-                                                  ? Colors.green
-                                                  : percentage >= 50
-                                                  ? Colors.orange
-                                                  : Colors.red,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        );
-                                      }),
-                                    ],
+                                    ),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      'אחוז',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                        color: Colors.green,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      softWrap: false,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1940,8 +1601,380 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       ),
                     ],
                   ),
-                ),
-              ],
+                  // Data rows with synced scrolling
+                  Expanded(
+                    child: Row(
+                      children: [
+                        // ✅ Frozen Name column with vertical ListView
+                        SizedBox(
+                          width: 160,
+                          child: ListView.builder(
+                            controller: verticalController,
+                            physics: const ClampingScrollPhysics(),
+                            itemCount: traineeRows.length,
+                            itemExtent: rowH,
+                            itemBuilder: (context, idx) {
+                              final row = traineeRows[idx];
+                              final controllerKey = 'trainee_$idx';
+                              final focusKey = 'trainee_$idx';
+                              return SizedBox(
+                                height: rowH,
+                                child: Align(
+                                  alignment: Alignment.center,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4.0,
+                                      vertical: 2.0,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade200,
+                                        ),
+                                      ),
+                                    ),
+                                    child: TextField(
+                                      controller: _getController(
+                                        controllerKey,
+                                        row.name,
+                                      ),
+                                      focusNode: _getFocusNode(focusKey),
+                                      decoration: const InputDecoration(
+                                        hintText: 'שם',
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 8,
+                                        ),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                      maxLines: 1,
+                                      onChanged: (v) {
+                                        // ✅ ONLY UPDATE DATA: No setState, no save
+                                        row.name = v;
+                                        _scheduleAutoSave();
+                                      },
+                                      onSubmitted: (v) {
+                                        // ✅ IMMEDIATE SAVE: User pressed Enter
+                                        row.name = v;
+                                        _saveImmediately();
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        // ✅ Scrollable stations with synced vertical scroll
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const ClampingScrollPhysics(),
+                            child: SizedBox(
+                              width:
+                                  (stations.length * 100.0) +
+                                  (widget.mode == 'surprise' ? 170 : 160),
+                              child: ListView.builder(
+                                controller: verticalController,
+                                physics: const ClampingScrollPhysics(),
+                                itemCount: traineeRows.length,
+                                itemExtent: rowH,
+                                itemBuilder: (context, traineeIdx) {
+                                  final row = traineeRows[traineeIdx];
+                                  return SizedBox(
+                                    height: rowH,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          // Station input fields
+                                          ...stations.asMap().entries.map((
+                                            entry,
+                                          ) {
+                                            final stationIndex = entry.key;
+                                            final station = entry.value;
+                                            final currentValue = row.getValue(
+                                              stationIndex,
+                                            );
+                                            final controllerKey =
+                                                'trainee_${traineeIdx}_station_$stationIndex';
+                                            final focusKey =
+                                                'trainee_${traineeIdx}_station_$stationIndex';
+                                            return SizedBox(
+                                              width: 90,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: ConstrainedBox(
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                        minWidth: 64,
+                                                        maxWidth: 90,
+                                                      ),
+                                                  child: SizedBox(
+                                                    height: rowH - 4,
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 2.0,
+                                                          ),
+                                                      child: TextField(
+                                                        controller: _getController(
+                                                          controllerKey,
+                                                          currentValue == 0
+                                                              ? ''
+                                                              : currentValue
+                                                                    .toString(),
+                                                        ),
+                                                        focusNode:
+                                                            _getFocusNode(
+                                                              focusKey,
+                                                            ),
+                                                        decoration: const InputDecoration(
+                                                          isDense: true,
+                                                          border:
+                                                              OutlineInputBorder(),
+                                                          hintText: '0',
+                                                          contentPadding:
+                                                              EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 10,
+                                                              ),
+                                                        ),
+                                                        keyboardType:
+                                                            TextInputType
+                                                                .number,
+                                                        inputFormatters: [
+                                                          FilteringTextInputFormatter
+                                                              .digitsOnly,
+                                                        ],
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                        ),
+                                                        maxLines: 1,
+                                                        onChanged: (v) {
+                                                          final score =
+                                                              int.tryParse(v) ??
+                                                              0;
+
+                                                          // Validation based on mode
+                                                          if (widget.mode ==
+                                                              'surprise') {
+                                                            if (score < 0 ||
+                                                                score > 10) {
+                                                              ScaffoldMessenger.of(
+                                                                context,
+                                                              ).showSnackBar(
+                                                                const SnackBar(
+                                                                  content: Text(
+                                                                    'ציון חייב להיות בין 1 ל-10',
+                                                                  ),
+                                                                  duration:
+                                                                      Duration(
+                                                                        seconds:
+                                                                            1,
+                                                                      ),
+                                                                ),
+                                                              );
+                                                              return;
+                                                            }
+                                                          } else {
+                                                            if (score >
+                                                                station
+                                                                    .bulletsCount) {
+                                                              ScaffoldMessenger.of(
+                                                                context,
+                                                              ).showSnackBar(
+                                                                SnackBar(
+                                                                  content: Text(
+                                                                    'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                                  ),
+                                                                  duration:
+                                                                      const Duration(
+                                                                        seconds:
+                                                                            1,
+                                                                      ),
+                                                                ),
+                                                              );
+                                                              return;
+                                                            }
+                                                          }
+                                                          // ✅ ONLY UPDATE DATA: No setState, no save
+                                                          row.setValue(
+                                                            stationIndex,
+                                                            score,
+                                                          );
+                                                          _scheduleAutoSave();
+                                                        },
+                                                        onSubmitted: (v) {
+                                                          // ✅ IMMEDIATE SAVE: User pressed Enter
+                                                          final score =
+                                                              int.tryParse(v) ??
+                                                              0;
+                                                          row.setValue(
+                                                            stationIndex,
+                                                            score,
+                                                          );
+                                                          _saveImmediately();
+                                                        },
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                          // Summary columns
+                                          if (widget.mode == 'surprise') ...[
+                                            SizedBox(
+                                              width: 90,
+                                              height: rowH,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  _getTraineeTotalPoints(
+                                                    traineeIdx,
+                                                  ).toString(),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.blue,
+                                                    fontSize: 11,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              width: 80,
+                                              height: rowH,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Builder(
+                                                  builder: (_) {
+                                                    final avgPoints =
+                                                        _getTraineeAveragePoints(
+                                                          traineeIdx,
+                                                        );
+                                                    return Text(
+                                                      avgPoints > 0
+                                                          ? avgPoints
+                                                                .toStringAsFixed(
+                                                                  1,
+                                                                )
+                                                          : '—',
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 11,
+                                                        color: avgPoints >= 7
+                                                            ? Colors.green
+                                                            : avgPoints >= 5
+                                                            ? Colors.orange
+                                                            : Colors.red,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      maxLines: 1,
+                                                      softWrap: false,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ] else ...[
+                                            SizedBox(
+                                              width: 90,
+                                              height: rowH,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  '${_getTraineeTotalHits(traineeIdx)}/${_getTotalBullets()}',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.blue,
+                                                    fontSize: 10,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              width: 70,
+                                              height: rowH,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Builder(
+                                                  builder: (_) {
+                                                    final totalHits =
+                                                        _getTraineeTotalHits(
+                                                          traineeIdx,
+                                                        );
+                                                    final totalBullets =
+                                                        _getTotalBullets();
+                                                    final percentage =
+                                                        totalBullets > 0
+                                                        ? (totalHits /
+                                                              totalBullets *
+                                                              100)
+                                                        : 0.0;
+                                                    return Text(
+                                                      '${percentage.toStringAsFixed(1)}%',
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 10,
+                                                        color: percentage >= 70
+                                                            ? Colors.green
+                                                            : percentage >= 50
+                                                            ? Colors.orange
+                                                            : Colors.red,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      maxLines: 1,
+                                                      softWrap: false,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         } else {
@@ -2107,10 +2140,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           SizedBox(
                             width: 120,
                             child: TextField(
-                              controller: TextEditingController(text: row.name)
-                                ..selection = TextSelection.collapsed(
-                                  offset: row.name.length,
-                                ),
+                              controller: _getController(
+                                'desktop_trainee_$traineeIndex',
+                                row.name,
+                              ),
+                              focusNode: _getFocusNode(
+                                'desktop_trainee_$traineeIndex',
+                              ),
                               decoration: const InputDecoration(
                                 hintText: 'שם חניך',
                                 isDense: true,
@@ -2122,11 +2158,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ),
                               textAlign: TextAlign.center,
                               onChanged: (v) {
-                                setState(() {
-                                  row.name = v;
-                                });
-                                // ✅ Trigger autosave
+                                // ✅ ONLY UPDATE DATA: No setState, no save
+                                row.name = v;
                                 _scheduleAutoSave();
+                              },
+                              onSubmitted: (v) {
+                                // ✅ IMMEDIATE SAVE: User pressed Enter
+                                row.name = v;
+                                _saveImmediately();
                               },
                             ),
                           ),
@@ -2143,14 +2182,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     final currentValue = row.getValue(
                                       stationIndex,
                                     );
+                                    final controllerKey =
+                                        'desktop_trainee_${traineeIndex}_station_$stationIndex';
+                                    final focusKey =
+                                        'desktop_trainee_${traineeIndex}_station_$stationIndex';
                                     return SizedBox(
                                       width: 80,
                                       child: TextField(
-                                        controller: TextEditingController(
-                                          text: currentValue > 0
+                                        controller: _getController(
+                                          controllerKey,
+                                          currentValue > 0
                                               ? currentValue.toString()
                                               : '',
                                         ),
+                                        focusNode: _getFocusNode(focusKey),
                                         decoration: const InputDecoration(
                                           isDense: true,
                                           border: OutlineInputBorder(),
@@ -2205,11 +2250,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                               return;
                                             }
                                           }
-                                          setState(() {
-                                            row.setValue(stationIndex, score);
-                                          });
-                                          // ✅ Trigger autosave
+                                          // ✅ ONLY UPDATE DATA: No setState, no save
+                                          row.setValue(stationIndex, score);
                                           _scheduleAutoSave();
+                                        },
+                                        onSubmitted: (v) {
+                                          // ✅ IMMEDIATE SAVE: User pressed Enter
+                                          final score = int.tryParse(v) ?? 0;
+                                          row.setValue(stationIndex, score);
+                                          _saveImmediately();
                                         },
                                       ),
                                     );
