@@ -91,6 +91,26 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   final Map<String, TextEditingController> _textControllers = {};
   final Map<String, FocusNode> _focusNodes = {};
 
+  // ✅ PERSISTENT SCROLL CONTROLLERS: For synchronized scrolling in range tables
+  // OLD APPROACH (will be replaced): Single controllers shared by multiple scrollables
+  // late final ScrollController _verticalCtrl;
+  // late final ScrollController _horizontalCtrl;
+
+  // ✅ NEW APPROACH: Separate controllers with manual sync via listeners
+  late final ScrollController _namesVertical;
+  late final ScrollController _resultsVertical;
+  late final ScrollController _headerHorizontal;
+  late final ScrollController _resultsHorizontal;
+
+  // ✅ SYNC GUARD FLAGS: Prevent infinite loops during listener sync
+  bool _syncingVertical = false;
+  bool _syncingHorizontal = false;
+
+  // ✅ SCROLL SYNC CONSTANTS
+  static const double nameColumnWidth = 160.0;
+  static const double stationColumnWidth = 90.0;
+  static const double rowHeight = 44.0;
+
   @override
   void initState() {
     super.initState();
@@ -108,6 +128,66 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       _loadExistingTemporaryFeedback(_editingFeedbackId!);
     }
     // ✅ Initialize autosave timer (will be scheduled on data changes)
+    // ✅ Initialize persistent scroll controllers for table sync
+    // NEW APPROACH: 4 separate controllers with manual sync
+    _namesVertical = ScrollController();
+    _resultsVertical = ScrollController();
+    _headerHorizontal = ScrollController();
+    _resultsHorizontal = ScrollController();
+
+    // ✅ SYNC LISTENERS: Vertical scroll sync (names ↔ results)
+    _namesVertical.addListener(() {
+      if (_syncingVertical) return;
+      _syncingVertical = true;
+      if (_resultsVertical.hasClients) {
+        final targetOffset = _namesVertical.offset.clamp(
+          0.0,
+          _resultsVertical.position.maxScrollExtent,
+        );
+        _resultsVertical.jumpTo(targetOffset);
+      }
+      _syncingVertical = false;
+    });
+
+    _resultsVertical.addListener(() {
+      if (_syncingVertical) return;
+      _syncingVertical = true;
+      if (_namesVertical.hasClients) {
+        final targetOffset = _resultsVertical.offset.clamp(
+          0.0,
+          _namesVertical.position.maxScrollExtent,
+        );
+        _namesVertical.jumpTo(targetOffset);
+      }
+      _syncingVertical = false;
+    });
+
+    // ✅ SYNC LISTENERS: Horizontal scroll sync (header ↔ results)
+    _headerHorizontal.addListener(() {
+      if (_syncingHorizontal) return;
+      _syncingHorizontal = true;
+      if (_resultsHorizontal.hasClients) {
+        final targetOffset = _headerHorizontal.offset.clamp(
+          0.0,
+          _resultsHorizontal.position.maxScrollExtent,
+        );
+        _resultsHorizontal.jumpTo(targetOffset);
+      }
+      _syncingHorizontal = false;
+    });
+
+    _resultsHorizontal.addListener(() {
+      if (_syncingHorizontal) return;
+      _syncingHorizontal = true;
+      if (_headerHorizontal.hasClients) {
+        final targetOffset = _resultsHorizontal.offset.clamp(
+          0.0,
+          _headerHorizontal.position.maxScrollExtent,
+        );
+        _headerHorizontal.jumpTo(targetOffset);
+      }
+      _syncingHorizontal = false;
+    });
   }
 
   /// ✅ GET OR CREATE STABLE CONTROLLER: Returns existing or creates new controller
@@ -168,6 +248,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
     _textControllers.clear();
     _focusNodes.clear();
+    // ✅ Dispose persistent scroll controllers
+    _namesVertical.dispose();
+    _resultsVertical.dispose();
+    _headerHorizontal.dispose();
+    _resultsHorizontal.dispose();
     super.dispose();
   }
 
@@ -1327,9 +1412,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Widget _buildTraineesTable() {
-    // ✅ CONSTANT ROW HEIGHT for perfect alignment
-    const double rowH = 44.0;
-
     final screenWidth = MediaQuery.sizeOf(context).width;
     debugPrint('\n🔍 DEBUG: _buildTraineesTable called');
     debugPrint('   screenWidth=$screenWidth');
@@ -1388,14 +1470,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final isMobile = constraints.maxWidth < 600;
 
         if (isMobile) {
-          // ✅ SYNCHRONIZED SCROLLING: Shared controllers for vertical & horizontal sync
-          final vCtrl = ScrollController();
-          final hCtrl = ScrollController();
-
-          // ✅ Calculate fixed column width for stations
-          const double stationColWidth = 90.0;
+          // ✅ FINAL PRODUCTION-SAFE SYNCHRONIZED SCROLLING
+          // Calculate total width for stations + summary columns
           final double totalStationsWidth =
-              (stations.length * stationColWidth) +
+              (stations.length * stationColumnWidth) +
               (widget.mode == 'surprise' ? 170 : 160);
 
           return SizedBox(
@@ -1412,9 +1490,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   // A) TOP STICKY HEADER ROW (does not scroll vertically)
                   Row(
                     children: [
-                      // Fixed "שם חניך" header (160px width)
+                      // Fixed "שם חניך" header
                       Container(
-                        width: 160,
+                        width: nameColumnWidth,
                         height: 56,
                         padding: const EdgeInsets.all(8.0),
                         decoration: BoxDecoration(
@@ -1438,12 +1516,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           ),
                         ),
                       ),
-                      // Horizontally scrollable station headers (synced with body via hCtrl)
+                      // Horizontally scrollable station headers (synced with body)
                       Expanded(
                         child: SingleChildScrollView(
-                          controller: hCtrl,
+                          controller: _headerHorizontal,
+                          primary: false,
                           scrollDirection: Axis.horizontal,
-                          physics: const ClampingScrollPhysics(),
                           child: SizedBox(
                             width: totalStationsWidth,
                             child: Row(
@@ -1452,7 +1530,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   final stationIndex = entry.key;
                                   final station = entry.value;
                                   return Container(
-                                    width: stationColWidth,
+                                    width: stationColumnWidth,
                                     height: 56,
                                     padding: const EdgeInsets.all(4.0),
                                     decoration: BoxDecoration(
@@ -1619,18 +1697,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       children: [
                         // Fixed trainee names column (scrolls vertically only)
                         SizedBox(
-                          width: 160,
+                          width: nameColumnWidth,
                           child: ListView.builder(
-                            controller: vCtrl,
+                            controller: _namesVertical,
+                            primary: false,
                             physics: const ClampingScrollPhysics(),
                             itemCount: traineeRows.length,
-                            itemExtent: rowH,
+                            itemExtent: rowHeight,
                             itemBuilder: (context, idx) {
                               final row = traineeRows[idx];
                               final controllerKey = 'trainee_$idx';
                               final focusKey = 'trainee_$idx';
                               return SizedBox(
-                                height: rowH,
+                                height: rowHeight,
                                 child: Align(
                                   alignment: Alignment.center,
                                   child: Container(
@@ -1683,20 +1762,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         // Scrollable results (scrolls both horizontally and vertically, synced)
                         Expanded(
                           child: SingleChildScrollView(
-                            controller: hCtrl,
+                            controller: _resultsHorizontal,
+                            primary: false,
                             scrollDirection: Axis.horizontal,
-                            physics: const ClampingScrollPhysics(),
                             child: SizedBox(
                               width: totalStationsWidth,
                               child: ListView.builder(
-                                controller: vCtrl,
+                                controller: _resultsVertical,
+                                primary: false,
                                 physics: const ClampingScrollPhysics(),
                                 itemCount: traineeRows.length,
-                                itemExtent: rowH,
+                                itemExtent: rowHeight,
                                 itemBuilder: (context, traineeIdx) {
                                   final row = traineeRows[traineeIdx];
                                   return SizedBox(
-                                    height: rowH,
+                                    height: rowHeight,
                                     child: Container(
                                       decoration: BoxDecoration(
                                         border: Border(
@@ -1721,7 +1801,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             final focusKey =
                                                 'trainee_${traineeIdx}_station_$stationIndex';
                                             return SizedBox(
-                                              width: stationColWidth,
+                                              width: stationColumnWidth,
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: ConstrainedBox(
@@ -1731,7 +1811,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                         maxWidth: 90,
                                                       ),
                                                   child: SizedBox(
-                                                    height: rowH - 4,
+                                                    height: rowHeight - 4,
                                                     child: Padding(
                                                       padding:
                                                           const EdgeInsets.symmetric(
@@ -1849,7 +1929,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           if (widget.mode == 'surprise') ...[
                                             SizedBox(
                                               width: 90,
-                                              height: rowH,
+                                              height: rowHeight,
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: Text(
@@ -1871,7 +1951,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                             SizedBox(
                                               width: 80,
-                                              height: rowH,
+                                              height: rowHeight,
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: Builder(
@@ -1911,7 +1991,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           ] else ...[
                                             SizedBox(
                                               width: 90,
-                                              height: rowH,
+                                              height: rowHeight,
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: Text(
@@ -1931,7 +2011,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                             SizedBox(
                                               width: 70,
-                                              height: rowH,
+                                              height: rowHeight,
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: Builder(
