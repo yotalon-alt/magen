@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'main.dart';
 import 'range_training_page.dart';
+import 'widgets/feedback_list_tile_card.dart';
 
 /// Surprise Drills Temporary Feedbacks List Page
 ///
@@ -300,68 +301,68 @@ class _SurpriseDrillsTempFeedbacksPageState
           }
         }
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          elevation: 2,
-          child: ListTile(
-            title: Text(
-              settlement.isNotEmpty ? settlement : 'ללא יישוב',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (instructorName.isNotEmpty) Text('מדריך: $instructorName'),
-                Text('נוכחים: $attendeesCount'),
-                if (dateStr.isNotEmpty) Text('תאריך: $dateStr'),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('מחיקת משוב זמני'),
-                        content: const Text('האם למחוק משוב זמני זה?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('ביטול'),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _deleteTempFeedback(id);
-                            },
-                            child: const Text('מחק'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  tooltip: 'מחק',
-                ),
-              ],
-            ),
-            onTap: () {
-              // Open editor to continue editing
-              Navigator.of(context)
-                  .push(
-                    MaterialPageRoute(
-                      builder: (_) => RangeTrainingPage(
-                        rangeType: 'הפתעה',
-                        mode: 'surprise',
-                        feedbackId: id,
-                      ),
+        // Build metadata lines
+        final metadataLines = <String>[];
+        if (instructorName.isNotEmpty) {
+          metadataLines.add('מדריך: $instructorName');
+        }
+        metadataLines.add('נוכחים: $attendeesCount');
+        if (dateStr.isNotEmpty) {
+          metadataLines.add('נשמר: $dateStr');
+        }
+
+        // Get blue tag label
+        final blueTagLabel = getBlueTagLabelFromDoc(feedback);
+
+        // Check permissions
+        final canDelete =
+            currentUser?.role == 'Admin' ||
+            feedback['instructorId'] == currentUser?.uid;
+
+        return FeedbackListTileCard(
+          title: settlement.isNotEmpty ? settlement : 'ללא יישוב',
+          metadataLines: metadataLines,
+          blueTagLabel: blueTagLabel,
+          canDelete: canDelete,
+          leadingIcon: Icons.edit_note,
+          iconColor: Colors.purple,
+          iconBackgroundColor: Colors.purple.withValues(alpha: 0.2),
+          onOpen: () {
+            Navigator.of(context)
+                .push(
+                  MaterialPageRoute(
+                    builder: (_) => RangeTrainingPage(
+                      rangeType: 'הפתעה',
+                      mode: 'surprise',
+                      feedbackId: id,
                     ),
-                  )
-                  .then((_) => _loadTempFeedbacks());
-            },
-          ),
+                  ),
+                )
+                .then((_) => _loadTempFeedbacks());
+          },
+          onDelete: () {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('מחיקת משוב זמני'),
+                content: const Text('האם למחוק משוב זמני זה?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('ביטול'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _deleteTempFeedback(id);
+                    },
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    child: const Text('מחק'),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );

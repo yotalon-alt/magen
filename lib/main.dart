@@ -16,6 +16,7 @@ import 'export_selection_page.dart';
 import 'universal_export_page.dart';
 import 'surprise_drills_entry_page.dart';
 import 'widgets/standard_back_button.dart';
+import 'widgets/feedback_list_tile_card.dart';
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -39,15 +40,28 @@ class AppUser {
 AppUser? currentUser;
 
 // Global folders used by FeedbacksPage and filters
-const List<String> feedbackFolders = <String>[
-  'מטווחי ירי',
-  'מחלקות ההגנה – חטיבה 474',
-  'מיונים – כללי',
-  'מיונים לקורס מדריכים',
-  'משובים – כללי',
-  'עבודה במבנה',
-  'משוב תרגילי הפתעה',
+// Each folder has: title (String) and isHidden (bool)
+const List<Map<String, dynamic>>
+_feedbackFoldersConfig = <Map<String, dynamic>>[
+  {'title': 'מטווחי ירי', 'isHidden': false},
+  {'title': 'מחלקות ההגנה – חטיבה 474', 'isHidden': false},
+  {'title': 'מיונים – כללי', 'isHidden': true}, // ✅ SOFT DELETE: Hidden from UI
+  {'title': 'מיונים לקורס מדריכים', 'isHidden': false},
+  {'title': 'משובים – כללי', 'isHidden': false},
+  {'title': 'עבודה במבנה', 'isHidden': false},
+  {'title': 'משוב תרגילי הפתעה', 'isHidden': false},
 ];
+
+// Helper: Get all folder titles (including hidden) for backwards compatibility
+final List<String> feedbackFolders = _feedbackFoldersConfig
+    .map((config) => config['title'] as String)
+    .toList();
+
+// Helper: Get only visible folder titles for UI display
+final List<String> visibleFeedbackFolders = _feedbackFoldersConfig
+    .where((config) => config['isHidden'] != true)
+    .map((config) => config['title'] as String)
+    .toList();
 
 // Settlements list for dropdown (can be extended; empty list is valid)
 const List<String> golanSettlements = <String>[
@@ -2436,6 +2450,58 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     }
   }
 
+  Future<void> _confirmDeleteFeedback(String feedbackId, String title) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת משוב'),
+          content: Text('האם למחוק את המשוב "$title"?\n\nפעולה זו בלתי הפיכה.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('מחק'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteFeedback(feedbackId, title);
+    }
+  }
+
+  Future<void> _deleteFeedback(String feedbackId, String title) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedbackId)
+          .delete();
+
+      // Remove from local cache
+      feedbackStorage.removeWhere((f) => f.id == feedbackId);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('המשוב "$title" נמחק בהצלחה')));
+      setState(() {}); // Refresh UI
+    } catch (e) {
+      debugPrint('❌ Delete feedback error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה במחיקת משוב: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = currentUser?.role == 'Admin';
@@ -2565,9 +2631,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     mainAxisSpacing: isMobile ? 12 : 6,
                     childAspectRatio: isMobile ? 1.5 : 2.2,
                   ),
-                  itemCount: feedbackFolders.length,
+                  itemCount: visibleFeedbackFolders.length,
                   itemBuilder: (ctx, i) {
-                    final folder = feedbackFolders[i];
+                    final folder = visibleFeedbackFolders[i];
                     // Count feedbacks: regular + old feedbacks without folder (assigned to "משובים – כללי")
                     int count;
                     if (folder == 'משובים – כללי') {
@@ -2580,7 +2646,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           .length;
                     }
                     final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
-                    final isMiunimCourse = folder == 'מיונים – כללי';
+                    // isMiunimCourse removed - folder is now hidden
                     return Card(
                       elevation: isMobile ? 4 : 2,
                       color: isInstructorCourse
@@ -2597,9 +2663,6 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             Navigator.of(context).pushNamed(
                               '/instructor_course_selection_feedbacks',
                             );
-                          } else if (isMiunimCourse) {
-                            // ניווט למסך מיונים כללי
-                            Navigator.of(context).pushNamed('/screenings_menu');
                           } else {
                             setState(() => _selectedFolder = folder);
                           }
@@ -2610,11 +2673,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                isInstructorCourse || isMiunimCourse
+                                isInstructorCourse
                                     ? Icons.school
                                     : Icons.folder,
                                 size: isMobile ? 48 : 20,
-                                color: (isInstructorCourse || isMiunimCourse)
+                                color: isInstructorCourse
                                     ? Colors.white
                                     : Colors.orangeAccent,
                               ),
@@ -2905,24 +2968,65 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     ),
                   Expanded(
                     child: ListView.builder(
+                      padding: const EdgeInsets.all(12.0),
                       itemCount: finalFilteredFeedbacks.length,
                       itemBuilder: (_, i) {
                         final f = finalFilteredFeedbacks[i];
-                        final date = f.createdAt
-                            .toLocal()
-                            .toString()
-                            .split('.')
-                            .first;
-                        return ListTile(
-                          title: Text('${f.role} — ${f.name}'),
-                          subtitle: Text(
-                            '${f.exercise} • ${f.instructorName.isNotEmpty ? '${f.instructorName} • ' : ''}$date',
-                          ),
-                          onTap: () {
+
+                        // Build title from feedback data
+                        final title =
+                            f.folder == 'מטווחי ירי' ||
+                                f.module == 'shooting_ranges'
+                            ? (f.settlement.isNotEmpty ? f.settlement : f.name)
+                            : '${f.role} — ${f.name}';
+
+                        // Parse date
+                        final date = f.createdAt.toLocal();
+                        final dateStr =
+                            '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+
+                        // Build metadata lines
+                        final metadataLines = <String>[];
+                        if (f.exercise.isNotEmpty) {
+                          metadataLines.add('תרגיל: ${f.exercise}');
+                        }
+                        if (f.instructorName.isNotEmpty) {
+                          metadataLines.add('מדריך: ${f.instructorName}');
+                        }
+                        if (f.attendeesCount > 0) {
+                          metadataLines.add('משתתפים: ${f.attendeesCount}');
+                        }
+                        metadataLines.add('תאריך: $dateStr');
+
+                        // Get blue tag label - build a map from FeedbackModel
+                        final feedbackData = <String, dynamic>{
+                          'feedbackType': f.type,
+                          'rangeType': f.exercise,
+                          'folder': f.folder,
+                          'module': f.module,
+                        };
+                        final blueTagLabel = getBlueTagLabelFromDoc(
+                          feedbackData,
+                        );
+
+                        // Check delete permissions
+                        final canDelete =
+                            currentUser?.role == 'Admin' ||
+                            f.instructorName == currentUser?.name;
+
+                        return FeedbackListTileCard(
+                          title: title,
+                          metadataLines: metadataLines,
+                          blueTagLabel: blueTagLabel,
+                          canDelete: canDelete,
+                          onOpen: () {
                             Navigator.of(
                               context,
                             ).pushNamed('/feedback_details', arguments: f);
                           },
+                          onDelete: f.id != null && f.id!.isNotEmpty
+                              ? () => _confirmDeleteFeedback(f.id!, title)
+                              : null,
                         );
                       },
                     ),

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'main.dart';
 import 'range_training_page.dart';
 import 'widgets/standard_back_button.dart';
+import 'widgets/feedback_list_tile_card.dart';
 
 /// מסך משובים זמניים למטווחים - Temporary Range Feedbacks List
 class RangeTempFeedbacksPage extends StatefulWidget {
@@ -166,12 +167,6 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
     );
   }
 
-  String _getRangeTypeLabel(String rangeType) {
-    if (rangeType == 'קצרים') return 'טווח קצר';
-    if (rangeType == 'ארוכים') return 'טווח רחוק';
-    return rangeType;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -310,104 +305,52 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                         '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
                   }
 
-                  final rangeTypeLabel = _getRangeTypeLabel(rangeType);
+                  // Get blue tag label from document data
+                  final blueTagLabel = getBlueTagLabelFromDoc(feedback);
 
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 2,
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: rangeType == 'קצרים'
-                              ? Colors.blue.withValues(alpha: 0.2)
-                              : Colors.orange.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
+                  // Build metadata lines
+                  final metadataLines = <String>[];
+                  if (instructorName.isNotEmpty) {
+                    metadataLines.add('מדריך: $instructorName');
+                  }
+                  if (attendeesCount > 0) {
+                    metadataLines.add('משתתפים: $attendeesCount');
+                  }
+                  if (dateStr.isNotEmpty) {
+                    metadataLines.add('נשמר: $dateStr');
+                  }
+
+                  // Check permissions
+                  final canDelete =
+                      currentUser?.role == 'Admin' ||
+                      feedback['instructorId'] == currentUser?.uid;
+
+                  return FeedbackListTileCard(
+                    title: settlement,
+                    metadataLines: metadataLines,
+                    blueTagLabel: blueTagLabel,
+                    canDelete: canDelete,
+                    leadingIcon: Icons.edit_note,
+                    iconColor: rangeType == 'קצרים'
+                        ? Colors.blue
+                        : Colors.orange,
+                    iconBackgroundColor: rangeType == 'קצרים'
+                        ? Colors.blue.withValues(alpha: 0.2)
+                        : Colors.orange.withValues(alpha: 0.2),
+                    onOpen: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => RangeTrainingPage(
+                            rangeType: rangeType,
+                            feedbackId: id,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.edit_note,
-                          color: rangeType == 'קצרים'
-                              ? Colors.blue
-                              : Colors.orange,
-                          size: 28,
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              settlement,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: rangeType == 'קצרים'
-                                  ? Colors.blue
-                                  : Colors.orange,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              rangeTypeLabel,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          if (instructorName.isNotEmpty)
-                            Text('מדריך: $instructorName'),
-                          if (attendeesCount > 0)
-                            Text('משתתפים: $attendeesCount'),
-                          if (dateStr.isNotEmpty)
-                            Text(
-                              'נשמר: $dateStr',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                        ],
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _confirmDelete(id, settlement),
-                        tooltip: 'מחק משוב זמני',
-                      ),
-                      onTap: () {
-                        // Open the range training page in edit mode
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => RangeTrainingPage(
-                              rangeType: rangeType,
-                              feedbackId: id,
-                            ),
-                          ),
-                        ).then((_) {
-                          // Reload list when returning from edit
-                          _loadTempFeedbacks();
-                        });
-                      },
-                    ),
+                      ).then((_) {
+                        _loadTempFeedbacks();
+                      });
+                    },
+                    onDelete: () => _confirmDelete(id, settlement),
                   );
                 },
               ),
