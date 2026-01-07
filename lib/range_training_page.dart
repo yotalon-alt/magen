@@ -1388,8 +1388,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final isMobile = constraints.maxWidth < 600;
 
         if (isMobile) {
-          // ✅ Mobile layout: Synced vertical scrolling with frozen name column
-          final verticalController = ScrollController();
+          // ✅ SYNCHRONIZED SCROLLING: Shared controllers for vertical & horizontal sync
+          final vCtrl = ScrollController();
+          final hCtrl = ScrollController();
+
+          // ✅ Calculate fixed column width for stations
+          const double stationColWidth = 90.0;
+          final double totalStationsWidth =
+              (stations.length * stationColWidth) +
+              (widget.mode == 'surprise' ? 170 : 160);
 
           return SizedBox(
             height: 320,
@@ -1402,10 +1409,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.max,
                 children: [
-                  // Header row with frozen columns and scrollable headers
+                  // A) TOP STICKY HEADER ROW (does not scroll vertically)
                   Row(
                     children: [
-                      // Frozen header: Name column (160px width)
+                      // Fixed "שם חניך" header (160px width)
                       Container(
                         width: 160,
                         height: 56,
@@ -1431,185 +1438,190 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           ),
                         ),
                       ),
-                      // Scrollable headers for stations
+                      // Horizontally scrollable station headers (synced with body via hCtrl)
                       Expanded(
                         child: SingleChildScrollView(
+                          controller: hCtrl,
                           scrollDirection: Axis.horizontal,
                           physics: const ClampingScrollPhysics(),
-                          child: Row(
-                            children: [
-                              ...stations.asMap().entries.map((entry) {
-                                final stationIndex = entry.key;
-                                final station = entry.value;
-                                return Container(
-                                  width: 100,
-                                  height: 56,
-                                  padding: const EdgeInsets.all(4.0),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blueGrey.shade50,
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: Colors.grey.shade300,
-                                      ),
-                                      bottom: BorderSide(
-                                        color: Colors.grey.shade300,
+                          child: SizedBox(
+                            width: totalStationsWidth,
+                            child: Row(
+                              children: [
+                                ...stations.asMap().entries.map((entry) {
+                                  final stationIndex = entry.key;
+                                  final station = entry.value;
+                                  return Container(
+                                    width: stationColWidth,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueGrey.shade50,
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        station.name.isEmpty
-                                            ? '$_itemLabel ${stationIndex + 1}'
-                                            : station.name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 11,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        softWrap: false,
-                                      ),
-                                      if (widget.mode == 'range')
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
                                         Text(
-                                          '(${station.bulletsCount})',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade600,
+                                          station.name.isEmpty
+                                              ? '$_itemLabel ${stationIndex + 1}'
+                                              : station.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
                                           ),
                                           textAlign: TextAlign.center,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          softWrap: false,
                                         ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                              // Summary column headers
-                              if (widget.mode == 'surprise') ...[
-                                Container(
-                                  width: 90,
-                                  height: 56,
-                                  padding: const EdgeInsets.all(4.0),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: Colors.grey.shade300,
+                                        if (widget.mode == 'range')
+                                          Text(
+                                            '(${station.bulletsCount})',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                                // Summary column headers
+                                if (widget.mode == 'surprise') ...[
+                                  Container(
+                                    width: 90,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
                                       ),
-                                      bottom: BorderSide(
-                                        color: Colors.grey.shade300,
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'סך נקודות',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
                                       ),
                                     ),
                                   ),
-                                  child: const Center(
-                                    child: Text(
-                                      'סך נקודות',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                        color: Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      softWrap: false,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  width: 80,
-                                  height: 56,
-                                  padding: const EdgeInsets.all(4.0),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade50,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: Colors.grey.shade300,
+                                  Container(
+                                    width: 80,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  child: const Center(
-                                    child: Text(
-                                      'ממוצע',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                        color: Colors.green,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      softWrap: false,
-                                    ),
-                                  ),
-                                ),
-                              ] else ...[
-                                Container(
-                                  width: 90,
-                                  height: 56,
-                                  padding: const EdgeInsets.all(4.0),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: Colors.grey.shade300,
-                                      ),
-                                      bottom: BorderSide(
-                                        color: Colors.grey.shade300,
+                                    child: const Center(
+                                      child: Text(
+                                        'ממוצע',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.green,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
                                       ),
                                     ),
                                   ),
-                                  child: const Center(
-                                    child: Text(
-                                      'פגיעות/כדורים',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                        color: Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      softWrap: false,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  width: 70,
-                                  height: 56,
-                                  padding: const EdgeInsets.all(4.0),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade50,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: Colors.grey.shade300,
+                                ] else ...[
+                                  Container(
+                                    width: 90,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  child: const Center(
-                                    child: Text(
-                                      'אחוז',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                        color: Colors.green,
+                                    child: const Center(
+                                      child: Text(
+                                        'פגיעות/כדורים',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
                                       ),
-                                      textAlign: TextAlign.center,
-                                      softWrap: false,
                                     ),
                                   ),
-                                ),
+                                  Container(
+                                    width: 70,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'אחוז',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.green,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  // Data rows with synced scrolling
+                  // B) SCROLLABLE BODY with synchronized vertical & horizontal scrolling
                   Expanded(
                     child: Row(
                       children: [
-                        // ✅ Frozen Name column with vertical ListView
+                        // Fixed trainee names column (scrolls vertically only)
                         SizedBox(
                           width: 160,
                           child: ListView.builder(
-                            controller: verticalController,
+                            controller: vCtrl,
                             physics: const ClampingScrollPhysics(),
                             itemCount: traineeRows.length,
                             itemExtent: rowH,
@@ -1668,17 +1680,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             },
                           ),
                         ),
-                        // ✅ Scrollable stations with synced vertical scroll
+                        // Scrollable results (scrolls both horizontally and vertically, synced)
                         Expanded(
                           child: SingleChildScrollView(
+                            controller: hCtrl,
                             scrollDirection: Axis.horizontal,
                             physics: const ClampingScrollPhysics(),
                             child: SizedBox(
-                              width:
-                                  (stations.length * 100.0) +
-                                  (widget.mode == 'surprise' ? 170 : 160),
+                              width: totalStationsWidth,
                               child: ListView.builder(
-                                controller: verticalController,
+                                controller: vCtrl,
                                 physics: const ClampingScrollPhysics(),
                                 itemCount: traineeRows.length,
                                 itemExtent: rowH,
@@ -1710,7 +1721,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             final focusKey =
                                                 'trainee_${traineeIdx}_station_$stationIndex';
                                             return SizedBox(
-                                              width: 90,
+                                              width: stationColWidth,
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: ConstrainedBox(
