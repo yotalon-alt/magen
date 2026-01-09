@@ -14,9 +14,14 @@ service cloud.firestore {
     }
 
     // ===== Production-safe rules =====
-    // Users can only read/write their own document
+    // Users collection: 
+    // - Users can read/write their own document
+    // - Instructors and Admins can read any user's name field (for attribution display)
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || isInstructor() || isAdmin()
+      );
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Feedbacks require authentication
@@ -102,20 +107,16 @@ service cloud.firestore {
     // Unified collection for drafts and finals with status field
     // Used by miunim (instructor course selection) module
     // ✅ ALL instructors/admins can see ALL final submissions (shared visibility)
+    // ✅ ALL instructors/admins can see and edit ALL drafts (shared collaboration)
     match /instructor_course_evaluations/{evalId} {
       // Allow create for any instructor/admin
       allow create: if request.auth != null && (isInstructor() || isAdmin());
 
-      // ✅ Allow read for all instructors/admins on final docs, only owner for drafts
-      allow read: if request.auth != null && (
-        (isInstructor() || isAdmin()) && resource.data.status == 'final'
-        || resource.data.ownerUid == request.auth.uid
-      );
+      // ✅ Allow read for all instructors/admins (both drafts and finals)
+      allow read: if request.auth != null && (isInstructor() || isAdmin());
 
-      // Allow update ONLY for owner or admin
-      allow update: if request.auth != null && (
-        resource.data.ownerUid == request.auth.uid || isAdmin()
-      );
+      // ✅ Allow update for all instructors/admins (both drafts and finals)
+      allow update: if request.auth != null && (isInstructor() || isAdmin());
 
       // Allow delete ONLY for admin
       allow delete: if isAdmin();

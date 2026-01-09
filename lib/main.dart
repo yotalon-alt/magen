@@ -310,6 +310,43 @@ Future<void> main() async {
 /// Global in-memory storage
 final List<FeedbackModel> feedbackStorage = [];
 
+/// Helper function to resolve user's Hebrew full name from Firestore
+/// Returns the full Hebrew name, never an email or UID
+Future<String> resolveUserHebrewName(String uid) async {
+  try {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get()
+        .timeout(const Duration(seconds: 3));
+
+    if (userDoc.exists) {
+      final userData = userDoc.data();
+      // Priority: displayName > fullName > name (never return email/username)
+      final displayName = userData?['displayName'] as String?;
+      final fullName = userData?['fullName'] as String?;
+      final name = userData?['name'] as String?;
+
+      if (displayName != null &&
+          displayName.isNotEmpty &&
+          !displayName.contains('@')) {
+        return displayName;
+      } else if (fullName != null &&
+          fullName.isNotEmpty &&
+          !fullName.contains('@')) {
+        return fullName;
+      } else if (name != null && name.isNotEmpty && !name.contains('@')) {
+        return name;
+      }
+    }
+  } catch (e) {
+    debugPrint('⚠️ Failed to resolve Hebrew name for UID $uid: $e');
+  }
+
+  // Fallback: return a placeholder with truncated UID (never "לא ידוע")
+  return 'מדריך ${uid.substring(0, min(8, uid.length))}...';
+}
+
 // Load feedbacks from Firestore according to current user permissions
 // בדיקה זמנית - שאילתה פשוטה בלי where לוודא שהדאטה קיימת
 Future<void> testSimpleFeedbackQuery() async {
@@ -2142,6 +2179,14 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
     try {
       final now = DateTime.now();
+      final uid = currentUser?.uid ?? '';
+
+      // Resolve instructor's Hebrew full name from Firestore
+      String resolvedInstructorName = instructorNameDisplay;
+      if (uid.isNotEmpty) {
+        resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
       final Map<String, dynamic> doc = {
         'role': selectedRole,
         'name': evaluatedName.trim(),
@@ -2150,9 +2195,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'notes': finalNotes,
         'criteriaList': criteriaList,
         'createdAt': now,
-        'createdByName': instructorNameDisplay,
-        'createdByUid': currentUser?.uid ?? '',
-        'instructorName': instructorNameDisplay,
+        'createdByName': resolvedInstructorName,
+        'createdByUid': uid,
+        'instructorName': resolvedInstructorName,
         'instructorRole': instructorRoleDisplay,
         'commandText': adminCommandText,
         'commandStatus': adminCommandStatus,
@@ -2160,7 +2205,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'scenario': scenario,
         'settlement': settlement,
         'attendeesCount': 0,
-        'instructorId': currentUser?.uid ?? '',
+        'instructorId': uid,
       };
 
       final ref = await FirebaseFirestore.instance
@@ -2825,7 +2870,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     crossAxisCount: isMobile ? 2 : 3,
                     crossAxisSpacing: isMobile ? 12 : 6,
                     mainAxisSpacing: isMobile ? 12 : 6,
-                    childAspectRatio: isMobile ? 1.5 : 2.2,
+                    childAspectRatio: isMobile ? 1.3 : 2.2,
                   ),
                   itemCount: visibleFeedbackFolders.length,
                   itemBuilder: (ctx, i) {
@@ -2881,6 +2926,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               Text(
                                 folder,
                                 textAlign: TextAlign.center,
+                                softWrap: true,
                                 style: TextStyle(
                                   fontSize: folderTitleFontSize,
                                   fontWeight: FontWeight.bold,
@@ -3246,6 +3292,8 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
   late FeedbackModel feedback;
   String editCommandText = '';
   String editCommandStatus = 'פתוח';
+  String? resolvedInstructorName; // Cached resolved name
+  bool isResolvingName = false;
 
   @override
   void initState() {
@@ -3253,6 +3301,72 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     feedback = widget.feedback;
     editCommandText = feedback.commandText;
     editCommandStatus = feedback.commandStatus;
+    _resolveInstructorNameIfNeeded();
+  }
+
+  /// Resolve instructor name if it looks like email/UID
+  Future<void> _resolveInstructorNameIfNeeded() async {
+    final currentName = feedback.instructorName;
+
+    // Check if name needs resolution (contains @, looks like UID, or is placeholder)
+    final needsResolution =
+        currentName.isEmpty ||
+        currentName.contains('@') ||
+        currentName.startsWith('מדריך ') ||
+        currentName.length < 3;
+
+    if (!needsResolution) {
+      // Name looks good, use as-is
+      setState(() {
+        resolvedInstructorName = currentName;
+      });
+      return;
+    }
+
+    // Try to resolve from Firestore using feedback ID
+    setState(() {
+      isResolvingName = true;
+    });
+
+    try {
+      if (feedback.id != null && feedback.id!.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(feedback.id)
+            .get()
+            .timeout(const Duration(seconds: 3));
+
+        if (doc.exists) {
+          final data = doc.data();
+          final createdByUid = data?['createdByUid'] ?? data?['instructorId'];
+
+          if (createdByUid != null && createdByUid.toString().isNotEmpty) {
+            final resolvedName = await resolveUserHebrewName(
+              createdByUid.toString(),
+            );
+            setState(() {
+              resolvedInstructorName = resolvedName;
+              isResolvingName = false;
+            });
+
+            // Optionally backfill the document with the resolved name
+            await doc.reference.update({
+              'instructorName': resolvedName,
+              'createdByName': resolvedName,
+            });
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to resolve instructor name: $e');
+    }
+
+    // Fallback: use original name
+    setState(() {
+      resolvedInstructorName = currentName.isNotEmpty ? currentName : 'לא ידוע';
+      isResolvingName = false;
+    });
   }
 
   bool _isEditingCommand = false;
@@ -3445,7 +3559,22 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         padding: const EdgeInsets.all(12.0),
         child: ListView(
           children: [
-            Text('מדריך: ${feedback.instructorName}'),
+            // Show resolved instructor name (or loading indicator)
+            isResolvingName
+                ? const Row(
+                    children: [
+                      Text('מדריך: '),
+                      SizedBox(width: 8),
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ],
+                  )
+                : Text(
+                    'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                  ),
             const SizedBox(height: 8),
             Text('תאריך: $date'),
             const SizedBox(height: 8),
@@ -6180,13 +6309,13 @@ class ShevaPrinciplesPage extends StatelessWidget {
   const ShevaPrinciplesPage({super.key});
 
   static const List<String> items = [
-    'קשר עין',
     'בחירת ציר התקדמות',
-    'זיהוי איום עיקרי ואיום משני',
-    'קצב אש ומרחק',
-    'ירי בטוח בתוך קהל',
-    'וידוא ניטרול',
+    'קשר עין',
+    'איום עיקרי / איום משני',
     'זיהוי והזדהות',
+    'קצב אש ומרחק',
+    'קו ירי נקי',
+    'וידוא ניטרול',
   ];
 
   @override

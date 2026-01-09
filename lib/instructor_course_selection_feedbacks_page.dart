@@ -222,11 +222,11 @@ class _InstructorCourseSelectionFeedbacksPageState
         final createdByUid = data['createdBy'] ?? data['createdByUid'];
         final createdByName = data['createdByName'] as String?;
 
-        // ✅ FETCH INSTRUCTOR NAME: Look up user document for creator's name
+        // ✅ FETCH INSTRUCTOR NAME: Look up user document for creator's Hebrew full name
         String instructorName = 'לא ידוע';
-        if (createdByName != null && createdByName.isNotEmpty) {
-          instructorName = createdByName;
-        } else if (createdByUid != null && createdByUid.toString().isNotEmpty) {
+
+        // Try to fetch from Firestore users collection if we have a UID
+        if (createdByUid != null && createdByUid.toString().isNotEmpty) {
           try {
             final userDoc = await FirebaseFirestore.instance
                 .collection('users')
@@ -234,16 +234,40 @@ class _InstructorCourseSelectionFeedbacksPageState
                 .get()
                 .timeout(const Duration(seconds: 3));
             if (userDoc.exists) {
-              final userName = userDoc.data()?['name'] as String?;
-              if (userName != null && userName.isNotEmpty) {
-                instructorName = userName;
+              final userData = userDoc.data();
+              // Priority: displayName > fullName > name (never show email/username)
+              final displayName = userData?['displayName'] as String?;
+              final fullName = userData?['fullName'] as String?;
+              final name = userData?['name'] as String?;
+
+              if (displayName != null && displayName.isNotEmpty) {
+                instructorName = displayName;
+              } else if (fullName != null && fullName.isNotEmpty) {
+                instructorName = fullName;
+              } else if (name != null && name.isNotEmpty) {
+                instructorName = name;
               }
+              // If valid UID exists but name fetch failed, show UID instead of "לא ידוע"
+              else {
+                instructorName =
+                    'מדריך ${createdByUid.toString().substring(0, 8)}...';
+              }
+            } else {
+              // User document doesn't exist, show truncated UID
+              instructorName =
+                  'מדריך ${createdByUid.toString().substring(0, 8)}...';
             }
           } catch (e) {
             debugPrint(
               '⚠️ Failed to fetch instructor name for UID $createdByUid: $e',
             );
+            // On error, show truncated UID instead of "לא ידוע"
+            instructorName =
+                'מדריך ${createdByUid.toString().substring(0, 8)}...';
           }
+        } else if (createdByName != null && createdByName.isNotEmpty) {
+          // Fallback: use createdByName if no UID available
+          instructorName = createdByName;
         }
         data['instructorName'] = instructorName;
 
@@ -783,6 +807,87 @@ class _InstructorCourseSelectionFeedbacksPageState
     );
   }
 
+  Future<void> _confirmDeleteFeedback(
+    Map<String, dynamic> feedback,
+    BuildContext dialogContext,
+  ) async {
+    final feedbackId = feedback['id'] as String?;
+    final candidateName = feedback['candidateName'] ?? 'לא ידוע';
+
+    if (feedbackId == null || feedbackId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('שגיאה: לא ניתן למחוק משוב ללא מזהה'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת משוב'),
+          content: Text(
+            'האם למחוק את המשוב של "$candidateName" לצמיתות?\n\nפעולה זו אינה ניתנת לשחזור.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('מחק'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Delete the document from Firestore
+      await FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .doc(feedbackId)
+          .delete();
+
+      // Remove from local list
+      setState(() {
+        _feedbacks.removeWhere((f) => f['id'] == feedbackId);
+      });
+
+      // Close details dialog if open
+      if (dialogContext.mounted) {
+        Navigator.pop(dialogContext);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('המשוב נמחק'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Error deleting feedback: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה במחיקת משוב: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   void _showFeedbackDetails(Map<String, dynamic> feedback) {
     final candidateName = feedback['candidateName'] ?? 'לא ידוע';
     final candidateNumber = feedback['candidateNumber'] as int?;
@@ -791,6 +896,7 @@ class _InstructorCourseSelectionFeedbacksPageState
     final brigade = feedback['brigade'] ?? '';
     final averageScore = feedback['averageScore'] ?? 0.0;
     final scores = feedback['scores'] as Map<String, dynamic>? ?? {};
+    final isAdmin = currentUser?.role == 'Admin';
 
     debugPrint('\n📋 FEEDBACK_DETAILS_OPEN: ${feedback['id']}');
     debugPrint('   candidateName=$candidateName');
@@ -873,6 +979,14 @@ class _InstructorCourseSelectionFeedbacksPageState
             ),
           ),
           actions: [
+            // Admin-only delete button
+            if (isAdmin)
+              TextButton.icon(
+                onPressed: () => _confirmDeleteFeedback(feedback, ctx),
+                icon: const Icon(Icons.delete, color: Colors.red),
+                label: const Text('מחק'),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('סגור'),

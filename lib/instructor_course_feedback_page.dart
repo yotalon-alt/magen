@@ -138,6 +138,15 @@ class _InstructorCourseFeedbackPageState
         }
       });
 
+      // Resolve instructor's Hebrew full name from Firestore
+      String resolvedCreatorName =
+          FirebaseAuth.instance.currentUser?.email ?? '';
+      String resolvedUpdaterName = resolvedCreatorName;
+      if (uid.isNotEmpty) {
+        resolvedCreatorName = await resolveUserHebrewName(uid);
+        resolvedUpdaterName = resolvedCreatorName;
+      }
+
       final draftData = {
         'status': 'draft',
         'ownerUid': uid, // Required for rules and queries
@@ -147,7 +156,10 @@ class _InstructorCourseFeedbackPageState
             : null,
         'updatedAt': FieldValue.serverTimestamp(),
         'createdBy': uid,
-        'createdByName': FirebaseAuth.instance.currentUser?.email ?? '',
+        'createdByUid': uid,
+        'createdByName': resolvedCreatorName,
+        'updatedByUid': uid, // ✅ Track last editor
+        'updatedByName': resolvedUpdaterName, // ✅ Track last editor name
         'command': _selectedPikud ?? '',
         'brigade': _hativaController.text.trim(),
         'candidateName': _candidateNameController.text.trim(),
@@ -396,12 +408,23 @@ class _InstructorCourseFeedbackPageState
         '🟢 MIUNIM_FINALIZE_WRITE: status=final, isSuitable=$isSuitableForInstructorCourse, ownerUid=$uid',
       );
 
+      // Resolve instructor's Hebrew full name from Firestore
+      String resolvedCreatorName =
+          FirebaseAuth.instance.currentUser?.email ?? '';
+      String resolvedUpdaterName = resolvedCreatorName;
+      if (uid.isNotEmpty) {
+        resolvedCreatorName = await resolveUserHebrewName(uid);
+        resolvedUpdaterName = resolvedCreatorName;
+      }
+
       try {
         await docRef.update({
           'status': 'final',
           'ownerUid': uid, // Ensure ownerUid is set
           'finalizedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
+          'updatedByUid': uid, // ✅ Track last editor
+          'updatedByName': resolvedUpdaterName, // ✅ Track last editor name
           'fields': fields,
           'finalWeightedScore': finalWeightedScore,
           'isSuitable': isSuitableForInstructorCourse,
@@ -410,6 +433,8 @@ class _InstructorCourseFeedbackPageState
           'candidateName': _candidateNameController.text.trim(),
           'candidateNumber': _candidateNumber ?? 0,
           'title': _candidateNameController.text.trim(),
+          'createdByUid': uid,
+          'createdByName': resolvedCreatorName,
         });
 
         debugPrint('✅ MIUNIM_SAVE_OK: evalId=$draftId, docPath=$finalDocPath');

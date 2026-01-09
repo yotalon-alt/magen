@@ -114,6 +114,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   @override
   void initState() {
     super.initState();
+    // Initialize instructor name - will be resolved properly on save
     instructorName = currentUser?.name ?? '';
     _settlementDisplayText = selectedSettlement ?? '';
     _attendeesCountController = TextEditingController(
@@ -584,14 +585,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         });
       }
 
+      // Resolve instructor's Hebrew full name from Firestore
+      String resolvedInstructorName = instructorName;
+      if (uid.isNotEmpty) {
+        resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
       final Map<String, dynamic> baseData = {
-        'instructorName': instructorName,
+        'instructorName': resolvedInstructorName,
         'instructorId': uid,
         'instructorEmail': email,
         'instructorRole': currentUser?.role ?? 'Instructor',
         'instructorUsername': currentUser?.username ?? '',
         'createdAt': FieldValue.serverTimestamp(),
-        'createdByName': instructorName,
+        'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
         'settlement': selectedSettlement,
@@ -850,14 +857,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           ? 'תרגילי הפתעה - משוב זמני'
           : 'מטווחים - משוב זמני';
 
+      // Resolve instructor's Hebrew full name from Firestore
+      String resolvedInstructorName = instructorName;
+      if (uid.isNotEmpty) {
+        resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
       final Map<String, dynamic> payload = {
         'status': 'temporary',
         'module': moduleType,
         'isTemporary': true,
         'folder': folderName,
         'instructorId': uid,
-        'instructorName': instructorName,
-        'createdByName': instructorName,
+        'instructorName': resolvedInstructorName,
+        'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
         'settlement': selectedSettlement ?? '',
