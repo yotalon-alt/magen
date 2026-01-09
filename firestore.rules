@@ -101,23 +101,24 @@ service cloud.firestore {
     // ===== INSTRUCTOR COURSE EVALUATIONS (SINGLE COLLECTION) =====
     // Unified collection for drafts and finals with status field
     // Used by miunim (instructor course selection) module
+    // ✅ ALL instructors/admins can see ALL final submissions (shared visibility)
     match /instructor_course_evaluations/{evalId} {
-      // Allow create ONLY if ownerUid matches auth.uid
-      allow create: if request.auth != null 
-                    && request.resource.data.ownerUid == request.auth.uid;
+      // Allow create for any instructor/admin
+      allow create: if request.auth != null && (isInstructor() || isAdmin());
 
-      // Allow read if owner OR if document is finalized
-      allow read: if request.auth != null 
-                  && (resource.data.ownerUid == request.auth.uid
-                      || resource.data.status == 'final');
+      // ✅ Allow read for all instructors/admins on final docs, only owner for drafts
+      allow read: if request.auth != null && (
+        (isInstructor() || isAdmin()) && resource.data.status == 'final'
+        || resource.data.ownerUid == request.auth.uid
+      );
 
-      // Allow update ONLY if owner
-      allow update: if request.auth != null 
-                    && resource.data.ownerUid == request.auth.uid;
+      // Allow update ONLY for owner or admin
+      allow update: if request.auth != null && (
+        resource.data.ownerUid == request.auth.uid || isAdmin()
+      );
 
-      // Allow delete ONLY if owner or admin
-      allow delete: if request.auth != null 
-                    && (resource.data.ownerUid == request.auth.uid || isAdmin());
+      // Allow delete ONLY for admin
+      allow delete: if isAdmin();
     }
 
     // Nested screenings under courses/{courseId}/screenings/{screeningId}

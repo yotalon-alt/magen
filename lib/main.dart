@@ -1887,8 +1887,13 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   String scenario = ''; // תרחיש
   String settlement = ''; // יישוב
 
-  // available criteria (user-selectable)
-  final List<String> availableCriteria = [
+  // Custom settlements for manual entry folders
+  List<String> customSettlements = [];
+  final TextEditingController settlementController = TextEditingController();
+  bool isLoadingCustomSettlements = false;
+
+  // Base criteria for מעגל פתוח and מעגל פרוץ (original)
+  static const List<String> _baseCriteria = [
     'פוש',
     'הכרזה',
     'הפצה',
@@ -1899,6 +1904,23 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     'הבנת האירוע',
     'תפקוד באירוע',
   ];
+
+  // Additional criteria for סריקות רחוב only
+  static const List<String> _streetScanCriteria = [
+    'אבטחה היקפית',
+    'שמירה על קשר בתוך הכוח הסורק',
+    'שליטה בכוח',
+    'יצירת גירוי והאזנה לשטח',
+    'עבודה ממרכז הרחוב והחוצה',
+  ];
+
+  // Get criteria based on selected exercise
+  List<String> get availableCriteria {
+    if (selectedExercise == 'סריקות רחוב') {
+      return [..._baseCriteria, ..._streetScanCriteria];
+    }
+    return _baseCriteria;
+  }
 
   // which criteria are active (checkboxes at top)
   final Map<String, bool> activeCriteria = {};
@@ -1913,6 +1935,21 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   // Prevent double-submission
   bool _isSaving = false;
 
+  // Initialize criteria maps for current exercise
+  void _initializeCriteriaForExercise() {
+    // Clear existing maps
+    scores.clear();
+    notes.clear();
+    activeCriteria.clear();
+
+    // Populate maps for current exercise's criteria
+    for (final c in availableCriteria) {
+      scores[c] = 0;
+      notes[c] = '';
+      activeCriteria[c] = false; // do NOT display by default
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1924,16 +1961,87 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       instructorNameDisplay = currentUser?.name ?? '';
       instructorRoleDisplay = currentUser?.role ?? '';
     }
-    for (final c in availableCriteria) {
-      scores[c] = 0;
-      notes[c] = '';
-      activeCriteria[c] = false; // do NOT display by default
-    }
+    _initializeCriteriaForExercise();
+    _loadCustomSettlements();
   }
 
   @override
   void dispose() {
+    settlementController.dispose();
     super.dispose();
+  }
+
+  // Load custom settlements from Firestore
+  Future<void> _loadCustomSettlements() async {
+    setState(() => isLoadingCustomSettlements = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('custom_settlements')
+          .orderBy('name')
+          .get()
+          .timeout(const Duration(seconds: 5));
+
+      final List<String> loaded = [];
+      for (final doc in snapshot.docs) {
+        final name = (doc.data()['name'] ?? '').toString();
+        if (name.isNotEmpty) {
+          loaded.add(name);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          customSettlements = loaded;
+          isLoadingCustomSettlements = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load custom settlements: $e');
+      if (mounted) {
+        setState(() => isLoadingCustomSettlements = false);
+      }
+    }
+  }
+
+  // Normalize settlement name for deduplication
+  String _normalizeSettlement(String input) {
+    return input.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  }
+
+  // Add custom settlement to Firestore
+  Future<void> _addCustomSettlement(String name) async {
+    final normalized = _normalizeSettlement(name);
+
+    // Check if already exists (case-insensitive)
+    final exists = customSettlements.any(
+      (s) => _normalizeSettlement(s) == normalized,
+    );
+
+    if (exists) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('היישוב כבר קיים ברשימה')));
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('custom_settlements').add({
+        'name': name.trim(),
+        'createdAt': DateTime.now(),
+      });
+
+      setState(() {
+        customSettlements.add(name.trim());
+        customSettlements.sort();
+      });
+    } catch (e) {
+      debugPrint('Failed to add custom settlement: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה בהוספת יישוב: $e')));
+    }
   }
 
   Future<void> _save() async {
@@ -1991,6 +2099,17 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       return;
     }
 
+    // Validate settlement when folder is selected
+    if (selectedFolder != null && settlement.trim().isEmpty) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר/הזן יישוב')));
+      return;
+    }
+
     // Build final scores and notes only for active criteria
     final Map<String, int> finalScores = {};
     final Map<String, String> finalNotes = {};
@@ -2013,6 +2132,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'notes': finalNotes,
         'criteriaList': criteriaList,
         'createdAt': now,
+        'createdByName': instructorNameDisplay,
+        'createdByUid': currentUser?.uid ?? '',
         'instructorName': instructorNameDisplay,
         'instructorRole': instructorRoleDisplay,
         'commandText': adminCommandText,
@@ -2094,6 +2215,12 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               const SizedBox(height: 8),
               Builder(
                 builder: (ctx) {
+                  // Allowed folders for these exercises
+                  final allowedFolders = [
+                    'מחלקות ההגנה – חטיבה 474',
+                    'משובים – כללי',
+                    'עבודה במבנה',
+                  ];
                   return DropdownButtonFormField<String>(
                     initialValue: selectedFolder,
                     hint: const Text('בחר תיקייה (חובה)'),
@@ -2101,8 +2228,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                       labelText: 'תיקייה',
                       border: OutlineInputBorder(),
                     ),
-                    items: feedbackFolders
-                        .where((folder) => folder != 'מיונים לקורס מדריכים')
+                    items: allowedFolders
                         .map(
                           (folder) => DropdownMenuItem(
                             value: folder,
@@ -2112,18 +2238,18 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                         .toList(),
                     onChanged: (v) => setState(() {
                       selectedFolder = v;
-                      // איפוס יישוב אם התיקייה השתנתה מ"מחלקות ההגנה – חטיבה 474"
-                      if (selectedFolder != 'מחלקות ההגנה – חטיבה 474') {
-                        settlement = '';
-                      }
+                      // Clear settlement when folder changes
+                      settlement = '';
+                      settlementController.clear();
                     }),
                   );
                 },
               ),
               const SizedBox(height: 12),
 
-              // יישוב (מוצג רק כאשר נבחרה המחלקה "מחלקות ההגנה – חטיבה 474")
+              // 2. יישוב (directly under folder, conditional behavior)
               if (selectedFolder == 'מחלקות ההגנה – חטיבה 474') ...[
+                // Folder 474: Dropdown from Golan settlements
                 const Text(
                   'יישוב',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -2137,7 +2263,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                       : null,
                   hint: const Text('בחר יישוב'),
                   decoration: const InputDecoration(
-                    labelText: 'יישוב',
+                    labelText: 'בחר יישוב',
                     border: OutlineInputBorder(),
                   ),
                   style: const TextStyle(color: Colors.black87, fontSize: 16),
@@ -2148,9 +2274,87 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   onChanged: (v) => setState(() => settlement = v ?? ''),
                 ),
                 const SizedBox(height: 12),
+              ] else if (selectedFolder == 'משובים – כללי' ||
+                  selectedFolder == 'עבודה במבנה') ...[
+                // Other folders: Manual text field with autocomplete
+                const Text(
+                  'יישוב',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Autocomplete<String>(
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    if (textEditingValue.text.isEmpty) {
+                      return const Iterable<String>.empty();
+                    }
+                    final normalized = _normalizeSettlement(
+                      textEditingValue.text,
+                    );
+                    return customSettlements.where((String option) {
+                      return _normalizeSettlement(option).contains(normalized);
+                    });
+                  },
+                  onSelected: (String selection) {
+                    setState(() {
+                      settlement = selection;
+                      settlementController.text = selection;
+                    });
+                  },
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onFieldSubmitted) {
+                        // Sync with our controller
+                        if (controller.text.isEmpty && settlement.isNotEmpty) {
+                          controller.text = settlement;
+                        }
+                        settlementController.text = controller.text;
+
+                        return TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: InputDecoration(
+                            labelText: 'יישוב',
+                            border: const OutlineInputBorder(),
+                            hintText: 'הקלד שם יישוב',
+                            suffixIcon: controller.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.add_circle),
+                                    tooltip: 'הוסף לרשימה',
+                                    onPressed: () async {
+                                      final text = controller.text.trim();
+                                      if (text.isNotEmpty) {
+                                        await _addCustomSettlement(text);
+                                      }
+                                    },
+                                  )
+                                : null,
+                          ),
+                          onChanged: (v) =>
+                              setState(() => settlement = v.trim()),
+                        );
+                      },
+                ),
+                if (customSettlements.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: customSettlements.take(10).map((s) {
+                      return ActionChip(
+                        label: Text(s),
+                        onPressed: () {
+                          setState(() {
+                            settlement = s;
+                            settlementController.text = s;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+                const SizedBox(height: 12),
               ],
 
-              // 2. תפקיד
+              // 3. תפקיד
               const Text(
                 'תפקיד',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -2177,7 +2381,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               ),
               const SizedBox(height: 12),
 
-              // 3. שם הנבדק
+              // 4. שם הנבדק
               TextField(
                 decoration: const InputDecoration(
                   labelText: 'שם הנבדק',
@@ -2186,32 +2390,6 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                 onChanged: (v) => evaluatedName = v,
               ),
               const SizedBox(height: 12),
-
-              // 4. יישוב (Dropdown בלבד) - ONLY if NOT 474 (474 has its own settlement field above)
-              if (selectedFolder != 'מחלקות ההגנה – חטיבה 474') ...[
-                const Text(
-                  'יישוב',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue:
-                      settlement.isNotEmpty &&
-                          golanSettlements.contains(settlement)
-                      ? settlement
-                      : null,
-                  hint: const Text('בחר יישוב'),
-                  decoration: const InputDecoration(
-                    labelText: 'יישוב',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: golanSettlements
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
-                  onChanged: (v) => setState(() => settlement = v ?? ''),
-                ),
-                const SizedBox(height: 12),
-              ],
 
               // 5. תרחיש
               TextField(
@@ -3484,10 +3662,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                             ),
                                           );
                                         }),
-                                        const DataColumn(
+                                        DataColumn(
                                           label: Text(
-                                            'סה"כ',
-                                            style: TextStyle(
+                                            'ממוצע',
+                                            style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: Colors.white,
                                             ),
@@ -3501,10 +3679,39 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                             (trainee['hits'] as Map?)
                                                 ?.cast<String, dynamic>() ??
                                             {};
-                                        final totalHits =
-                                            (trainee['totalHits'] as num?)
-                                                ?.toInt() ??
-                                            0;
+
+                                        // Calculate average of filled criteria (ignore null/empty)
+                                        final filledValues = <int>[];
+                                        for (
+                                          var i = 0;
+                                          i < stations.length;
+                                          i++
+                                        ) {
+                                          final value = hitsMap['station_$i'];
+                                          if (value != null && value is num) {
+                                            final intVal = value.toInt();
+                                            if (intVal > 0) {
+                                              filledValues.add(intVal);
+                                            }
+                                          }
+                                        }
+
+                                        // Calculate average
+                                        String avgDisplay;
+                                        if (filledValues.isEmpty) {
+                                          avgDisplay = '-';
+                                        } else {
+                                          final sum = filledValues.reduce(
+                                            (a, b) => a + b,
+                                          );
+                                          final avg = sum / filledValues.length;
+                                          // Format: integer without decimals, otherwise 1 decimal
+                                          if (avg == avg.toInt()) {
+                                            avgDisplay = avg.toInt().toString();
+                                          } else {
+                                            avgDisplay = avg.toStringAsFixed(1);
+                                          }
+                                        }
 
                                         return DataRow(
                                           cells: [
@@ -3536,7 +3743,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                             }),
                                             DataCell(
                                               Text(
-                                                totalHits.toString(),
+                                                avgDisplay,
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   color: Colors.orangeAccent,
@@ -6195,13 +6402,11 @@ class SarikotFixedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      _item('1', 'סריקות רחוב – שמירה על קשר עין'),
-      _item('2', 'בחירת ציר התקדמות נכון ובטוח'),
-      _item('3', 'זיהוי איום עיקרי ומשני בתנועה'),
-      _item('4', 'קצב אש ומרחק בהתאם למצב'),
-      _item('5', 'ירי בטוח בתוך קהל'),
-      _item('6', 'וידוא ניטרול ומעבר לחיפוש'),
-      _item('7', 'זיהוי והזדהות כוחות'),
+      _item('1', 'אבטחה היקפית'),
+      _item('2', 'שמירה על קשר בתוך הכוח הסורק'),
+      _item('3', 'שליטה בכוח'),
+      _item('4', 'יצירת גירוי והאזנה לשטח'),
+      _item('5', 'עבודה ממרכז הרחוב והחוצה'),
     ];
 
     return Directionality(

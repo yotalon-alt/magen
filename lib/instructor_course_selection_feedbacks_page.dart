@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser
 import 'feedback_export_service.dart'; // for export functionality
 import 'widgets/standard_back_button.dart';
@@ -185,51 +184,33 @@ class _InstructorCourseSelectionFeedbacksPageState
         '\n🔍 ===== MIUNIM_LIST_LOAD: INSTRUCTOR COURSE FEEDBACKS =====',
       );
 
-      // ✅ Query by ownerUid only to avoid composite index requirement
-      final uid = currentUser?.uid ?? FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null || uid.isEmpty) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-
       // Map category to isSuitable boolean
       final isSuitable = category == 'suitable';
       debugPrint(
-        '🔵 MIUNIM_LIST_READ: collection=instructor_course_evaluations ownerUid=$uid isSuitable=$isSuitable',
+        '🔵 MIUNIM_LIST_READ: collection=instructor_course_evaluations isSuitable=$isSuitable (ALL instructors)',
       );
       debugPrint(
-        '🔵 MIUNIM_LIST_READ: where("ownerUid", "==", "$uid") [NO orderBy - avoiding composite index]',
+        '🔵 MIUNIM_LIST_READ: where("status", "==", "final") + where("isSuitable", "==", $isSuitable)',
       );
 
-      // ✅ SIMPLE QUERY: Single where filter only (no orderBy to avoid composite index)
+      // ✅ SHARED QUERY: All instructors see all final submissions
+      // Requires composite index: status + isSuitable + createdAt
       final snapshot = await FirebaseFirestore.instance
           .collection('instructor_course_evaluations')
-          .where('ownerUid', isEqualTo: uid)
+          .where('status', isEqualTo: 'final')
+          .where('isSuitable', isEqualTo: isSuitable)
+          .orderBy('createdAt', descending: true)
           .get()
           .timeout(const Duration(seconds: 15));
 
       debugPrint(
-        '🔵 MIUNIM_LIST_READ_RAW: Got ${snapshot.docs.length} documents (all statuses)',
+        '🔵 MIUNIM_LIST_READ_RAW: Got ${snapshot.docs.length} documents (status=final, isSuitable=$isSuitable)',
       );
 
-      // ✅ Filter by status='final' AND isSuitable in-memory to avoid composite index
-      final filtered = snapshot.docs.where((doc) {
-        final data = doc.data();
-        return data['status'] == 'final' && data['isSuitable'] == isSuitable;
-      }).toList();
-
-      // ✅ Sort by createdAt descending in Dart (client-side)
-      filtered.sort((a, b) {
-        final aCreatedAt = a.data()['createdAt'] as Timestamp?;
-        final bCreatedAt = b.data()['createdAt'] as Timestamp?;
-        if (aCreatedAt == null && bCreatedAt == null) return 0;
-        if (aCreatedAt == null) return 1;
-        if (bCreatedAt == null) return -1;
-        return bCreatedAt.compareTo(aCreatedAt); // descending
-      });
+      final filtered = snapshot.docs;
 
       debugPrint(
-        '🔵 MIUNIM_LIST_READ_FILTERED: ${filtered.length} documents with status=final, isSuitable=$isSuitable (sorted client-side)',
+        '🔵 MIUNIM_LIST_READ_FILTERED: ${filtered.length} documents (sorted by Firestore orderBy)',
       );
 
       final feedbacks = <Map<String, dynamic>>[];

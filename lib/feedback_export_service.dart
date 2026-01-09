@@ -634,12 +634,29 @@ class FeedbackExportService {
       final sheet = excel['משובים'];
       sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
+      // Add creation metadata columns at the beginning
+      final metadataKeys = ['createdAt', 'createdByName'];
+      final metadataHeaders = ['תאריך', 'מדריך'];
+
       // Filter out internal identifiers or codes from exported columns
       final filteredPairs = <MapEntry<String, String>>[];
+
+      // Add metadata columns first
+      for (var i = 0; i < metadataKeys.length; i++) {
+        filteredPairs.add(MapEntry(metadataKeys[i], metadataHeaders[i]));
+      }
+
+      // Then add user-specified columns (excluding duplicates and internal IDs)
       for (var i = 0; i < keys.length; i++) {
         final k = keys[i];
         final h = headers[i];
         final kl = k.toLowerCase();
+
+        // Skip metadata fields if already added
+        if (metadataKeys.contains(k)) {
+          continue;
+        }
+
         // skip internal ids/codes/shortcuts
         if (kl == 'id' ||
             kl.endsWith('id') ||
@@ -727,7 +744,33 @@ class FeedbackExportService {
         currentRow += 1;
         for (var ci = 0; ci < filteredPairs.length; ci++) {
           final key = filteredPairs[ci].key;
-          final rawValue = merged[key];
+          var rawValue = merged[key];
+
+          // Special handling for creation metadata
+          if (key == 'createdAt') {
+            // Format date as dd/MM/yyyy HH:mm
+            if (rawValue is Timestamp) {
+              final dt = rawValue.toDate();
+              rawValue = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+            } else if (rawValue is String) {
+              try {
+                final dt = DateTime.parse(rawValue);
+                rawValue = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+              } catch (e) {
+                rawValue = ''; // Invalid date
+              }
+            } else {
+              rawValue = ''; // Missing date
+            }
+          } else if (key == 'createdByName') {
+            // Fallback chain: createdByName -> instructorName -> createdByUid -> instructorId
+            rawValue ??=
+                merged['instructorName'] ??
+                merged['createdByUid'] ??
+                merged['instructorId'] ??
+                '';
+          }
+
           final cell = sheet.cell(
             CellIndex.indexByColumnRow(columnIndex: ci, rowIndex: currentRow),
           );
@@ -1061,13 +1104,17 @@ class FeedbackExportService {
       // Extract metadata from feedback
       final settlement = feedbackData['settlement']?.toString() ?? '';
       final createdAt = feedbackData['createdAt'];
+      final createdByName =
+          feedbackData['createdByName']?.toString() ??
+          feedbackData['instructorName']?.toString() ??
+          '';
       final feedbackDate = createdAt is Timestamp
-          ? DateFormat('yyyy-MM-dd').format(createdAt.toDate())
+          ? DateFormat('dd/MM/yyyy HH:mm').format(createdAt.toDate())
           : createdAt is String
           ? DateFormat(
-              'yyyy-MM-dd',
+              'dd/MM/yyyy HH:mm',
             ).format(DateTime.tryParse(createdAt) ?? DateTime.now())
-          : DateFormat('yyyy-MM-dd').format(DateTime.now());
+          : DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
       // Extract stations (drills) and trainees
       final stations =
@@ -1085,9 +1132,40 @@ class FeedbackExportService {
       final sheet = excel['השוואת מטווחים'];
       sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
-      // Row 1: Headers - "יישוב", "שם", then drill names
+      // Row 0: Creation metadata
       var cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
+      );
+      cell.value = TextCellValue('תאריך');
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0),
+      );
+      cell.value = TextCellValue(feedbackDate);
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 0),
+      );
+      cell.value = TextCellValue('מדריך');
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 0),
+      );
+      cell.value = TextCellValue(createdByName);
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+      // Row 1: Headers - "יישוב", "שם", then drill names
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1),
       );
       cell.value = TextCellValue('יישוב');
       cell.cellStyle = CellStyle(
@@ -1096,7 +1174,7 @@ class FeedbackExportService {
       );
 
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0),
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 1),
       );
       cell.value = TextCellValue('שם');
       cell.cellStyle = CellStyle(
@@ -1109,7 +1187,7 @@ class FeedbackExportService {
         final station = stations[si];
         final stationName = station['name']?.toString() ?? 'מקצה ${si + 1}';
         cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: 0),
+          CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: 1),
         );
         cell.value = TextCellValue(stationName);
         cell.cellStyle = CellStyle(
@@ -1121,13 +1199,13 @@ class FeedbackExportService {
       // Row 2: "כדורים לחניך" - bullets per trainee for each drill
       // Columns A and B are empty in row 2
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1),
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2),
       );
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 1),
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2),
       );
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
@@ -1137,7 +1215,7 @@ class FeedbackExportService {
         final station = stations[si];
         final bulletsCount = (station['bulletsCount'] as num?)?.toInt() ?? 0;
         cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: 1),
+          CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: 2),
         );
         cell.value = IntCellValue(bulletsCount);
         cell.cellStyle = CellStyle(
@@ -1146,14 +1224,15 @@ class FeedbackExportService {
         );
       }
 
-      // Rows 3+: Trainee data
+      // Rows 4+: Trainee data (row 0 = metadata, row 1 = headers, row 2 = bullets, row 3+ = data)
       for (var ti = 0; ti < trainees.length; ti++) {
         final trainee = trainees[ti];
         final traineeName = trainee['name']?.toString() ?? 'חניך ${ti + 1}';
         final hitsMap = trainee['hits'] as Map<String, dynamic>? ?? {};
 
         final rowIndex =
-            ti + 2; // Row 2 is bullets per trainee, data starts at row 3
+            ti +
+            3; // Row 0 = metadata, Row 1 = headers, Row 2 = bullets, data starts at row 3
 
         // Column A: Settlement
         cell = sheet.cell(
@@ -1257,13 +1336,14 @@ class FeedbackExportService {
 
       // Build header row - exact order as specified
       final headers = <String>[
+        'תאריך',
+        'מדריך',
         'סוג משוב',
         'שם המדריך המשב',
         'שם',
         'תפקיד',
         'חטיבה',
         'יישוב',
-        'תאריך',
         ...feedbackCriteria,
         'ציון ממוצע',
         'הערות',
@@ -1287,54 +1367,61 @@ class FeedbackExportService {
       final rowIndex = 1;
       var colIndex = 0;
 
-      // Column 1: סוג משוב (exercise)
+      // Column 1: תאריך (formatted date)
       var cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
       );
-      cell.value = TextCellValue(feedback.exercise);
+      final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(feedback.createdAt);
+      cell.value = TextCellValue(dateStr);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Column 2: שם המדריך המשב
+      // Column 2: מדריך (instructor name or fallback)
       cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
       );
       cell.value = TextCellValue(feedback.instructorName);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Column 3: שם
+      // Column 3: סוג משוב (exercise)
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
+      );
+      cell.value = TextCellValue(feedback.exercise);
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+      // Column 4: שם המדריך המשב
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
+      );
+      cell.value = TextCellValue(feedback.instructorName);
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+      // Column 5: שם
       cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
       );
       cell.value = TextCellValue(feedback.name);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Column 4: תפקיד
+      // Column 6: תפקיד
       cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
       );
       cell.value = TextCellValue(feedback.role);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Column 5: חטיבה (from instructorRole or folder)
+      // Column 7: חטיבה (from instructorRole or folder)
       cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
       );
       cell.value = TextCellValue(feedback.instructorRole);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Column 6: יישוב
+      // Column 8: יישוב
       cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
       );
       cell.value = TextCellValue(feedback.settlement);
-      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
-
-      // Column 7: תאריך
-      cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
-      );
-      final dateStr = DateFormat('yyyy-MM-dd').format(feedback.createdAt);
-      cell.value = TextCellValue(dateStr);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       // Criteria columns: numeric scores only for THIS feedback's criteria
@@ -2032,19 +2119,20 @@ class FeedbackExportService {
         'בחירת ציר התקדמות',
         'איום עיקרי ואיום משני',
         'קצב אש ומרחק',
-        'ירי בטוח בתוך קהל',
+        'קו ירי נקי',
         'וידוא ניטרול',
-        'זיהוי והדחה',
+        'זיהוי והזדהות',
         'רמת ביצוע',
       ];
 
       // Headers
       final List<CellValue> headers = [
+        TextCellValue('תאריך'),
+        TextCellValue('מדריך'),
         TextCellValue('סוג משוב'),
         TextCellValue('שם המדריך המשב'),
         TextCellValue('פיקוד'),
         TextCellValue('חטיבה'),
-        TextCellValue('תאריך'),
         // 8 principle columns
         ...principleNames.map((name) => TextCellValue(name)),
         // Summary columns
@@ -2060,6 +2148,11 @@ class FeedbackExportService {
       for (final feedbackData in feedbacksData) {
         final instructorName = (feedbackData['instructorName'] ?? '')
             .toString();
+        final createdByName =
+            (feedbackData['createdByName'] ??
+                    feedbackData['instructorName'] ??
+                    '')
+                .toString();
         final command = (feedbackData['command'] ?? '').toString();
         final brigade = (feedbackData['brigade'] ?? '').toString();
         final createdAt = feedbackData['createdAt'];
@@ -2082,11 +2175,12 @@ class FeedbackExportService {
             (feedbackData['averageScore'] as num?)?.toDouble() ?? 0.0;
 
         final List<CellValue> row = [
+          TextCellValue(dateStr),
+          TextCellValue(createdByName),
           TextCellValue('משוב תרגילי הפתעה'),
           TextCellValue(instructorName),
           TextCellValue(command),
           TextCellValue(brigade),
-          TextCellValue(dateStr),
           // 8 principle scores (in order)
           ...principleNames.map((principleName) {
             final score = principleScores?[principleName];
