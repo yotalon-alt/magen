@@ -1287,6 +1287,31 @@ class FeedbackExportService {
         );
       }
 
+      // NEW: Add two new columns at the end of row 1: "סה״כ פגיעות חניך" and "ממוצע חניך"
+      final totalHitsColumnIndex = 2 + stations.length;
+      final avgColumnIndex = 3 + stations.length;
+
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(
+          columnIndex: totalHitsColumnIndex,
+          rowIndex: 1,
+        ),
+      );
+      cell.value = TextCellValue('סה״כ פגיעות חניך');
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: avgColumnIndex, rowIndex: 1),
+      );
+      cell.value = TextCellValue('ממוצע חניך');
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
       // Row 2: "כדורים לחניך" - bullets per trainee for each drill
       // Columns A and B are empty in row 2
       cell = sheet.cell(
@@ -1316,6 +1341,8 @@ class FeedbackExportService {
       }
 
       // Rows 4+: Trainee data (row 0 = metadata, row 1 = headers, row 2 = bullets, row 3+ = data)
+      int overallTotalHits = 0; // Track overall total for summary row
+
       for (var ti = 0; ti < trainees.length; ti++) {
         final trainee = trainees[ti];
         final traineeName = trainee['name']?.toString() ?? 'חניך ${ti + 1}';
@@ -1340,6 +1367,10 @@ class FeedbackExportService {
         cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
         // Columns C+: Hits for each drill (numbers only)
+        // Also compute total hits and count stages for average
+        int traineeTotalHits = 0;
+        int stagesWithHits = 0;
+
         for (var si = 0; si < stations.length; si++) {
           // Get hits for this station from trainee record
           final hits = (hitsMap['station_$si'] as num?)?.toInt();
@@ -1350,13 +1381,93 @@ class FeedbackExportService {
 
           if (hits != null && hits > 0) {
             cell.value = IntCellValue(hits);
+            traineeTotalHits += hits;
+            stagesWithHits++;
           } else {
             // Leave blank if missing data
             cell.value = TextCellValue('');
           }
           cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
         }
+
+        // NEW: Add סה״כ פגיעות חניך column
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: totalHitsColumnIndex,
+            rowIndex: rowIndex,
+          ),
+        );
+        cell.value = IntCellValue(traineeTotalHits);
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+        // NEW: Add ממוצע חניך column
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: avgColumnIndex,
+            rowIndex: rowIndex,
+          ),
+        );
+        if (stagesWithHits > 0) {
+          final traineeAverage = traineeTotalHits / stagesWithHits;
+          // Round to 2 decimal places
+          cell.value = DoubleCellValue(
+            double.parse(traineeAverage.toStringAsFixed(2)),
+          );
+        } else {
+          cell.value = TextCellValue('');
+        }
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+        // Track overall total
+        overallTotalHits += traineeTotalHits;
       }
+
+      // NEW: Add summary row at the bottom
+      final summaryRowIndex = 3 + trainees.length;
+
+      // First column: "סה״כ פגיעות (כל החניכים)"
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: summaryRowIndex),
+      );
+      cell.value = TextCellValue('סה״כ פגיעות (כל החניכים)');
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
+      // Leave columns B through stations.length empty
+      for (var colIdx = 1; colIdx < totalHitsColumnIndex; colIdx++) {
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: colIdx,
+            rowIndex: summaryRowIndex,
+          ),
+        );
+        cell.value = TextCellValue('');
+      }
+
+      // סה״כ פגיעות חניך column: overallTotalHits
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(
+          columnIndex: totalHitsColumnIndex,
+          rowIndex: summaryRowIndex,
+        ),
+      );
+      cell.value = IntCellValue(overallTotalHits);
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
+      // ממוצע חניך column: leave blank in summary
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(
+          columnIndex: avgColumnIndex,
+          rowIndex: summaryRowIndex,
+        ),
+      );
+      cell.value = TextCellValue('');
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       // Encode and export
       final fileBytes = excel.encode();
@@ -2272,63 +2383,134 @@ class FeedbackExportService {
   }
 
   /// Export Surprise Drills feedbacks to XLSX with Hebrew RTL support
-  /// Structure: סוג משוב, שם המדריך, פיקוד, חטיבה, תאריך, 8 principles, סך הכל, ממוצע
+  /// Structure: One row per trainee with metadata + dynamic drill columns + average
   static Future<void> exportSurpriseDrillsToXlsx({
     required List<Map<String, dynamic>> feedbacksData,
     String fileNamePrefix = 'surprise_drills',
   }) async {
     try {
-      debugPrint('🔵 Starting Surprise Drills export');
-      debugPrint('   Total feedbacks: ${feedbacksData.length}');
+      debugPrint('\n🔵🔵🔵 STARTING SURPRISE DRILLS EXPORT 🔵🔵🔵');
+      debugPrint('📊 Total feedbacks received: ${feedbacksData.length}');
+
+      // ========== DEBUG: Print document IDs ==========
+      for (int i = 0; i < feedbacksData.length; i++) {
+        final docId =
+            feedbacksData[i]['id'] ?? feedbacksData[i]['docId'] ?? 'unknown';
+        debugPrint('📄 Feedback $i: docId=$docId');
+      }
 
       final excel = Excel.createExcel();
       final sheet = excel['משוב תרגילי הפתעה'];
       sheet.isRTL = true; // Hebrew RTL mode
 
-      // Fixed 8 principles in order
-      final List<String> principleNames = [
-        'קשר עין',
-        'בחירת ציר התקדמות',
-        'איום עיקרי ואיום משני',
-        'קצב אש ומרחק',
-        'קו ירי נקי',
-        'וידוא ניטרול',
-        'זיהוי והזדהות',
-        'רמת ביצוע',
-      ];
+      // ========== PHASE 1: Collect all unique drill names across all feedbacks ==========
+      // This ensures we have columns for all drills even if different feedbacks have different drills
+      final Set<String> allDrillNames = {};
+      final Map<int, List<String>> feedbackDrillOrder =
+          {}; // feedbackIdx -> ordered drill names
 
-      // Headers
+      for (
+        int feedbackIdx = 0;
+        feedbackIdx < feedbacksData.length;
+        feedbackIdx++
+      ) {
+        final feedbackData = feedbacksData[feedbackIdx];
+        final List<String> drillNamesForThisFeedback = [];
+
+        // Extract stations (drills/principles) with robust type handling
+        final rawStations = feedbackData['stations'];
+        if (rawStations is List) {
+          for (
+            int stationIdx = 0;
+            stationIdx < rawStations.length;
+            stationIdx++
+          ) {
+            final s = rawStations[stationIdx];
+            if (s is Map) {
+              final drillName = (s['name'] ?? '').toString().trim();
+              if (drillName.isNotEmpty) {
+                allDrillNames.add(drillName);
+                drillNamesForThisFeedback.add(drillName);
+              }
+            }
+          }
+        }
+        feedbackDrillOrder[feedbackIdx] = drillNamesForThisFeedback;
+        debugPrint(
+          '📋 Feedback $feedbackIdx drill columns: $drillNamesForThisFeedback',
+        );
+      }
+
+      // Sort drill names for consistent column order (use the order from first feedback as base)
+      final List<String> orderedDrillNames =
+          feedbackDrillOrder[0] ?? allDrillNames.toList();
+      // Add any drills from other feedbacks that weren't in the first
+      for (final name in allDrillNames) {
+        if (!orderedDrillNames.contains(name)) {
+          orderedDrillNames.add(name);
+        }
+      }
+
+      debugPrint('📊 Total unique drill columns: ${orderedDrillNames.length}');
+      debugPrint('📊 Drill column order: $orderedDrillNames');
+
+      // ========== PHASE 2: Build headers ==========
+      // Structure: [metadata columns] + [שם] + [drill columns...] + [ממוצע]
       final List<CellValue> headers = [
-        TextCellValue('תאריך'),
+        // Metadata columns
+        TextCellValue('תיקייה'),
+        TextCellValue('תאריך ושעה'),
         TextCellValue('מדריך'),
-        TextCellValue('סוג משוב'),
-        TextCellValue('שם המדריך המשב'),
-        TextCellValue('פיקוד'),
+        TextCellValue('יישוב'),
         TextCellValue('חטיבה'),
-        // 8 principle columns
-        ...principleNames.map((name) => TextCellValue(name)),
-        // Summary columns
-        TextCellValue('סך הכל'),
+        // Trainee info
+        TextCellValue('מס׳'),
+        TextCellValue('שם'),
+        // Dynamic drill columns (in order)
+        ...orderedDrillNames.map((name) => TextCellValue(name)),
+        // Summary column
         TextCellValue('ממוצע'),
       ];
 
       sheet.appendRow(headers);
+      debugPrint('📝 Headers added: ${headers.length} columns');
 
-      debugPrint('   Headers added: ${headers.length} columns');
+      int totalRowsAdded = 0;
+      int totalTraineesProcessed = 0;
 
-      // Data rows
-      for (final feedbackData in feedbacksData) {
-        final instructorName = (feedbackData['instructorName'] ?? '')
+      // ========== PHASE 3: Add data rows - one per trainee ==========
+      for (
+        int feedbackIdx = 0;
+        feedbackIdx < feedbacksData.length;
+        feedbackIdx++
+      ) {
+        final feedbackData = feedbacksData[feedbackIdx];
+        final docId = feedbackData['id'] ?? feedbackData['docId'] ?? 'unknown';
+
+        debugPrint(
+          '\n📄 Processing feedback ${feedbackIdx + 1}/${feedbacksData.length} (docId=$docId)',
+        );
+
+        // Extract metadata
+        final folderName = (feedbackData['folder'] ?? 'תרגילי הפתעה')
             .toString();
-        final createdByName =
+        final instructorName =
             (feedbackData['createdByName'] ??
                     feedbackData['instructorName'] ??
                     '')
                 .toString();
-        final command = (feedbackData['command'] ?? '').toString();
-        final brigade = (feedbackData['brigade'] ?? '').toString();
-        final createdAt = feedbackData['createdAt'];
+        final settlement =
+            (feedbackData['settlement'] ??
+                    feedbackData['settlementName'] ??
+                    feedbackData['name'] ??
+                    '')
+                .toString();
+        final brigade =
+            (feedbackData['brigade'] ?? feedbackData['rangeFolder'] ?? '')
+                .toString();
 
+        // Parse date
+        final createdAt = feedbackData['createdAt'];
         String dateStr = '';
         if (createdAt is Timestamp) {
           dateStr = DateFormat('dd/MM/yyyy HH:mm').format(createdAt.toDate());
@@ -2336,40 +2518,155 @@ class FeedbackExportService {
           final dt = DateTime.tryParse(createdAt);
           if (dt != null) {
             dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+          } else {
+            dateStr = createdAt;
+          }
+        } else if (createdAt is DateTime) {
+          dateStr = DateFormat('dd/MM/yyyy HH:mm').format(createdAt);
+        }
+
+        debugPrint(
+          '   📍 Metadata: instructor=$instructorName, settlement=$settlement, date=$dateStr',
+        );
+
+        // Build drill name to station index mapping for THIS feedback
+        final drillNamesForThisFeedback = feedbackDrillOrder[feedbackIdx] ?? [];
+        final Map<String, int> drillNameToStationIdx = {};
+        for (int idx = 0; idx < drillNamesForThisFeedback.length; idx++) {
+          drillNameToStationIdx[drillNamesForThisFeedback[idx]] = idx;
+        }
+        debugPrint('   📊 Drill-to-index mapping: $drillNameToStationIdx');
+
+        // Extract trainees
+        List<Map<String, dynamic>> trainees = [];
+        final rawTrainees = feedbackData['trainees'];
+        if (rawTrainees is List) {
+          for (final t in rawTrainees) {
+            if (t is Map) {
+              trainees.add(Map<String, dynamic>.from(t));
+            }
           }
         }
 
-        // Extract principle scores
-        final principleScores =
-            feedbackData['principleScores'] as Map<String, dynamic>?;
-        final totalScore = (feedbackData['totalScore'] as num?)?.toInt() ?? 0;
-        final averageScore =
-            (feedbackData['averageScore'] as num?)?.toDouble() ?? 0.0;
+        debugPrint('   👥 Trainees loaded: ${trainees.length}');
 
-        final List<CellValue> row = [
-          TextCellValue(dateStr),
-          TextCellValue(createdByName),
-          TextCellValue('משוב תרגילי הפתעה'),
-          TextCellValue(instructorName),
-          TextCellValue(command),
-          TextCellValue(brigade),
-          // 8 principle scores (in order)
-          ...principleNames.map((principleName) {
-            final score = principleScores?[principleName];
-            if (score == null) {
-              return TextCellValue('');
+        // If no trainees, add one metadata-only row
+        if (trainees.isEmpty) {
+          debugPrint('   ⚠️ No trainees found - adding metadata-only row');
+          final List<CellValue> row = [
+            TextCellValue(folderName),
+            TextCellValue(dateStr),
+            TextCellValue(instructorName),
+            TextCellValue(settlement),
+            TextCellValue(brigade),
+            TextCellValue(''),
+            TextCellValue(''),
+            ...orderedDrillNames.map((_) => TextCellValue('')),
+            TextCellValue(''),
+          ];
+          sheet.appendRow(row);
+          totalRowsAdded++;
+          continue;
+        }
+
+        // One row per trainee
+        for (int traineeIdx = 0; traineeIdx < trainees.length; traineeIdx++) {
+          final trainee = trainees[traineeIdx];
+          final traineeName = (trainee['name'] ?? '').toString();
+          final traineeNumber = (trainee['number'] ?? traineeIdx + 1)
+              .toString();
+
+          // Extract hits map
+          Map<String, dynamic> hitsMap = {};
+          final rawHits = trainee['hits'];
+          if (rawHits is Map) {
+            hitsMap = Map<String, dynamic>.from(rawHits);
+          }
+
+          debugPrint(
+            '   👤 Trainee ${traineeIdx + 1}: "$traineeName", hits=$hitsMap',
+          );
+
+          // Build scores in orderedDrillNames order
+          final List<CellValue> drillScores = [];
+          final List<num> filledValues = [];
+
+          for (final drillName in orderedDrillNames) {
+            // Find station index for this drill in THIS feedback
+            final stationIdx = drillNameToStationIdx[drillName];
+
+            if (stationIdx != null) {
+              // This drill exists in this feedback - look up trainee's score
+              final value = hitsMap['station_$stationIdx'];
+              if (value != null && value is num && value > 0) {
+                final intValue = value.toInt();
+                drillScores.add(IntCellValue(intValue));
+                filledValues.add(intValue);
+              } else {
+                drillScores.add(TextCellValue(''));
+              }
+            } else {
+              // This drill wasn't in this feedback (from another feedback's drills)
+              drillScores.add(TextCellValue(''));
             }
-            return IntCellValue(score is int ? score : (score as num).toInt());
-          }),
-          // Summary
-          IntCellValue(totalScore),
-          DoubleCellValue(averageScore),
-        ];
+          }
 
-        sheet.appendRow(row);
+          // Calculate average of filled values
+          String avgDisplay = '';
+          if (filledValues.isNotEmpty) {
+            final sum = filledValues.fold<num>(0, (a, b) => a + b);
+            final avg = sum / filledValues.length;
+            if (avg == avg.toInt()) {
+              avgDisplay = avg.toInt().toString();
+            } else {
+              avgDisplay = avg.toStringAsFixed(1);
+            }
+          }
+
+          // Build row
+          final List<CellValue> row = [
+            TextCellValue(folderName),
+            TextCellValue(dateStr),
+            TextCellValue(instructorName),
+            TextCellValue(settlement),
+            TextCellValue(brigade),
+            TextCellValue(traineeNumber),
+            TextCellValue(traineeName),
+            ...drillScores,
+            TextCellValue(avgDisplay),
+          ];
+
+          // DEBUG: Print first trainee row payload
+          if (traineeIdx == 0 && feedbackIdx == 0) {
+            debugPrint('   🔍 FIRST TRAINEE ROW PAYLOAD:');
+            debugPrint(
+              '      folder=$folderName, date=$dateStr, instructor=$instructorName',
+            );
+            debugPrint('      settlement=$settlement, brigade=$brigade');
+            debugPrint(
+              '      traineeNum=$traineeNumber, traineeName=$traineeName',
+            );
+            debugPrint(
+              '      drillScores=${filledValues.map((v) => v.toString()).toList()}',
+            );
+            debugPrint('      avg=$avgDisplay');
+          }
+
+          sheet.appendRow(row);
+          totalRowsAdded++;
+          totalTraineesProcessed++;
+
+          debugPrint(
+            '      ✅ Added row: ${filledValues.length} scores, avg=$avgDisplay',
+          );
+        }
       }
 
-      debugPrint('   Data rows added: ${feedbacksData.length}');
+      debugPrint('\n📊 EXPORT SUMMARY:');
+      debugPrint('   Total feedbacks processed: ${feedbacksData.length}');
+      debugPrint('   Total trainees processed: $totalTraineesProcessed');
+      debugPrint('   Total rows added: $totalRowsAdded');
+      debugPrint('   Drill columns: $orderedDrillNames');
 
       // Save and export
       final fileBytes = excel.encode();
@@ -2378,12 +2675,10 @@ class FeedbackExportService {
       }
 
       final now = DateTime.now();
-      // Hebrew file name: "משוב תרגילי הפתעה - YYYY-MM-DD.xlsx"
       final fileName =
           'משוב תרגילי הפתעה - ${DateFormat('yyyy-MM-dd').format(now)}.xlsx';
 
       if (kIsWeb) {
-        // Web: Download via browser
         final blob = html.Blob([
           fileBytes,
         ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -2394,7 +2689,6 @@ class FeedbackExportService {
         html.Url.revokeObjectUrl(url);
         debugPrint('✅ Web export completed: $fileName');
       } else {
-        // Mobile: Save to Downloads
         Directory? directory;
         if (Platform.isAndroid) {
           directory = await getDownloadsDirectory();
@@ -2411,6 +2705,8 @@ class FeedbackExportService {
         await file.writeAsBytes(fileBytes);
         debugPrint('✅ Mobile export completed: $filePath');
       }
+
+      debugPrint('🔵🔵🔵 SURPRISE DRILLS EXPORT COMPLETE 🔵🔵🔵\n');
     } catch (e, stackTrace) {
       debugPrint('❌ Export error: $e');
       debugPrint('   Stack trace: $stackTrace');

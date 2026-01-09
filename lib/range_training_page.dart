@@ -7,6 +7,75 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser and golanSettlements
 import 'widgets/standard_back_button.dart';
 
+/// Model for Short Range stage in multi-stage list
+class ShortRangeStageModel {
+  final String? selectedStage; // Selected from dropdown
+  final String manualName; // Manual stage name if "מקצה ידני" selected
+  final bool isManual; // True if "מקצה ידני"
+  final int bulletsCount; // Bullet count for this stage
+  final int? timeLimit; // Time limit in seconds - for "בוחן רמה" only
+
+  const ShortRangeStageModel({
+    this.selectedStage,
+    this.manualName = '',
+    this.isManual = false,
+    this.bulletsCount = 0,
+    this.timeLimit,
+  });
+
+  /// Check if this stage is "בוחן רמה"
+  bool get isLevelTester => selectedStage == 'בוחן רמה';
+
+  /// Get display name - returns manual name or selected stage
+  String get displayName {
+    if (isManual && manualName.isNotEmpty) {
+      return manualName;
+    }
+    return selectedStage ?? '';
+  }
+}
+
+/// Model for Long Range stage with user-configurable bullets
+class LongRangeStageModel {
+  String name; // Stage name (predefined or custom)
+  int maxPoints; // Max points for this stage (user-entered directly)
+  int
+  achievedPoints; // Total points achieved by trainees (legacy, not used in new calculation)
+  bool isManual; // True if custom stage
+
+  // Legacy field kept for backward compatibility (not used for new totals)
+  int bulletsCount;
+
+  LongRangeStageModel({
+    required this.name,
+    this.maxPoints = 0,
+    this.achievedPoints = 0,
+    this.isManual = false,
+    this.bulletsCount = 0, // Legacy, kept for backward compatibility
+  });
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'maxPoints': maxPoints,
+    'achievedPoints': achievedPoints,
+    'isManual': isManual,
+    'bulletsCount': bulletsCount, // Legacy field
+  };
+
+  factory LongRangeStageModel.fromJson(Map<String, dynamic> json) {
+    // New schema uses maxPoints directly; fallback to bulletsCount*10 for legacy
+    final legacyBullets = (json['bulletsCount'] as num?)?.toInt() ?? 0;
+    final directMaxPoints = (json['maxPoints'] as num?)?.toInt();
+    return LongRangeStageModel(
+      name: json['name'] as String? ?? '',
+      maxPoints: directMaxPoints ?? (legacyBullets * 10),
+      achievedPoints: (json['achievedPoints'] as num?)?.toInt() ?? 0,
+      isManual: json['isManual'] as bool? ?? false,
+      bulletsCount: legacyBullets,
+    );
+  }
+}
+
 /// מסך מטווח עם טבלה דינמית
 class RangeTrainingPage extends StatefulWidget {
   final String rangeType; // 'קצרים' / 'ארוכים' / 'הפתעה'
@@ -26,7 +95,8 @@ class RangeTrainingPage extends StatefulWidget {
 
 class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // רשימת מקצים קבועה (range mode)
-  static const List<String> availableStations = [
+  // For Short Range: single-select dropdown with exact order
+  static const List<String> shortRangeStages = [
     'הרמות',
     'שלשות',
     'UP עד UP',
@@ -35,11 +105,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     'מעבר רחוקות',
     'מעבר קרובות',
     'מניפה',
-    'ירי למטרה הישגית',
-    'עמידה כריעה 50 מטר',
-    'עמידה כריעה 100 מטר',
-    'עמידה כריעה 150 מטר',
     'בוחן רמה',
+    'מקצה ידני',
+  ];
+
+  // For Long Range: predefined stage names (bullets entered by user per stage)
+  static const List<String> longRangeStageNames = [
+    'עמידה 50',
+    'כריעה 50',
+    'כריעה 100',
+    'שכיבה 100',
+    'כריעה 150',
+    'שכיבה 150',
+    'ילמ 50',
     'מקצה ידני',
   ];
 
@@ -56,11 +134,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   ];
 
   String? selectedSettlement;
+  String? rangeFolder; // "474 Ranges" or "Shooting Ranges"
+  String settlementName = ''; // unified settlement field
   String instructorName = '';
   int attendeesCount = 0;
   late TextEditingController _attendeesCountController;
 
   late String _rangeType;
+
+  // Short Range specific: multi-stage dynamic list
+  List<ShortRangeStageModel> shortRangeStagesList = [];
+
+  // Legacy single-stage variables (kept for compatibility)
+  String? selectedShortRangeStage;
+  String manualStageName = '';
+  late TextEditingController _manualStageController;
+
+  // Long Range specific: multi-stage dynamic list
+  List<LongRangeStageModel> longRangeStagesList = [];
+  String? _selectedLongRangeStageToAdd; // For stage picker dropdown
 
   // Dynamic labels based on mode
   String get _itemLabel => widget.mode == 'surprise' ? 'עיקרון' : 'מקצה';
@@ -120,9 +212,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _attendeesCountController = TextEditingController(
       text: attendeesCount.toString(),
     );
+    _manualStageController = TextEditingController();
     // מקצה ברירת מחדל אחד
     stations.add(RangeStation(name: '', bulletsCount: 0));
     _rangeType = widget.rangeType;
+
+    // Initialize Long Range with empty stages list (user adds manually)
+    if (_rangeType == 'ארוכים') {
+      longRangeStagesList = [];
+    }
+
     // track editing id and load existing temporary if provided
     _editingFeedbackId = widget.feedbackId;
     if (_editingFeedbackId != null) {
@@ -240,6 +339,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   void dispose() {
     _autoSaveTimer?.cancel();
     _attendeesCountController.dispose();
+    _manualStageController.dispose();
     // ✅ Dispose all controllers and focus nodes
     for (final controller in _textControllers.values) {
       controller.dispose();
@@ -310,9 +410,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         onTap: () {
                           setState(() {
                             selectedSettlement = s;
+                            settlementName = s;
                             _settlementDisplayText = s;
                           });
                           Navigator.pop(ctx);
+                          _scheduleAutoSave();
                         },
                       );
                     },
@@ -353,6 +455,148 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     debugPrint('   traineeRows isEmpty: ${traineeRows.isEmpty}');
 
     // ✅ Schedule autosave
+    _scheduleAutoSave();
+  }
+
+  // Short Range: Add a new stage to the list
+  void _addShortRangeStage() {
+    debugPrint('\n🔍 DEBUG: _addShortRangeStage called');
+    debugPrint(
+      '   Before add: shortRangeStagesList.length=${shortRangeStagesList.length}',
+    );
+
+    setState(() {
+      shortRangeStagesList.add(
+        const ShortRangeStageModel(
+          selectedStage: null,
+          manualName: '',
+          isManual: false,
+          bulletsCount: 0,
+        ),
+      );
+    });
+
+    debugPrint(
+      '   After add: shortRangeStagesList.length=${shortRangeStagesList.length}',
+    );
+    _scheduleAutoSave();
+  }
+
+  // Short Range: Remove a stage from the list
+  void _removeShortRangeStage(int index) {
+    if (shortRangeStagesList.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('חייב להיות לפחות מקצה אחד')),
+      );
+      return;
+    }
+
+    setState(() {
+      shortRangeStagesList.removeAt(index);
+
+      // Update stations list to match
+      if (index < stations.length) {
+        // Remove station data from all trainee rows and shift indices
+        for (var row in traineeRows) {
+          row.values.remove(index);
+          row.timeValues.remove(index); // Also remove time values for בוחן רמה
+          // Shift indices down for stations after removed one
+          final updatedValues = <int, int>{};
+          row.values.forEach((stationIdx, value) {
+            if (stationIdx > index) {
+              updatedValues[stationIdx - 1] = value;
+            } else {
+              updatedValues[stationIdx] = value;
+            }
+          });
+          row.values.clear();
+          row.values.addAll(updatedValues);
+
+          // Also shift timeValues indices
+          final updatedTimeValues = <int, int>{};
+          row.timeValues.forEach((stationIdx, value) {
+            if (stationIdx > index) {
+              updatedTimeValues[stationIdx - 1] = value;
+            } else {
+              updatedTimeValues[stationIdx] = value;
+            }
+          });
+          row.timeValues.clear();
+          row.timeValues.addAll(updatedTimeValues);
+        }
+
+        stations.removeAt(index);
+      }
+    });
+
+    debugPrint(
+      '   After remove: shortRangeStagesList.length=${shortRangeStagesList.length}',
+    );
+    _scheduleAutoSave();
+  }
+
+  // Long Range: Add a new stage to the list using the selected stage from picker
+  void _addLongRangeStage() {
+    if (_selectedLongRangeStageToAdd == null ||
+        _selectedLongRangeStageToAdd!.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר מקצה מהרשימה')));
+      return;
+    }
+
+    debugPrint('\n🔍 DEBUG: _addLongRangeStage called');
+    debugPrint('   Selected stage to add: $_selectedLongRangeStageToAdd');
+    debugPrint(
+      '   Before add: longRangeStagesList.length=${longRangeStagesList.length}',
+    );
+
+    final isManual = _selectedLongRangeStageToAdd == 'מקצה ידני';
+
+    setState(() {
+      longRangeStagesList.add(
+        LongRangeStageModel(
+          name: _selectedLongRangeStageToAdd!,
+          bulletsCount: 0,
+          isManual: isManual,
+        ),
+      );
+      // Reset picker after adding
+      _selectedLongRangeStageToAdd = null;
+    });
+
+    debugPrint(
+      '   After add: longRangeStagesList.length=${longRangeStagesList.length}',
+    );
+    _scheduleAutoSave();
+  }
+
+  // Long Range: Remove a stage from the list
+  void _removeLongRangeStage(int index) {
+    // Allow removing all stages (no minimum requirement)
+    setState(() {
+      longRangeStagesList.removeAt(index);
+
+      // Update trainee data: shift stage indices
+      for (var row in traineeRows) {
+        row.values.remove(index);
+        // Shift indices down for stages after removed one
+        final updatedValues = <int, int>{};
+        row.values.forEach((stageIdx, value) {
+          if (stageIdx > index) {
+            updatedValues[stageIdx - 1] = value;
+          } else {
+            updatedValues[stageIdx] = value;
+          }
+        });
+        row.values.clear();
+        row.values.addAll(updatedValues);
+      }
+    });
+
+    debugPrint(
+      '   After remove: longRangeStagesList.length=${longRangeStagesList.length}',
+    );
     _scheduleAutoSave();
   }
 
@@ -419,6 +663,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   int _getTotalBullets() {
+    // For Short Range, use shortRangeStagesList
+    if (_rangeType == 'קצרים' && shortRangeStagesList.isNotEmpty) {
+      int total = 0;
+      for (var stage in shortRangeStagesList) {
+        total += stage.bulletsCount;
+      }
+      return total;
+    }
+    // For Long Range, use longRangeStagesList
+    if (_rangeType == 'ארוכים' && longRangeStagesList.isNotEmpty) {
+      int total = 0;
+      for (var stage in longRangeStagesList) {
+        total += stage.bulletsCount;
+      }
+      return total;
+    }
+    // For Surprise or legacy, use stations list
     int total = 0;
     for (var station in stations) {
       total += station.bulletsCount;
@@ -458,15 +719,60 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return count > 0 ? total / count : 0.0;
   }
 
+  // ===== LONG RANGE POINTS CALCULATION (NEW) =====
+  // For Long Range, values represent POINTS ACHIEVED (not hits)
+  // Totals are: sum(points) / sum(maxPoints)
+
+  /// Get total points achieved by trainee (Long Range only)
+  int _getTraineeTotalPointsLongRange(int traineeIndex) {
+    if (traineeIndex >= traineeRows.length) return 0;
+    if (_rangeType != 'ארוכים') return 0;
+
+    int total = 0;
+    traineeRows[traineeIndex].values.forEach((stationIndex, points) {
+      if (points > 0) {
+        total += points;
+      }
+    });
+    return total;
+  }
+
+  /// Get total max points across all Long Range stages
+  int _getTotalMaxPointsLongRange() {
+    if (_rangeType != 'ארוכים') return 0;
+    if (longRangeStagesList.isEmpty) return 0;
+
+    int total = 0;
+    for (var stage in longRangeStagesList) {
+      total += stage.maxPoints;
+    }
+    return total;
+  }
+
+  /// Get average percentage for trainee (Long Range points-based)
+  double _getTraineeAveragePercentLongRange(int traineeIndex) {
+    final totalPoints = _getTraineeTotalPointsLongRange(traineeIndex);
+    final totalMaxPoints = _getTotalMaxPointsLongRange();
+    if (totalMaxPoints == 0) return 0.0;
+    return (totalPoints / totalMaxPoints) * 100;
+  }
+
   // ⚠️ פונקציות הייצוא הוסרו - הייצוא יבוצע רק מדף המשובים (Admin בלבד)
   // ייצוא לקובץ XLSX מקומי יתבוצע על משובים שכבר נשמרו בלבד
 
   Future<void> _saveToFirestore() async {
     // בדיקות תקינות
-    if (selectedSettlement == null || selectedSettlement!.isEmpty) {
+    if (rangeFolder == null || rangeFolder!.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('אנא בחר יישוב/מחלקה')));
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר תיקייה')));
+      return;
+    }
+
+    if (settlementName.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא הזן יישוב')));
       return;
     }
 
@@ -477,47 +783,98 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       return;
     }
 
-    // וידוא שכל המקצים/עקרונות מוגדרים
-    for (int i = 0; i < stations.length; i++) {
-      if (stations[i].name.trim().isEmpty) {
+    // Short Range: Validate at least one stage exists
+    if (_rangeType == 'קצרים') {
+      if (shortRangeStagesList.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('אנא הזן שם ל$_itemLabel ${i + 1}')),
+          const SnackBar(content: Text('אנא הוסף לפחות מקצה אחד')),
         );
         return;
       }
 
-      // בדיקת תקינות לפי סוג המקצה (range mode only)
-      if (widget.mode == 'range' && stations[i].isLevelTester) {
-        // בוחן רמה - חייב זמן ופגיעות
-        if (stations[i].timeSeconds == null || stations[i].timeSeconds! <= 0) {
+      // Validate all stages have names
+      for (final stage in shortRangeStagesList) {
+        if (stage.isManual && stage.manualName.trim().isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('אנא הזן זמן תקין למקצה ${i + 1} (בוחן רמה)'),
-            ),
-          );
-          return;
-        }
-        if (stations[i].hits == null || stations[i].hits! < 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('אנא הזן פגיעות תקינות למקצה ${i + 1} (בוחן רמה)'),
-            ),
-          );
-          return;
-        }
-      } else if (widget.mode == 'range') {
-        // מקצים רגילים - חייב כדורים (range mode only)
-        if (stations[i].bulletsCount <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('אנא הזן מספר כדורים ל$_itemLabel ${i + 1}'),
-            ),
+            const SnackBar(content: Text('אנא הזן שם למקצה ידני')),
           );
           return;
         }
       }
-      // Surprise mode: no bullets validation needed
     }
+
+    // Long Range: Validate multi-stage list
+    if (_rangeType == 'ארוכים') {
+      if (longRangeStagesList.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('אנא הוסף לפחות מקצה אחד')),
+        );
+        return;
+      }
+
+      for (int i = 0; i < longRangeStagesList.length; i++) {
+        final stage = longRangeStagesList[i];
+        if (stage.name.trim().isEmpty) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('אנא הזן שם למקצה ${i + 1}')));
+          return;
+        }
+        if (stage.bulletsCount <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('אנא הזן מספר כדורים תקין למקצה ${i + 1}')),
+          );
+          return;
+        }
+      }
+    }
+
+    // Surprise: וידוא שכל העקרונות מוגדרים
+    if (widget.mode == 'surprise' && _rangeType != 'קצרים') {
+      for (int i = 0; i < stations.length; i++) {
+        if (stations[i].name.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('אנא הזן שם ל$_itemLabel ${i + 1}')),
+          );
+          return;
+        }
+
+        // בדיקת תקינות לפי סוג המקצה (range mode only)
+        if (widget.mode == 'range' && stations[i].isLevelTester) {
+          // בוחן רמה - חייב זמן ופגיעות
+          if (stations[i].timeSeconds == null ||
+              stations[i].timeSeconds! <= 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('אנא הזן זמן תקין למקצה ${i + 1} (בוחן רמה)'),
+              ),
+            );
+            return;
+          }
+          if (stations[i].hits == null || stations[i].hits! < 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'אנא הזן פגיעות תקינות למקצה ${i + 1} (בוחן רמה)',
+                ),
+              ),
+            );
+            return;
+          }
+        } else if (widget.mode == 'range') {
+          // מקצים רגילים - חייב כדורים (range mode only)
+          if (stations[i].bulletsCount <= 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('אנא הזן מספר כדורים ל$_itemLabel ${i + 1}'),
+              ),
+            );
+            return;
+          }
+        }
+        // Surprise mode: no bullets validation needed
+      }
+    } // End of Long Range/Surprise validation
 
     // וידוא שכל החניכים מוגדרים
     for (int i = 0; i < traineeRows.length; i++) {
@@ -563,6 +920,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           ? 'תרגילי הפתעה'
           : (_rangeType == 'קצרים' ? 'דיווח קצר' : 'דיווח רחוק');
 
+      // ====== UNIFIED FOLDER KEYS ======
+      // Map UI selection to canonical folderKey and folderLabel
+      String folderKey;
+      String folderLabel;
+      String folderId = '';
+      final uiFolderValue = (rangeFolder ?? '').toString();
+      final lowUi = uiFolderValue.toLowerCase();
+      if (lowUi.contains('474') || lowUi.contains('מטווח')) {
+        folderKey = 'ranges_474';
+        folderLabel = 'מטווחים 474';
+      } else {
+        folderKey = 'shooting_ranges';
+        folderLabel = 'מטווחי ירי';
+      }
+
       // ✅ Build trainees data from traineeRows model
       final List<Map<String, dynamic>> traineesData = [];
       for (int i = 0; i < traineeRows.length; i++) {
@@ -577,9 +949,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           }
         });
 
+        // Build time values map from timeValues (for בוחן רמה), only include non-zero
+        final Map<String, int> timeValuesMap = {};
+        row.timeValues.forEach((stationIdx, value) {
+          if (value > 0) {
+            timeValuesMap['station_${stationIdx}_time'] = value;
+          }
+        });
+
         traineesData.add({
           'name': row.name.trim(),
           'hits': hitsMap,
+          'timeValues': timeValuesMap,
           'totalHits': _getTraineeTotalHits(i),
           'number': i + 1,
         });
@@ -589,6 +970,54 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       String resolvedInstructorName = instructorName;
       if (uid.isNotEmpty) {
         resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
+      // Prepare stations data
+      List<Map<String, dynamic>> stationsData;
+      if (_rangeType == 'קצרים') {
+        // Short Range: Create stations from dynamic list
+        stationsData = shortRangeStagesList.map((stage) {
+          final stageName = stage.isManual
+              ? stage.manualName.trim()
+              : stage.selectedStage ?? '';
+
+          return {
+            'name': stageName,
+            'bulletsCount': stage.bulletsCount,
+            'timeSeconds': null,
+            'hits': null,
+            'isManual': stage.isManual,
+            'isLevelTester': stage.selectedStage == 'בוחן רמה',
+            'selectedRubrics': ['זמן', 'פגיעות'],
+          };
+        }).toList();
+      } else if (_rangeType == 'ארוכים') {
+        // Long Range: Create stations from multi-stage list with user-entered bullets
+        stationsData = longRangeStagesList.asMap().entries.map((entry) {
+          final index = entry.key;
+          final stage = entry.value;
+
+          // Calculate achieved points from trainee data for this stage
+          int achievedPoints = 0;
+          for (final row in traineeRows) {
+            achievedPoints += row.values[index] ?? 0;
+          }
+
+          return {
+            'name': stage.name,
+            'bulletsCount': stage.bulletsCount,
+            'maxPoints': stage.maxPoints,
+            'achievedPoints': achievedPoints,
+            'isManual': stage.isManual,
+            'timeSeconds': null,
+            'hits': null,
+            'isLevelTester': false,
+            'selectedRubrics': ['זמן', 'פגיעות'],
+          };
+        }).toList();
+      } else {
+        // Surprise: Use existing stations list
+        stationsData = stations.map((s) => s.toJson()).toList();
       }
 
       final Map<String, dynamic> baseData = {
@@ -602,8 +1031,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByUid': uid,
         'rangeType': _rangeType,
         'settlement': selectedSettlement,
+        'settlementName': settlementName,
+        'rangeFolder': rangeFolder,
+        // Unified classification
+        'folderKey': folderKey,
+        'folderLabel': folderLabel,
+        'folderId': folderId,
         'attendeesCount': attendeesCount,
-        'stations': stations.map((s) => s.toJson()).toList(),
+        'stations': stationsData,
         'trainees': traineesData,
         'status': 'final',
       };
@@ -624,6 +1059,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'isTemporary': false,
           'exercise': 'תרגילי הפתעה',
           'folder': 'משוב תרגילי הפתעה',
+          'feedbackType': saveType,
+          'rangeMode': widget.mode,
           'name': selectedSettlement ?? '',
           'role': 'תרגיל הפתעה',
           'scores': {},
@@ -637,6 +1074,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('SAVE: type=surprise_exercise');
         debugPrint('SAVE: isTemporary=false');
         debugPrint('SAVE: folder=משוב תרגילי הפתעה');
+
+        // Diagnostic: log canonical folder info & payload keys
+        debugPrint('SAVE_DEBUG: uiFolderValue=$uiFolderValue');
+        debugPrint(
+          'SAVE_DEBUG: folderKey=$folderKey folderLabel=$folderLabel folderId=$folderId',
+        );
+        debugPrint(
+          'SAVE_DEBUG: feedbackType=$saveType rangeMode=${widget.mode}',
+        );
+        debugPrint('SAVE_DEBUG: payload keys=${surpriseData.keys.toList()}');
 
         if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
           docRef = FirebaseFirestore.instance
@@ -676,6 +1123,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       } else {
         // SHOOTING RANGES: Save to dedicated collection
         collectionPath = 'feedbacks';
+
+        // Determine target folder based on rangeFolder selection
+        String targetFolder;
+        if (rangeFolder == '474 Ranges') {
+          targetFolder = '474 Ranges';
+        } else {
+          targetFolder = 'מטווחי ירי'; // Shooting Ranges (existing folder)
+        }
+
         final Map<String, dynamic> rangeData = {
           ...baseData,
           // Required fields for Shooting Ranges
@@ -683,9 +1139,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'type': 'range_feedback',
           'isTemporary': false,
           'exercise': 'מטווחים',
-          'folder': 'מטווחי ירי',
+          'folder': targetFolder,
+          'folderKey': folderKey,
+          'folderLabel': folderLabel,
+          'folderId': folderId,
+          'feedbackType': saveType,
+          'rangeMode': widget.mode,
           'rangeSubFolder': subFolder,
-          'name': selectedSettlement ?? '',
+          'name': settlementName,
           'role': 'מטווח',
           'scores': {},
           'notes': {'general': subFolder},
@@ -699,6 +1160,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('SAVE: rangeType=$_rangeType');
         debugPrint('SAVE: isTemporary=false');
         debugPrint('SAVE: folder=מטווחי ירי');
+        debugPrint('SAVE_DEBUG: uiFolderValue=$uiFolderValue');
+        debugPrint(
+          'SAVE_DEBUG: folderKey=$folderKey folderLabel=$folderLabel folderId=$folderId',
+        );
+        debugPrint(
+          'SAVE_DEBUG: feedbackType=$saveType rangeMode=${widget.mode}',
+        );
+        debugPrint('SAVE_DEBUG: payload keys=${rangeData.keys.toList()}');
 
         if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
           docRef = FirebaseFirestore.instance
@@ -857,10 +1326,80 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           ? 'תרגילי הפתעה - משוב זמני'
           : 'מטווחים - משוב זמני';
 
+      // Draft: unify folderKey/label
+      String draftFolderKey;
+      String draftFolderLabel;
+      final dfLow = (rangeFolder ?? '').toLowerCase();
+      if (dfLow.contains('474') || dfLow.contains('מטווח')) {
+        draftFolderKey = 'ranges_474';
+        draftFolderLabel = 'מטווחים 474';
+      } else {
+        draftFolderKey = 'shooting_ranges';
+        draftFolderLabel = 'מטווחי ירי';
+      }
+
       // Resolve instructor's Hebrew full name from Firestore
       String resolvedInstructorName = instructorName;
       if (uid.isNotEmpty) {
         resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
+      // Prepare stations data for temporary save
+      List<Map<String, dynamic>> stationsData;
+      if (_rangeType == 'קצרים') {
+        // Short Range: Save dynamic multi-stage list
+        stationsData = shortRangeStagesList.map((stage) {
+          final stageName = stage.isManual
+              ? stage.manualName.trim()
+              : stage.selectedStage ?? '';
+
+          return {
+            'name': stageName,
+            'bulletsCount': stage.bulletsCount,
+            'timeSeconds': null,
+            'hits': null,
+            'isManual': stage.isManual,
+            'isLevelTester': stage.selectedStage == 'בוחן רמה',
+            'selectedRubrics': ['זמן', 'פגיעות'],
+          };
+        }).toList();
+
+        // Fallback to existing stations if list is empty (for backward compatibility)
+        if (stationsData.isEmpty && stations.isNotEmpty) {
+          stationsData = stations.map((s) => s.toJson()).toList();
+        }
+      } else if (_rangeType == 'ארוכים') {
+        // Long Range: Save multi-stage list with user-entered bullets
+        stationsData = longRangeStagesList.asMap().entries.map((entry) {
+          final index = entry.key;
+          final stage = entry.value;
+
+          // Calculate achieved points from trainee data for this stage
+          int achievedPoints = 0;
+          for (final row in traineeRows) {
+            achievedPoints += row.values[index] ?? 0;
+          }
+
+          return {
+            'name': stage.name,
+            'bulletsCount': stage.bulletsCount,
+            'maxPoints': stage.maxPoints,
+            'achievedPoints': achievedPoints,
+            'isManual': stage.isManual,
+            'timeSeconds': null,
+            'hits': null,
+            'isLevelTester': false,
+            'selectedRubrics': ['זמן', 'פגיעות'],
+          };
+        }).toList();
+
+        // Fallback to existing stations if list is empty
+        if (stationsData.isEmpty && stations.isNotEmpty) {
+          stationsData = stations.map((s) => s.toJson()).toList();
+        }
+      } else {
+        // Surprise: Use existing stations list
+        stationsData = stations.map((s) => s.toJson()).toList();
       }
 
       final Map<String, dynamic> payload = {
@@ -868,19 +1407,35 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'module': moduleType,
         'isTemporary': true,
         'folder': folderName,
+        'folderKey': draftFolderKey,
+        'folderLabel': draftFolderLabel,
+        'feedbackType': (_rangeType == 'קצרים'
+            ? 'range_short'
+            : (_rangeType == 'ארוכים' ? 'range_long' : moduleType)),
+        'rangeMode': widget.mode,
         'instructorId': uid,
         'instructorName': resolvedInstructorName,
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
         'settlement': selectedSettlement ?? '',
+        'settlementName': settlementName,
+        'rangeFolder': rangeFolder ?? '',
         'attendeesCount': attendeesCount,
-        'stations': stations.map((s) => s.toJson()).toList(),
+        'stations': stationsData,
         'trainees': traineesPayload,
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
+        // ✅ Short Range stage selection data (legacy compatibility)
+        'selectedShortRangeStage': selectedShortRangeStage,
+        'manualStageName': manualStageName,
+        // Long Range multi-stage now handled in stationsData
       };
 
+      debugPrint(
+        'DRAFT_SAVE: uiFolderValue=${rangeFolder ?? ''} draftFolderKey=$draftFolderKey draftFolderLabel=$draftFolderLabel',
+      );
+      debugPrint('DRAFT_SAVE: payload keys=${payload.keys.toList()}');
       debugPrint('DRAFT_SAVE: payload.attendeesCount=$attendeesCount');
       debugPrint(
         'DRAFT_SAVE: payload.trainees.length=${traineesPayload.length}',
@@ -1002,12 +1557,38 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final rawTrainees = data['trainees'] as List?;
       final rawStations = data['stations'] as List?;
       final rawSettlement = data['settlement'] as String?;
+      final rawSettlementName = data['settlementName'] as String?;
+      final rawRangeFolder = data['rangeFolder'] as String?;
       final rawAttendeesCount = data['attendeesCount'] as num?;
+      final rawSelectedShortRangeStage =
+          data['selectedShortRangeStage'] as String?;
+      final rawManualStageName = data['manualStageName'] as String?;
+      final rawSelectedLongRangeStage =
+          data['selectedLongRangeStage'] as String?;
+      final rawLongRangeManualStageName =
+          data['longRangeManualStageName'] as String?;
+      final rawLongRangeManualBulletsCount =
+          data['longRangeManualBulletsCount'] as num?;
 
       debugPrint('DRAFT_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
       debugPrint('DRAFT_LOAD: rawStations.length=${rawStations?.length ?? -1}');
       debugPrint('DRAFT_LOAD: settlement=$rawSettlement');
+      debugPrint('DRAFT_LOAD: settlementName=$rawSettlementName');
+      debugPrint('DRAFT_LOAD: rangeFolder=$rawRangeFolder');
       debugPrint('DRAFT_LOAD: attendeesCount=$rawAttendeesCount');
+      debugPrint(
+        'DRAFT_LOAD: selectedShortRangeStage=$rawSelectedShortRangeStage',
+      );
+      debugPrint('DRAFT_LOAD: manualStageName=$rawManualStageName');
+      debugPrint(
+        'DRAFT_LOAD: selectedLongRangeStage=$rawSelectedLongRangeStage',
+      );
+      debugPrint(
+        'DRAFT_LOAD: longRangeManualStageName=$rawLongRangeManualStageName',
+      );
+      debugPrint(
+        'DRAFT_LOAD: longRangeManualBulletsCount=$rawLongRangeManualBulletsCount',
+      );
 
       if (rawTrainees != null && rawTrainees.isNotEmpty) {
         debugPrint('DRAFT_LOAD: firstTraineeRaw=${rawTrainees[0]}');
@@ -1053,14 +1634,145 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         }
       }
 
+      // ✅ Restore Short Range stage selection from draft
+      String? restoredShortRangeStage = rawSelectedShortRangeStage;
+      String restoredManualStageName = rawManualStageName ?? '';
+
+      // ✅ BACKWARD COMPATIBILITY: If no stage data saved, try to restore from first station
+      if (_rangeType == 'קצרים' && restoredShortRangeStage == null) {
+        if (loadedStations.isNotEmpty) {
+          final firstStation = loadedStations.first;
+          // Check if it's a manual stage
+          if (firstStation.isManual) {
+            restoredShortRangeStage = 'מקצה ידני';
+            restoredManualStageName = firstStation.name;
+          } else {
+            // Find matching stage name from predefined list
+            final matchingStage = shortRangeStages.firstWhere(
+              (stage) => stage == firstStation.name,
+              orElse: () => '',
+            );
+            if (matchingStage.isNotEmpty) {
+              restoredShortRangeStage = matchingStage;
+            }
+          }
+          debugPrint(
+            'DRAFT_LOAD: Restored Short Range stage from station: $restoredShortRangeStage',
+          );
+        }
+      }
+
       // ✅ UPDATE STATE: Replace all data with loaded data
       setState(() {
         // Update metadata
         selectedSettlement = rawSettlement ?? selectedSettlement;
-        _settlementDisplayText = selectedSettlement ?? '';
+        settlementName = rawSettlementName ?? settlementName;
+        rangeFolder = rawRangeFolder ?? rangeFolder;
+        _settlementDisplayText = settlementName.isNotEmpty
+            ? settlementName
+            : (selectedSettlement ?? '');
         attendeesCount = rawAttendeesCount?.toInt() ?? attendeesCount;
         _attendeesCountController.text = attendeesCount.toString();
         instructorName = data['instructorName'] as String? ?? instructorName;
+
+        // ✅ Restore Short Range multi-stage list
+        if (_rangeType == 'קצרים') {
+          shortRangeStagesList.clear();
+          for (final station in loadedStations) {
+            final isManual = station.isManual;
+            final bullets = station.bulletsCount;
+            if (isManual) {
+              shortRangeStagesList.add(
+                ShortRangeStageModel(
+                  selectedStage: 'מקצה ידני',
+                  manualName: station.name,
+                  isManual: true,
+                  bulletsCount: bullets,
+                ),
+              );
+            } else {
+              // Try to match with predefined stages
+              final matchingStage = shortRangeStages.firstWhere(
+                (s) => s == station.name,
+                orElse: () => 'מקצה ידני',
+              );
+              if (matchingStage == 'מקצה ידני') {
+                // Treat as manual if no match
+                shortRangeStagesList.add(
+                  ShortRangeStageModel(
+                    selectedStage: 'מקצה ידני',
+                    manualName: station.name,
+                    isManual: true,
+                    bulletsCount: bullets,
+                  ),
+                );
+              } else {
+                shortRangeStagesList.add(
+                  ShortRangeStageModel(
+                    selectedStage: matchingStage,
+                    manualName: '',
+                    isManual: false,
+                    bulletsCount: bullets,
+                  ),
+                );
+              }
+            }
+          }
+          debugPrint(
+            'DRAFT_LOAD: Restored ${shortRangeStagesList.length} Short Range stages',
+          );
+        }
+
+        // ✅ Legacy compatibility: Also restore single-stage variables
+        selectedShortRangeStage = restoredShortRangeStage;
+        manualStageName = restoredManualStageName;
+        _manualStageController.text = manualStageName;
+
+        // ✅ Restore Long Range multi-stage list
+        if (_rangeType == 'ארוכים') {
+          longRangeStagesList.clear();
+
+          // Try to restore from stations data
+          if (loadedStations.isNotEmpty) {
+            for (final station in loadedStations) {
+              final isManual = station.isManual;
+              final stageName = station.name;
+
+              // Extract bulletsCount - check for maxPoints to calculate backwards
+              int bulletsCount = station.bulletsCount;
+
+              longRangeStagesList.add(
+                LongRangeStageModel(
+                  name: stageName,
+                  bulletsCount: bulletsCount,
+                  achievedPoints:
+                      station.hits ?? 0, // achieved stored in hits field
+                  isManual: isManual,
+                ),
+              );
+            }
+            debugPrint(
+              'DRAFT_LOAD: Restored ${longRangeStagesList.length} Long Range stages from stations',
+            );
+          } else {
+            // No stations data - initialize with default stages
+            for (final stageName in longRangeStageNames) {
+              longRangeStagesList.add(
+                LongRangeStageModel(
+                  name: stageName,
+                  bulletsCount: stageName == 'מקצה ידני'
+                      ? 0
+                      : 8, // default bullets
+                  achievedPoints: 0,
+                  isManual: stageName == 'מקצה ידני',
+                ),
+              );
+            }
+            debugPrint(
+              'DRAFT_LOAD: Initialized ${longRangeStagesList.length} default Long Range stages',
+            );
+          }
+        }
 
         // ✅ Replace traineeRows with loaded data (NO default empty rows)
         traineeRows = loadedRows;
@@ -1072,6 +1784,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('DRAFT_LOAD:   attendeesCount=$attendeesCount');
         debugPrint('DRAFT_LOAD:   traineeRows.length=${traineeRows.length}');
         debugPrint('DRAFT_LOAD:   stations.length=${stations.length}');
+        debugPrint(
+          'DRAFT_LOAD:   selectedShortRangeStage=$selectedShortRangeStage',
+        );
+        debugPrint('DRAFT_LOAD:   manualStageName=$manualStageName');
       });
 
       // ✅ FORCE REBUILD: Ensure UI updates with loaded data
@@ -1126,18 +1842,73 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ),
               const SizedBox(height: 24),
 
-              // יישוב/מחלקה
-              TextField(
-                controller: TextEditingController(text: _settlementDisplayText),
-                decoration: InputDecoration(
-                  labelText: 'יישוב / מחלקה',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: const Icon(Icons.arrow_drop_down),
+              // Select Folder (474 Ranges or Shooting Ranges)
+              DropdownButtonFormField<String>(
+                initialValue: rangeFolder,
+                decoration: const InputDecoration(
+                  labelText: 'בחר תיקייה',
+                  border: OutlineInputBorder(),
                 ),
-                readOnly: true,
-                onTap: _openSettlementSelectorSheet,
+                items: const [
+                  DropdownMenuItem(
+                    value: '474 Ranges',
+                    child: Text('מטווחים 474'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Shooting Ranges',
+                    child: Text('מטווחי ירי'),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    rangeFolder = value;
+                    // Clear settlement when folder changes
+                    settlementName = '';
+                    selectedSettlement = null;
+                    _settlementDisplayText = '';
+                  });
+                  _scheduleAutoSave();
+                },
               ),
               const SizedBox(height: 16),
+
+              // Conditional Settlement Field
+              if (rangeFolder == '474 Ranges') ...[
+                // Dropdown for 474 Ranges (Golan settlements)
+                TextField(
+                  controller: TextEditingController(
+                    text: _settlementDisplayText,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'יישוב',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.arrow_drop_down),
+                  ),
+                  readOnly: true,
+                  onTap: _openSettlementSelectorSheet,
+                ),
+                const SizedBox(height: 16),
+              ] else if (rangeFolder == 'Shooting Ranges') ...[
+                // Free text for Shooting Ranges
+                TextField(
+                  controller: TextEditingController(text: settlementName)
+                    ..selection = TextSelection.collapsed(
+                      offset: settlementName.length,
+                    ),
+                  decoration: const InputDecoration(
+                    labelText: 'יישוב',
+                    border: OutlineInputBorder(),
+                    hintText: 'הזן שם יישוב',
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      settlementName = value;
+                    });
+                    _scheduleAutoSave();
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // מדריך
               TextField(
@@ -1169,192 +1940,523 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ),
               const SizedBox(height: 32),
 
-              // כותרת מקצים/עקרונות
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _itemsLabel,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+              // Short Range: Multi-stage dynamic list with add/remove
+              if (_rangeType == 'קצרים') ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'מקצים',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _addStation,
-                    icon: const Icon(Icons.add),
-                    label: Text(_addItemLabel),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                    ElevatedButton.icon(
+                      onPressed: _addShortRangeStage,
+                      icon: const Icon(Icons.add),
+                      label: const Text('הוסף מקצה'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                  ],
+                ),
+                const SizedBox(height: 16),
 
-              // רשימת מקצים
-              ...stations.asMap().entries.map((entry) {
-                final index = entry.key;
-                final station = entry.value;
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              '$_itemLabel ${index + 1}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeStation(index),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // שדה שם המקצה - דרופדאון או טקסט לפי סוג
-                        if (station.isManual) ...[
-                          TextField(
-                            decoration: const InputDecoration(
-                              labelText: 'שם המקצה (ידני)',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            onChanged: (v) {
-                              setState(() {
-                                station.name = v;
-                              });
-                            },
-                          ),
-                        ] else ...[
-                          DropdownButtonFormField<String>(
-                            initialValue: station.name.isEmpty
-                                ? null
-                                : station.name,
-                            hint: Text(
-                              widget.mode == 'surprise'
-                                  ? 'בחר עיקרון'
-                                  : 'בחר מקצה',
-                            ),
-                            decoration: InputDecoration(
-                              labelText: widget.mode == 'surprise'
-                                  ? 'שם העיקרון'
-                                  : 'שם המקצה',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            items:
-                                (widget.mode == 'surprise'
-                                        ? availablePrinciples
-                                        : availableStations)
-                                    .map(
-                                      (s) => DropdownMenuItem(
-                                        value: s,
-                                        child: Text(s),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) {
-                              setState(() {
-                                station.name = v ?? '';
-                                // עדכון סוג המקצה לפי השם (range mode only)
-                                if (widget.mode == 'range') {
-                                  if (v == 'בוחן רמה') {
-                                    station.isLevelTester = true;
-                                    station.isManual = false;
-                                  } else if (v == 'מקצה ידני') {
-                                    station.isManual = true;
-                                    station.isLevelTester = false;
-                                  } else {
-                                    station.isLevelTester = false;
-                                    station.isManual = false;
-                                  }
-                                }
-                              });
-                              // NO AUTOSAVE - user must manually save
-                            },
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        // שדות לפי סוג המקצה
-                        if (station.isLevelTester) ...[
-                          // בוחן רמה - זמן ושניות
+                // Display each stage with delete button
+                ...shortRangeStagesList.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final stage = entry.value;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header with stage number and delete button
                           Row(
                             children: [
                               Expanded(
-                                child: TextField(
-                                  decoration: const InputDecoration(
-                                    labelText: 'זמן (שניות)',
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מקצה ${index + 1}: ${stage.displayName}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    if (stage.bulletsCount > 0)
+                                      Text(
+                                        '${stage.bulletsCount} כדורים',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                   ],
-                                  onChanged: (v) {
-                                    setState(() {
-                                      station.timeSeconds =
-                                          int.tryParse(v) ?? 0;
-                                    });
-                                  },
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  decoration: const InputDecoration(
-                                    labelText: 'פגיעות',
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                  onChanged: (v) {
-                                    setState(() {
-                                      station.hits = int.tryParse(v) ?? 0;
-                                    });
-                                  },
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
                                 ),
+                                onPressed: () => _removeShortRangeStage(index),
+                                tooltip: 'מחק מקצה',
                               ),
                             ],
                           ),
-                        ] else if (widget.mode == 'range') ...[
-                          // מקצים רגילים - כדורים (range mode only)
-                          TextField(
+                          const SizedBox(height: 12),
+
+                          // Stage dropdown
+                          DropdownButtonFormField<String>(
+                            initialValue: stage.selectedStage,
                             decoration: const InputDecoration(
-                              labelText: 'מספר כדורים',
+                              labelText: 'בחר מקצה',
                               border: OutlineInputBorder(),
-                              isDense: true,
+                            ),
+                            items: shortRangeStages.map((stageName) {
+                              return DropdownMenuItem(
+                                value: stageName,
+                                child: Text(stageName),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                shortRangeStagesList[index] =
+                                    ShortRangeStageModel(
+                                      selectedStage: value,
+                                      manualName: value == 'מקצה ידני'
+                                          ? stage.manualName
+                                          : '',
+                                      isManual: value == 'מקצה ידני',
+                                      bulletsCount: stage.bulletsCount,
+                                      timeLimit:
+                                          stage.timeLimit, // Preserve timeLimit
+                                    );
+                              });
+                              _scheduleAutoSave();
+                            },
+                          ),
+
+                          // Manual stage name input (shown only when "מקצה ידני" selected)
+                          if (stage.isManual) ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller:
+                                  TextEditingController(text: stage.manualName)
+                                    ..selection = TextSelection.collapsed(
+                                      offset: stage.manualName.length,
+                                    ),
+                              decoration: const InputDecoration(
+                                labelText: 'שם מקצה ידני',
+                                border: OutlineInputBorder(),
+                                hintText: 'הזן שם מקצה',
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  shortRangeStagesList[index] =
+                                      ShortRangeStageModel(
+                                        selectedStage: stage.selectedStage,
+                                        manualName: value,
+                                        isManual: true,
+                                        bulletsCount: stage.bulletsCount,
+                                        timeLimit: stage
+                                            .timeLimit, // Preserve timeLimit
+                                      );
+                                });
+                                _scheduleAutoSave();
+                              },
+                            ),
+                          ],
+
+                          // Bullets count input
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller:
+                                TextEditingController(
+                                    text: stage.bulletsCount > 0
+                                        ? stage.bulletsCount.toString()
+                                        : '',
+                                  )
+                                  ..selection = TextSelection.collapsed(
+                                    offset:
+                                        (stage.bulletsCount > 0
+                                                ? stage.bulletsCount.toString()
+                                                : '')
+                                            .length,
+                                  ),
+                            decoration: const InputDecoration(
+                              labelText: 'מס׳ כדורים',
+                              border: OutlineInputBorder(),
+                              hintText: 'הזן מספר כדורים',
                             ),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                             ],
-                            onChanged: (v) {
+                            onChanged: (value) {
                               setState(() {
-                                station.bulletsCount = int.tryParse(v) ?? 0;
+                                shortRangeStagesList[index] =
+                                    ShortRangeStageModel(
+                                      selectedStage: stage.selectedStage,
+                                      manualName: stage.manualName,
+                                      isManual: stage.isManual,
+                                      bulletsCount: int.tryParse(value) ?? 0,
+                                      timeLimit:
+                                          stage.timeLimit, // Preserve timeLimit
+                                    );
                               });
+                              _scheduleAutoSave();
                             },
                           ),
                         ],
-                        // Surprise mode: no bullets field needed
-                      ],
+                      ),
+                    ),
+                  );
+                }),
+
+                const SizedBox(height: 16),
+              ],
+
+              // Long Range: Multi-stage with manual bullets input
+              if (_rangeType == 'ארוכים' && widget.mode == 'range') ...[
+                // Header
+                const Text(
+                  'מקצים',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+
+                // Stage picker dropdown + Add button
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _selectedLongRangeStageToAdd,
+                        decoration: const InputDecoration(
+                          labelText: 'בחר מקצה',
+                          border: OutlineInputBorder(),
+                        ),
+                        hint: const Text('בחר מקצה להוספה'),
+                        items: longRangeStageNames.map((stageName) {
+                          return DropdownMenuItem(
+                            value: stageName,
+                            child: Text(stageName),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedLongRangeStageToAdd = value;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _addLongRangeStage,
+                      icon: const Icon(Icons.add),
+                      label: const Text('הוסף מקצה'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Show message when no stages added yet
+                if (longRangeStagesList.isEmpty)
+                  Card(
+                    color: Colors.orange.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.orange.shade700,
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'לא נוספו מקצים עדיין. בחר מקצה מהרשימה ולחץ "הוסף מקצה".',
+                              style: TextStyle(color: Colors.black87),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                );
-              }),
+
+                // Stage cards list
+                ...longRangeStagesList.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final stage = entry.value;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header row with stage name and delete button
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מקצה ${index + 1}: ${stage.name}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    if (stage.maxPoints > 0)
+                                      Text(
+                                        '${stage.maxPoints} נק׳',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _removeLongRangeStage(index),
+                                tooltip: 'מחק מקצה',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Stage name dropdown
+                          DropdownButtonFormField<String>(
+                            initialValue:
+                                longRangeStageNames.contains(stage.name)
+                                ? stage.name
+                                : (stage.isManual ? 'מקצה ידני' : null),
+                            decoration: const InputDecoration(
+                              labelText: 'בחר מקצה',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: longRangeStageNames.map((stageName) {
+                              return DropdownMenuItem(
+                                value: stageName,
+                                child: Text(stageName),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                final isManual = value == 'מקצה ידני';
+                                stage.name = isManual
+                                    ? stage.name
+                                    : (value ?? '');
+                                stage.isManual = isManual;
+                                // Keep maxPoints when changing stage type
+                              });
+                              _scheduleAutoSave();
+                            },
+                          ),
+
+                          // Manual stage name input (shown only when "מקצה ידני" selected)
+                          if (stage.isManual) ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller:
+                                  TextEditingController(
+                                      text: stage.name == 'מקצה ידני'
+                                          ? ''
+                                          : stage.name,
+                                    )
+                                    ..selection = TextSelection.collapsed(
+                                      offset:
+                                          (stage.name == 'מקצה ידני'
+                                                  ? ''
+                                                  : stage.name)
+                                              .length,
+                                    ),
+                              decoration: const InputDecoration(
+                                labelText: 'שם מקצה ידני',
+                                border: OutlineInputBorder(),
+                                hintText: 'הזן שם מקצה',
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  stage.name = value.isNotEmpty
+                                      ? value
+                                      : 'מקצה ידני';
+                                });
+                                _scheduleAutoSave();
+                              },
+                            ),
+                          ],
+
+                          // Max points input (Long Range uses points, not bullets)
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller:
+                                TextEditingController(
+                                    text: stage.maxPoints > 0
+                                        ? stage.maxPoints.toString()
+                                        : '',
+                                  )
+                                  ..selection = TextSelection.collapsed(
+                                    offset:
+                                        (stage.maxPoints > 0
+                                                ? stage.maxPoints.toString()
+                                                : '')
+                                            .length,
+                                  ),
+                            decoration: const InputDecoration(
+                              labelText: 'נקודות מקסימום',
+                              border: OutlineInputBorder(),
+                              hintText: 'הזן מספר נקודות',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                stage.maxPoints = int.tryParse(value) ?? 0;
+                              });
+                              _scheduleAutoSave();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+
+                const SizedBox(height: 16),
+              ],
+
+              // Surprise: Multi-principle approach (existing)
+              if (widget.mode == 'surprise') ...[
+                // כותרת עקרונות
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _itemsLabel,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _addStation,
+                      icon: const Icon(Icons.add),
+                      label: Text(_addItemLabel),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // רשימת עקרונות
+                ...stations.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final station = entry.value;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '$_itemLabel ${index + 1}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _removeStation(index),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // שדה שם המקצה - דרופדאון או טקסט לפי סוג
+                          if (station.isManual) ...[
+                            TextField(
+                              decoration: const InputDecoration(
+                                labelText: 'שם המקצה (ידני)',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              onChanged: (v) {
+                                setState(() {
+                                  station.name = v;
+                                });
+                              },
+                            ),
+                          ] else ...[
+                            DropdownButtonFormField<String>(
+                              initialValue: station.name.isEmpty
+                                  ? null
+                                  : station.name,
+                              hint: const Text('בחר עיקרון'),
+                              decoration: const InputDecoration(
+                                labelText: 'שם העיקרון',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              items: availablePrinciples
+                                  .map(
+                                    (s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) {
+                                setState(() {
+                                  station.name = v ?? '';
+                                });
+                                // NO AUTOSAVE - user must manually save
+                              },
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          // Surprise mode: no bullets field needed
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ], // End of Surprise multi-principle section
 
               const SizedBox(height: 32),
 
@@ -1428,14 +2530,58 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     );
   }
 
+  /// Build stations list from Short Range stages for table display
+  List<RangeStation> _getDisplayStations() {
+    if (_rangeType == 'קצרים' && shortRangeStagesList.isNotEmpty) {
+      // Build from Short Range stages list
+      return shortRangeStagesList.map((stage) {
+        final stageName = stage.isManual
+            ? stage.manualName.trim()
+            : stage.selectedStage ?? '';
+
+        return RangeStation(
+          name: stageName,
+          bulletsCount:
+              stage.bulletsCount, // Use actual bullets count from stage
+          timeSeconds: null,
+          hits: null,
+          isManual: stage.isManual,
+          isLevelTester: stage.selectedStage == 'בוחן רמה',
+          selectedRubrics: ['זמן', 'פגיעות'],
+        );
+      }).toList();
+    }
+
+    if (_rangeType == 'ארוכים' && longRangeStagesList.isNotEmpty) {
+      // Build from Long Range stages list
+      return longRangeStagesList.map((stage) {
+        return RangeStation(
+          name: stage.name,
+          bulletsCount: stage.bulletsCount,
+          timeSeconds: null,
+          hits: stage.achievedPoints,
+          isManual: stage.isManual,
+          isLevelTester: false,
+          selectedRubrics: ['זמן', 'פגיעות'],
+        );
+      }).toList();
+    }
+
+    // For Surprise mode, use existing stations list
+    return stations;
+  }
+
   Widget _buildTraineesTable() {
+    // Get stations for display (builds from shortRangeStagesList for Short Range)
+    final displayStations = _getDisplayStations();
+
     final screenWidth = MediaQuery.sizeOf(context).width;
     debugPrint('\n🔍 DEBUG: _buildTraineesTable called');
     debugPrint('   screenWidth=$screenWidth');
     debugPrint('   traineeRows.length=${traineeRows.length}');
     debugPrint('   traineeRows.isEmpty=${traineeRows.isEmpty}');
     debugPrint('   attendeesCount=$attendeesCount');
-    debugPrint('   stations.length=${stations.length}');
+    debugPrint('   displayStations.length=${displayStations.length}');
 
     if (traineeRows.isEmpty) {
       return Center(
@@ -1490,7 +2636,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           // ✅ FINAL PRODUCTION-SAFE SYNCHRONIZED SCROLLING
           // Calculate total width for stations + summary columns
           final double totalStationsWidth =
-              (stations.length * stationColumnWidth) +
+              (displayStations.length * stationColumnWidth) +
               (widget.mode == 'surprise' ? 170 : 160);
 
           return SizedBox(
@@ -1543,7 +2689,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             width: totalStationsWidth,
                             child: Row(
                               children: [
-                                ...stations.asMap().entries.map((entry) {
+                                ...displayStations.asMap().entries.map((entry) {
                                   final stationIndex = entry.key;
                                   final station = entry.value;
                                   return Container(
@@ -1551,7 +2697,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     height: 56,
                                     padding: const EdgeInsets.all(4.0),
                                     decoration: BoxDecoration(
-                                      color: Colors.blueGrey.shade50,
+                                      color: station.isLevelTester
+                                          ? Colors
+                                                .orange
+                                                .shade50 // Highlight בוחן רמה header
+                                          : Colors.blueGrey.shade50,
                                       border: Border(
                                         left: BorderSide(
                                           color: Colors.grey.shade300,
@@ -1569,24 +2719,56 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           station.name.isEmpty
                                               ? '$_itemLabel ${stationIndex + 1}'
                                               : station.name,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 11,
+                                            color: station.isLevelTester
+                                                ? Colors.orange.shade800
+                                                : Colors.black87,
                                           ),
                                           textAlign: TextAlign.center,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           softWrap: false,
                                         ),
-                                        if (widget.mode == 'range')
+                                        // בוחן רמה: Show "פגיעות/זמן" label
+                                        if (widget.mode == 'range' &&
+                                            station.isLevelTester) ...[
                                           Text(
-                                            '(${station.bulletsCount})',
+                                            'פגיעות / זמן',
                                             style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.grey.shade600,
+                                              fontSize: 9,
+                                              color: Colors.orange.shade700,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                             textAlign: TextAlign.center,
                                           ),
+                                        ] else if (widget.mode == 'range' &&
+                                            _rangeType == 'ארוכים' &&
+                                            station.bulletsCount > 0) ...[
+                                          Text(
+                                            '${station.bulletsCount * 10}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ] else if (widget.mode == 'range' &&
+                                            _rangeType == 'קצרים' &&
+                                            station.bulletsCount > 0) ...[
+                                          // Short Range: Show just the number
+                                          Text(
+                                            '${station.bulletsCount}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   );
@@ -1646,7 +2828,63 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       ),
                                     ),
                                   ),
+                                ] else if (_rangeType == 'ארוכים') ...[
+                                  // Long Range: Use "נקודות" labels
+                                  Container(
+                                    width: 90,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'סהכ נקודות',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 70,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'ממוצע',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.green,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
+                                      ),
+                                    ),
+                                  ),
                                 ] else ...[
+                                  // Short Range: Use "פגיעות" labels
                                   Container(
                                     width: 90,
                                     height: 56,
@@ -1804,8 +3042,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       ),
                                       child: Row(
                                         children: [
-                                          // Station input fields
-                                          ...stations.asMap().entries.map((
+                                          // Station input fields - use displayStations for consistency
+                                          ...displayStations.asMap().entries.map((
                                             entry,
                                           ) {
                                             final stationIndex = entry.key;
@@ -1817,6 +3055,229 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 'trainee_${traineeIdx}_station_$stationIndex';
                                             final focusKey =
                                                 'trainee_${traineeIdx}_station_$stationIndex';
+
+                                            // בוחן רמה: Compact dual input (hits + time) in SAME cell
+                                            if (station.isLevelTester &&
+                                                widget.mode == 'range') {
+                                              final timeValue = row
+                                                  .getTimeValue(stationIndex);
+                                              final timeControllerKey =
+                                                  'trainee_${traineeIdx}_station_${stationIndex}_time';
+                                              final timeFocusKey =
+                                                  'trainee_${traineeIdx}_station_${stationIndex}_time';
+
+                                              // Compact vertical stack: hits on top, time below
+                                              return SizedBox(
+                                                width: stationColumnWidth,
+                                                height: rowHeight,
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 2.0,
+                                                        vertical: 1.0,
+                                                      ),
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      // Hits input (פגיעות) - top
+                                                      SizedBox(
+                                                        height:
+                                                            (rowHeight / 2) - 2,
+                                                        child: TextField(
+                                                          controller: _getController(
+                                                            controllerKey,
+                                                            currentValue == 0
+                                                                ? ''
+                                                                : currentValue
+                                                                      .toString(),
+                                                          ),
+                                                          focusNode:
+                                                              _getFocusNode(
+                                                                focusKey,
+                                                              ),
+                                                          decoration: const InputDecoration(
+                                                            isDense: true,
+                                                            border:
+                                                                OutlineInputBorder(),
+                                                            hintText: 'פג׳',
+                                                            hintStyle:
+                                                                TextStyle(
+                                                                  fontSize: 8,
+                                                                ),
+                                                            contentPadding:
+                                                                EdgeInsets.symmetric(
+                                                                  horizontal: 4,
+                                                                  vertical: 2,
+                                                                ),
+                                                          ),
+                                                          keyboardType:
+                                                              TextInputType
+                                                                  .number,
+                                                          inputFormatters: [
+                                                            FilteringTextInputFormatter
+                                                                .digitsOnly,
+                                                          ],
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 10,
+                                                              ),
+                                                          maxLines: 1,
+                                                          onChanged: (v) {
+                                                            final hits =
+                                                                int.tryParse(
+                                                                  v,
+                                                                ) ??
+                                                                0;
+                                                            // Long Range validation against stage maxPoints
+                                                            if (_rangeType ==
+                                                                    'ארוכים' &&
+                                                                stationIndex <
+                                                                    longRangeStagesList
+                                                                        .length) {
+                                                              final stage =
+                                                                  longRangeStagesList[stationIndex];
+                                                              if (hits >
+                                                                  stage
+                                                                      .maxPoints) {
+                                                                ScaffoldMessenger.of(
+                                                                  context,
+                                                                ).showSnackBar(
+                                                                  SnackBar(
+                                                                    content: Text(
+                                                                      'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
+                                                                    ),
+                                                                    duration:
+                                                                        const Duration(
+                                                                          seconds:
+                                                                              1,
+                                                                        ),
+                                                                  ),
+                                                                );
+                                                                return;
+                                                              }
+                                                            } else if (hits >
+                                                                station
+                                                                    .bulletsCount) {
+                                                              // Short Range validation against station bulletsCount
+                                                              ScaffoldMessenger.of(
+                                                                context,
+                                                              ).showSnackBar(
+                                                                SnackBar(
+                                                                  content: Text(
+                                                                    'פגיעות לא יכולות לעלות על ${station.bulletsCount}',
+                                                                  ),
+                                                                  duration:
+                                                                      const Duration(
+                                                                        seconds:
+                                                                            1,
+                                                                      ),
+                                                                ),
+                                                              );
+                                                              return;
+                                                            }
+                                                            row.setValue(
+                                                              stationIndex,
+                                                              hits,
+                                                            );
+                                                            _scheduleAutoSave();
+                                                          },
+                                                          onSubmitted: (v) {
+                                                            final hits =
+                                                                int.tryParse(
+                                                                  v,
+                                                                ) ??
+                                                                0;
+                                                            row.setValue(
+                                                              stationIndex,
+                                                              hits,
+                                                            );
+                                                            _saveImmediately();
+                                                          },
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      // Time input (זמן) - bottom
+                                                      SizedBox(
+                                                        height:
+                                                            (rowHeight / 2) - 2,
+                                                        child: TextField(
+                                                          controller: _getController(
+                                                            timeControllerKey,
+                                                            timeValue == 0
+                                                                ? ''
+                                                                : timeValue
+                                                                      .toString(),
+                                                          ),
+                                                          focusNode:
+                                                              _getFocusNode(
+                                                                timeFocusKey,
+                                                              ),
+                                                          decoration: const InputDecoration(
+                                                            isDense: true,
+                                                            border:
+                                                                OutlineInputBorder(),
+                                                            hintText: 'זמן',
+                                                            hintStyle:
+                                                                TextStyle(
+                                                                  fontSize: 8,
+                                                                ),
+                                                            contentPadding:
+                                                                EdgeInsets.symmetric(
+                                                                  horizontal: 4,
+                                                                  vertical: 2,
+                                                                ),
+                                                          ),
+                                                          keyboardType:
+                                                              TextInputType
+                                                                  .number,
+                                                          inputFormatters: [
+                                                            FilteringTextInputFormatter
+                                                                .digitsOnly,
+                                                          ],
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 10,
+                                                              ),
+                                                          maxLines: 1,
+                                                          onChanged: (v) {
+                                                            final time =
+                                                                int.tryParse(
+                                                                  v,
+                                                                ) ??
+                                                                0;
+                                                            row.setTimeValue(
+                                                              stationIndex,
+                                                              time,
+                                                            );
+                                                            _scheduleAutoSave();
+                                                          },
+                                                          onSubmitted: (v) {
+                                                            final time =
+                                                                int.tryParse(
+                                                                  v,
+                                                                ) ??
+                                                                0;
+                                                            row.setTimeValue(
+                                                              stationIndex,
+                                                              time,
+                                                            );
+                                                            _saveImmediately();
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              );
+                                            }
+
+                                            // Standard single input for non-level-tester stations
                                             return SizedBox(
                                               width: stationColumnWidth,
                                               child: Align(
@@ -1897,9 +3358,37 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               return;
                                                             }
                                                           } else {
-                                                            if (score >
+                                                            // Long Range validation against stage maxPoints
+                                                            if (_rangeType ==
+                                                                    'ארוכים' &&
+                                                                stationIndex <
+                                                                    longRangeStagesList
+                                                                        .length) {
+                                                              final stage =
+                                                                  longRangeStagesList[stationIndex];
+                                                              if (score >
+                                                                  stage
+                                                                      .maxPoints) {
+                                                                ScaffoldMessenger.of(
+                                                                  context,
+                                                                ).showSnackBar(
+                                                                  SnackBar(
+                                                                    content: Text(
+                                                                      'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
+                                                                    ),
+                                                                    duration:
+                                                                        const Duration(
+                                                                          seconds:
+                                                                              1,
+                                                                        ),
+                                                                  ),
+                                                                );
+                                                                return;
+                                                              }
+                                                            } else if (score >
                                                                 station
                                                                     .bulletsCount) {
+                                                              // Short Range validation against station bulletsCount
                                                               ScaffoldMessenger.of(
                                                                 context,
                                                               ).showSnackBar(
@@ -2005,7 +3494,65 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 ),
                                               ),
                                             ),
+                                          ] else if (_rangeType ==
+                                              'ארוכים') ...[
+                                            // Long Range: Points-based totals
+                                            SizedBox(
+                                              width: 90,
+                                              height: rowHeight,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  '${_getTraineeTotalPointsLongRange(traineeIdx)}/${_getTotalMaxPointsLongRange()}',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.blue,
+                                                    fontSize: 10,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              width: 70,
+                                              height: rowHeight,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Builder(
+                                                  builder: (_) {
+                                                    final percentage =
+                                                        _getTraineeAveragePercentLongRange(
+                                                          traineeIdx,
+                                                        );
+                                                    return Text(
+                                                      '${percentage.toStringAsFixed(1)}%',
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 10,
+                                                        color: percentage >= 70
+                                                            ? Colors.green
+                                                            : percentage >= 50
+                                                            ? Colors.orange
+                                                            : Colors.red,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      maxLines: 1,
+                                                      softWrap: false,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
                                           ] else ...[
+                                            // Short Range: Hits-based totals
                                             SizedBox(
                                               width: 90,
                                               height: rowHeight,
@@ -2122,7 +3669,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
-                              ...stations.asMap().entries.map((entry) {
+                              ...displayStations.asMap().entries.map((entry) {
                                 final index = entry.key;
                                 final station = entry.value;
                                 return SizedBox(
@@ -2139,14 +3686,36 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                         textAlign: TextAlign.center,
                                       ),
-                                      Text(
-                                        '(${station.bulletsCount})',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.grey.shade600,
+                                      if (_rangeType == 'ארוכים' &&
+                                          station.bulletsCount > 0)
+                                        Text(
+                                          '${station.bulletsCount * 10}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        )
+                                      else if (_rangeType == 'קצרים' &&
+                                          station.bulletsCount > 0)
+                                        // Short Range: Show just the number
+                                        Text(
+                                          '${station.bulletsCount}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        )
+                                      else if (station.bulletsCount > 0)
+                                        Text(
+                                          '(${station.bulletsCount})',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          textAlign: TextAlign.center,
                                         ),
-                                        textAlign: TextAlign.center,
-                                      ),
                                     ],
                                   ),
                                 );
@@ -2177,7 +3746,34 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     textAlign: TextAlign.center,
                                   ),
                                 ),
+                              ] else if (_rangeType == 'ארוכים') ...[
+                                // Long Range: Use "נקודות" labels
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'סהכ נקודות',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'ממוצע נקודות',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
                               ] else ...[
+                                // Short Range: Use "פגיעות" labels
                                 const SizedBox(
                                   width: 100,
                                   child: Text(
@@ -2282,7 +3878,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               scrollDirection: Axis.horizontal,
                               child: Row(
                                 children: [
-                                  ...stations.asMap().entries.map((
+                                  ...displayStations.asMap().entries.map((
                                     stationEntry,
                                   ) {
                                     final stationIndex = stationEntry.key;
@@ -2294,6 +3890,171 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         'desktop_trainee_${traineeIndex}_station_$stationIndex';
                                     final focusKey =
                                         'desktop_trainee_${traineeIndex}_station_$stationIndex';
+
+                                    // בוחן רמה: Compact dual input (hits + time) stacked vertically
+                                    if (station.isLevelTester &&
+                                        widget.mode == 'range') {
+                                      final timeValue = row.getTimeValue(
+                                        stationIndex,
+                                      );
+                                      final timeControllerKey =
+                                          'desktop_trainee_${traineeIndex}_station_${stationIndex}_time';
+                                      final timeFocusKey =
+                                          'desktop_trainee_${traineeIndex}_station_${stationIndex}_time';
+
+                                      // Keep same width as other columns, stack inputs vertically
+                                      return SizedBox(
+                                        width: 90,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 2.0,
+                                            vertical: 2.0,
+                                          ),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Hits input (פגיעות) - top
+                                              SizedBox(
+                                                height: 22,
+                                                child: TextField(
+                                                  controller: _getController(
+                                                    controllerKey,
+                                                    currentValue > 0
+                                                        ? currentValue
+                                                              .toString()
+                                                        : '',
+                                                  ),
+                                                  focusNode: _getFocusNode(
+                                                    focusKey,
+                                                  ),
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        isDense: true,
+                                                        border:
+                                                            OutlineInputBorder(),
+                                                        hintText: 'פג׳',
+                                                        hintStyle: TextStyle(
+                                                          fontSize: 9,
+                                                        ),
+                                                        contentPadding:
+                                                            EdgeInsets.symmetric(
+                                                              horizontal: 4,
+                                                              vertical: 2,
+                                                            ),
+                                                      ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter
+                                                        .digitsOnly,
+                                                  ],
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                  ),
+                                                  onChanged: (v) {
+                                                    final hits =
+                                                        int.tryParse(v) ?? 0;
+                                                    if (hits >
+                                                        station.bulletsCount) {
+                                                      ScaffoldMessenger.of(
+                                                        context,
+                                                      ).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            'פגיעות לא יכולות לעלות על ${station.bulletsCount}',
+                                                          ),
+                                                          duration:
+                                                              const Duration(
+                                                                seconds: 1,
+                                                              ),
+                                                        ),
+                                                      );
+                                                      return;
+                                                    }
+                                                    row.setValue(
+                                                      stationIndex,
+                                                      hits,
+                                                    );
+                                                    _scheduleAutoSave();
+                                                  },
+                                                  onSubmitted: (v) {
+                                                    final hits =
+                                                        int.tryParse(v) ?? 0;
+                                                    row.setValue(
+                                                      stationIndex,
+                                                      hits,
+                                                    );
+                                                    _saveImmediately();
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              // Time input (זמן) - bottom
+                                              SizedBox(
+                                                height: 22,
+                                                child: TextField(
+                                                  controller: _getController(
+                                                    timeControllerKey,
+                                                    timeValue > 0
+                                                        ? timeValue.toString()
+                                                        : '',
+                                                  ),
+                                                  focusNode: _getFocusNode(
+                                                    timeFocusKey,
+                                                  ),
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        isDense: true,
+                                                        border:
+                                                            OutlineInputBorder(),
+                                                        hintText: 'זמן',
+                                                        hintStyle: TextStyle(
+                                                          fontSize: 9,
+                                                        ),
+                                                        contentPadding:
+                                                            EdgeInsets.symmetric(
+                                                              horizontal: 4,
+                                                              vertical: 2,
+                                                            ),
+                                                      ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter
+                                                        .digitsOnly,
+                                                  ],
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                  ),
+                                                  onChanged: (v) {
+                                                    final time =
+                                                        int.tryParse(v) ?? 0;
+                                                    row.setTimeValue(
+                                                      stationIndex,
+                                                      time,
+                                                    );
+                                                    _scheduleAutoSave();
+                                                  },
+                                                  onSubmitted: (v) {
+                                                    final time =
+                                                        int.tryParse(v) ?? 0;
+                                                    row.setTimeValue(
+                                                      stationIndex,
+                                                      time,
+                                                    );
+                                                    _saveImmediately();
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    // Standard single input for non-level-tester stations
                                     return SizedBox(
                                       width: 80,
                                       child: TextField(
@@ -2413,8 +4174,45 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         },
                                       ),
                                     ),
+                                  ] else if (_rangeType == 'ארוכים') ...[
+                                    // Long Range: Points-based totals
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        '${_getTraineeTotalPointsLongRange(traineeIndex)}/${_getTotalMaxPointsLongRange()}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    // Percentage column (Long Range points-based)
+                                    SizedBox(
+                                      width: 100,
+                                      child: Builder(
+                                        builder: (_) {
+                                          final percentage =
+                                              _getTraineeAveragePercentLongRange(
+                                                traineeIndex,
+                                              );
+                                          return Text(
+                                            '${percentage.toStringAsFixed(1)}%',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: percentage >= 70
+                                                  ? Colors.green
+                                                  : percentage >= 50
+                                                  ? Colors.orange
+                                                  : Colors.red,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          );
+                                        },
+                                      ),
+                                    ),
                                   ] else ...[
-                                    // Bullets/Hits column (Range mode)
+                                    // Short Range: Hits/Bullets column
                                     SizedBox(
                                       width: 100,
                                       child: Text(
@@ -2426,7 +4224,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         textAlign: TextAlign.center,
                                       ),
                                     ),
-                                    // Percentage column (Range mode)
+                                    // Percentage column (Short Range hits-based)
                                     SizedBox(
                                       width: 100,
                                       child: Builder(
@@ -2480,12 +4278,16 @@ class TraineeRowModel {
   final int index;
   String name;
   final Map<int, int> values; // stationIndex -> value (hits or score)
+  final Map<int, int>
+  timeValues; // stationIndex -> time in seconds (for בוחן רמה only)
 
   TraineeRowModel({
     required this.index,
     required this.name,
     Map<int, int>? values,
-  }) : values = values ?? {};
+    Map<int, int>? timeValues,
+  }) : values = values ?? {},
+       timeValues = timeValues ?? {};
 
   // Get value for a specific station/principle
   int getValue(int stationIndex) => values[stationIndex] ?? 0;
@@ -2499,8 +4301,23 @@ class TraineeRowModel {
     }
   }
 
+  // Get time value for a specific station (for בוחן רמה)
+  int getTimeValue(int stationIndex) => timeValues[stationIndex] ?? 0;
+
+  // Set time value for a specific station (for בוחן רמה)
+  void setTimeValue(int stationIndex, int value) {
+    if (value == 0) {
+      timeValues.remove(stationIndex);
+    } else {
+      timeValues[stationIndex] = value;
+    }
+  }
+
   // Check if has any non-zero data
-  bool hasData() => name.trim().isNotEmpty || values.values.any((v) => v != 0);
+  bool hasData() =>
+      name.trim().isNotEmpty ||
+      values.values.any((v) => v != 0) ||
+      timeValues.values.any((v) => v != 0);
 
   // Serialize to Firestore format
   Map<String, dynamic> toFirestore() {
@@ -2510,7 +4327,18 @@ class TraineeRowModel {
         valuesMap['station_$stationIdx'] = val;
       }
     });
-    return {'index': index, 'name': name.trim(), 'values': valuesMap};
+    final timeValuesMap = <String, int>{};
+    timeValues.forEach((stationIdx, val) {
+      if (val != 0) {
+        timeValuesMap['station_${stationIdx}_time'] = val;
+      }
+    });
+    return {
+      'index': index,
+      'name': name.trim(),
+      'values': valuesMap,
+      'timeValues': timeValuesMap,
+    };
   }
 
   // Deserialize from Firestore format
@@ -2518,6 +4346,7 @@ class TraineeRowModel {
     final index = (data['index'] as num?)?.toInt() ?? 0;
     final name = (data['name'] as String?) ?? '';
     final valuesRaw = (data['values'] as Map<String, dynamic>?) ?? {};
+    final timeValuesRaw = (data['timeValues'] as Map<String, dynamic>?) ?? {};
 
     final values = <int, int>{};
     valuesRaw.forEach((key, val) {
@@ -2530,7 +4359,26 @@ class TraineeRowModel {
       }
     });
 
-    return TraineeRowModel(index: index, name: name, values: values);
+    final timeValues = <int, int>{};
+    timeValuesRaw.forEach((key, val) {
+      if (key.startsWith('station_') && key.endsWith('_time')) {
+        final stationIdxStr = key
+            .replaceFirst('station_', '')
+            .replaceFirst('_time', '');
+        final stationIdx = int.tryParse(stationIdxStr);
+        final value = (val as num?)?.toInt() ?? 0;
+        if (stationIdx != null && value != 0) {
+          timeValues[stationIdx] = value;
+        }
+      }
+    });
+
+    return TraineeRowModel(
+      index: index,
+      name: name,
+      values: values,
+      timeValues: timeValues,
+    );
   }
 }
 

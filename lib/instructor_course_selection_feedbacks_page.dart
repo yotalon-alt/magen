@@ -21,6 +21,80 @@ class _InstructorCourseSelectionFeedbacksPageState
   List<Map<String, dynamic>> _feedbacks = [];
   Set<String> _selectedFeedbackIds = {}; // For export selection
 
+  // Filter state variables
+  final TextEditingController _filterCommandController =
+      TextEditingController();
+  final TextEditingController _filterNameController = TextEditingController();
+  final TextEditingController _filterNumberController = TextEditingController();
+  String _filterCommand = '';
+  String _filterName = '';
+  String _filterNumber = '';
+
+  @override
+  void dispose() {
+    _filterCommandController.dispose();
+    _filterNameController.dispose();
+    _filterNumberController.dispose();
+    super.dispose();
+  }
+
+  /// Get filtered feedbacks based on search filters (AND logic, case-insensitive contains)
+  List<Map<String, dynamic>> get _filteredFeedbacks {
+    if (_filterCommand.isEmpty &&
+        _filterName.isEmpty &&
+        _filterNumber.isEmpty) {
+      return _feedbacks;
+    }
+
+    return _feedbacks.where((feedback) {
+      // Command filter (פיקוד)
+      if (_filterCommand.isNotEmpty) {
+        final command = (feedback['command'] ?? '').toString().toLowerCase();
+        if (!command.contains(_filterCommand.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Name filter (שם)
+      if (_filterName.isNotEmpty) {
+        final candidateName = (feedback['candidateName'] ?? '')
+            .toString()
+            .toLowerCase();
+        if (!candidateName.contains(_filterName.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Number filter (מס׳ חניך)
+      if (_filterNumber.isNotEmpty) {
+        final candidateNumber = (feedback['candidateNumber'] ?? '').toString();
+        if (!candidateNumber.contains(_filterNumber)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  /// Clear all filters
+  void _clearFilters() {
+    setState(() {
+      _filterCommand = '';
+      _filterName = '';
+      _filterNumber = '';
+      _filterCommandController.clear();
+      _filterNameController.clear();
+      _filterNumberController.clear();
+    });
+  }
+
+  /// Check if any filter is active
+  bool get _hasActiveFilters =>
+      _filterCommand.isNotEmpty ||
+      _filterName.isNotEmpty ||
+      _filterNumber.isNotEmpty;
+
   Future<void> _exportInstructorCourseFeedbacks() async {
     // Show selection dialog with 3 options
     final selection = await showDialog<String>(
@@ -680,10 +754,13 @@ class _InstructorCourseSelectionFeedbacksPageState
             child: Row(
               children: [
                 StandardBackButton(
-                  onPressed: () => setState(() {
-                    _selectedCategory = null;
-                    _feedbacks = [];
-                  }),
+                  onPressed: () {
+                    _clearFilters(); // Clear filters when going back
+                    setState(() {
+                      _selectedCategory = null;
+                      _feedbacks = [];
+                    });
+                  },
                   color: Colors.white,
                 ),
                 Expanded(
@@ -707,27 +784,169 @@ class _InstructorCourseSelectionFeedbacksPageState
             ),
           ),
 
+          // Filter bar
+          Card(
+            color: Colors.blueGrey.shade800,
+            margin: const EdgeInsets.all(8.0),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Filter row
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    alignment: WrapAlignment.start,
+                    children: [
+                      // Command filter (פיקוד)
+                      SizedBox(
+                        width: 160,
+                        child: TextField(
+                          controller: _filterCommandController,
+                          decoration: InputDecoration(
+                            labelText: 'פיקוד',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.military_tech,
+                              size: 20,
+                            ),
+                            suffixIcon: _filterCommand.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _filterCommandController.clear();
+                                      setState(() => _filterCommand = '');
+                                    },
+                                  )
+                                : null,
+                          ),
+                          onChanged: (v) => setState(() => _filterCommand = v),
+                        ),
+                      ),
+                      // Name filter (שם)
+                      SizedBox(
+                        width: 160,
+                        child: TextField(
+                          controller: _filterNameController,
+                          decoration: InputDecoration(
+                            labelText: 'שם',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            prefixIcon: const Icon(Icons.person, size: 20),
+                            suffixIcon: _filterName.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _filterNameController.clear();
+                                      setState(() => _filterName = '');
+                                    },
+                                  )
+                                : null,
+                          ),
+                          onChanged: (v) => setState(() => _filterName = v),
+                        ),
+                      ),
+                      // Number filter (מס׳ חניך)
+                      SizedBox(
+                        width: 160,
+                        child: TextField(
+                          controller: _filterNumberController,
+                          decoration: InputDecoration(
+                            labelText: 'מס׳ חניך',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            prefixIcon: const Icon(Icons.tag, size: 20),
+                            suffixIcon: _filterNumber.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _filterNumberController.clear();
+                                      setState(() => _filterNumber = '');
+                                    },
+                                  )
+                                : null,
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => setState(() => _filterNumber = v),
+                        ),
+                      ),
+                      // Clear all filters button
+                      if (_hasActiveFilters)
+                        TextButton.icon(
+                          onPressed: _clearFilters,
+                          icon: const Icon(Icons.clear_all, size: 18),
+                          label: const Text('נקה הכל'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.orangeAccent,
+                          ),
+                        ),
+                    ],
+                  ),
+                  // Show filter status
+                  if (_hasActiveFilters) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'מציג ${_filteredFeedbacks.length} מתוך ${_feedbacks.length} משובים',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
           // List of feedbacks
           Expanded(
-            child: _feedbacks.isEmpty
+            child: _filteredFeedbacks.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.inbox, size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'אין משובים בקטגוריה זו',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        Icon(
+                          _hasActiveFilters ? Icons.search_off : Icons.inbox,
+                          size: 64,
+                          color: Colors.grey,
                         ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _hasActiveFilters
+                              ? 'לא נמצאו משובים התואמים לחיפוש'
+                              : 'אין משובים בקטגוריה זו',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (_hasActiveFilters) ...[
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _clearFilters,
+                            icon: const Icon(Icons.clear),
+                            label: const Text('נקה חיפוש'),
+                          ),
+                        ],
                       ],
                     ),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.all(8),
-                    itemCount: _feedbacks.length,
+                    itemCount: _filteredFeedbacks.length,
                     itemBuilder: (ctx, i) {
-                      final feedback = _feedbacks[i];
+                      final feedback = _filteredFeedbacks[i];
                       final candidateName =
                           feedback['candidateName'] ?? 'לא ידוע';
                       final candidateNumber =

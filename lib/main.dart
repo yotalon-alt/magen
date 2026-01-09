@@ -44,6 +44,12 @@ AppUser? currentUser;
 const List<Map<String, dynamic>>
 _feedbackFoldersConfig = <Map<String, dynamic>>[
   {'title': 'מטווחי ירי', 'isHidden': false},
+  {
+    'title': 'מטווחים 474',
+    'displayLabel': 'מטווחים 474',
+    'internalValue': '474 Ranges',
+    'isHidden': false,
+  },
   {'title': 'מחלקות ההגנה – חטיבה 474', 'isHidden': false},
   {'title': 'מיונים – כללי', 'isHidden': true}, // ✅ SOFT DELETE: Hidden from UI
   {'title': 'מיונים לקורס מדריכים', 'isHidden': false},
@@ -127,6 +133,9 @@ class FeedbackModel {
   final String module; // 'surprise_drill' or 'shooting_ranges'
   final String type; // 'surprise_exercise' or 'range_feedback'
   final bool isTemporary; // true for drafts, false for final
+  final String
+  folderKey; // canonical key: 'ranges_474' | 'shooting_ranges' | ''
+  final String folderLabel; // Hebrew display label
 
   const FeedbackModel({
     this.id,
@@ -149,6 +158,8 @@ class FeedbackModel {
     this.module = '',
     this.type = '',
     this.isTemporary = false,
+    this.folderKey = '',
+    this.folderLabel = '',
   });
 
   static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
@@ -214,6 +225,30 @@ class FeedbackModel {
       type: (m['type'] ?? '').toString(),
       isTemporary:
           (m['isTemporary'] ?? m['status'] == 'temporary') as bool? ?? false,
+      // Derive canonical folderKey and folderLabel for backward compatibility
+      folderKey: (() {
+        final rawKey = (m['folderKey'] as String?) ?? '';
+        if (rawKey.isNotEmpty) return rawKey;
+        final rawFolder = ((m['rangeFolder'] ?? m['folder']) as String?) ?? '';
+        final low = rawFolder.toLowerCase();
+        if (low.contains('474') ||
+            low.contains('מטווחים 474') ||
+            low.contains('474 ranges') ||
+            low.contains('474ranges')) {
+          return 'ranges_474';
+        }
+        if (low.contains('shoot') || low.contains('מטווח')) {
+          return 'shooting_ranges';
+        }
+        return '';
+      })(),
+      folderLabel: (() {
+        final rawLabel = (m['folderLabel'] as String?) ?? '';
+        if (rawLabel.isNotEmpty) return rawLabel;
+        final rawFolder = ((m['rangeFolder'] ?? m['folder']) as String?) ?? '';
+        if (rawFolder.isNotEmpty) return rawFolder;
+        return '';
+      })(),
     );
   }
 
@@ -237,6 +272,8 @@ class FeedbackModel {
     String? module,
     String? type,
     bool? isTemporary,
+    String? folderKey,
+    String? folderLabel,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -258,6 +295,8 @@ class FeedbackModel {
       module: module ?? this.module,
       type: type ?? this.type,
       isTemporary: isTemporary ?? this.isTemporary,
+      folderKey: folderKey ?? this.folderKey,
+      folderLabel: folderLabel ?? this.folderLabel,
     );
   }
 
@@ -282,6 +321,8 @@ class FeedbackModel {
       'module': module,
       'type': type,
       'isTemporary': isTemporary,
+      'folderKey': folderKey,
+      'folderLabel': folderLabel,
     };
   }
 }
@@ -2665,6 +2706,21 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   _selectedFolder; // null = show folders, non-null = show feedbacks from that folder
   String selectedSettlement = 'כל היישובים';
 
+  // New filter state variables
+  String _filterSettlement = 'הכל';
+  String _filterExercise = 'הכל';
+  String _filterRole = 'הכל';
+
+  /// Helper: Get Hebrew display label for folder (handles internal values)
+  String _getFolderDisplayLabel(String internalValue) {
+    final config = _feedbackFoldersConfig.firstWhere(
+      (c) => (c['internalValue'] ?? c['title']) == internalValue,
+      orElse: () => {'title': internalValue},
+    );
+    return (config['displayLabel'] ?? config['title'] ?? internalValue)
+        as String;
+  }
+
   Future<void> _refreshFeedbacks() async {
     if (_isRefreshing) return;
     setState(() => _isRefreshing = true);
@@ -2688,6 +2744,150 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       if (mounted) {
         setState(() => _isRefreshing = false);
       }
+    }
+  }
+
+  Future<void> _showRecentRangeSaves() async {
+    final isAdmin = currentUser?.role == 'Admin';
+    if (!isAdmin) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה - רק אדמין')));
+      return;
+    }
+
+    try {
+      final q = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .orderBy('createdAt', descending: true)
+          .limit(100);
+
+      final snap = await q.get();
+      final docs = snap.docs
+          .where((d) {
+            final data = d.data();
+            final fk = (data['folderKey'] ?? '').toString();
+            final mod = (data['module'] ?? '').toString();
+            final folder = (data['folder'] ?? '').toString();
+            // include known range docs by canonical key or legacy folder/module
+            if (fk == 'ranges_474' || fk == 'shooting_ranges') {
+              return true;
+            }
+            if (mod == 'shooting_ranges' || mod == 'surprise_drill') {
+              return true;
+            }
+            final low = folder.toLowerCase();
+            if (low.contains('474') || low.contains('מטווח')) {
+              return true;
+            }
+            return false;
+          })
+          .take(20)
+          .toList();
+      if (!mounted) return;
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Recent Range Saves (last 20)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  if (docs.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(12.0),
+                      child: Text('אין שמירות אחרונות'),
+                    )
+                  else
+                    SizedBox(
+                      height: 400,
+                      child: ListView.separated(
+                        itemCount: docs.length,
+                        separatorBuilder: (context, index) => const Divider(),
+                        itemBuilder: (ctx, i) {
+                          final d = docs[i];
+                          final data = d.data();
+                          final fk = (data['folderKey'] ?? '').toString();
+                          final ft =
+                              (data['feedbackType'] ?? data['type'] ?? '')
+                                  .toString();
+                          final instr = (data['instructorName'] ?? '')
+                              .toString();
+                          final sett =
+                              (data['settlement'] ??
+                                      data['settlementName'] ??
+                                      '')
+                                  .toString();
+                          final ca = data['createdAt'];
+                          String created = '';
+                          if (ca is Timestamp) {
+                            created = ca.toDate().toString();
+                          } else if (ca is String) {
+                            created = ca;
+                          }
+
+                          return ListTile(
+                            title: Text(
+                              '${d.id} • ${fk.isNotEmpty ? fk : '-'}',
+                            ),
+                            subtitle: Text(
+                              'type: $ft • מדריך: $instr • יישוב: $sett',
+                            ),
+                            trailing: Text(created),
+                            onTap: () => Navigator.of(context).pushNamed(
+                              '/feedback_details',
+                              arguments:
+                                  FeedbackModel.fromMap(data, id: d.id) ??
+                                  FeedbackModel(
+                                    id: d.id,
+                                    role: '',
+                                    name: '',
+                                    exercise: '',
+                                    scores: {},
+                                    notes: {},
+                                    criteriaList: [],
+                                    createdAt: DateTime.now(),
+                                    instructorName: instr,
+                                    instructorRole: '',
+                                    commandText: '',
+                                    commandStatus: '',
+                                    folder: '',
+                                    scenario: '',
+                                    settlement: sett,
+                                    attendeesCount: 0,
+                                  ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('סגור'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('Error loading recent saves: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה בטעינת שמירות אחרונות: $e')),
+      );
     }
   }
 
@@ -2741,6 +2941,79 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         context,
       ).showSnackBar(SnackBar(content: Text('שגיאה במחיקת משוב: $e')));
     }
+  }
+
+  /// Clear all filters
+  void _clearFilters() {
+    setState(() {
+      _filterSettlement = 'הכל';
+      _filterExercise = 'הכל';
+      _filterRole = 'הכל';
+    });
+  }
+
+  /// Check if any filter is active
+  bool get _hasActiveFilters =>
+      _filterSettlement != 'הכל' ||
+      _filterExercise != 'הכל' ||
+      _filterRole != 'הכל';
+
+  /// Get unique settlement options from a list of feedbacks
+  List<String> _getSettlementOptions(List<FeedbackModel> feedbacks) {
+    final settlements = feedbacks
+        .map((f) => f.settlement)
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+    settlements.sort();
+    return ['הכל', ...settlements];
+  }
+
+  /// Get unique exercise options from a list of feedbacks
+  List<String> _getExerciseOptions(List<FeedbackModel> feedbacks) {
+    final exercises = feedbacks
+        .map((f) => f.exercise)
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    exercises.sort();
+    return ['הכל', ...exercises];
+  }
+
+  /// Get unique role options from a list of feedbacks
+  List<String> _getRoleOptions(List<FeedbackModel> feedbacks) {
+    final roles = feedbacks
+        .map((f) => f.role)
+        .where((r) => r.isNotEmpty)
+        .toSet()
+        .toList();
+    roles.sort();
+    return ['הכל', ...roles];
+  }
+
+  /// Apply filters to a list of feedbacks (AND logic)
+  List<FeedbackModel> _applyFilters(List<FeedbackModel> feedbacks) {
+    return feedbacks.where((f) {
+      // Settlement filter
+      if (_filterSettlement != 'הכל') {
+        if (f.settlement.isEmpty || f.settlement != _filterSettlement) {
+          return false;
+        }
+      }
+      // Exercise filter
+      if (_filterExercise != 'הכל') {
+        if (f.exercise.isEmpty || f.exercise != _filterExercise) {
+          return false;
+        }
+      }
+      // Role filter
+      if (_filterRole != 'הכל') {
+        if (f.role.isEmpty || f.role != _filterRole) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
   }
 
   @override
@@ -2827,6 +3100,12 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   },
                   tooltip: 'ייצוא נתונים',
                 ),
+              if (isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.history),
+                  onPressed: _showRecentRangeSaves,
+                  tooltip: 'Recent range saves',
+                ),
               IconButton(
                 icon: _isRefreshing
                     ? const SizedBox(
@@ -2875,6 +3154,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   itemCount: visibleFeedbackFolders.length,
                   itemBuilder: (ctx, i) {
                     final folder = visibleFeedbackFolders[i];
+                    // Get internal value for filtering (if exists)
+                    final folderConfig = _feedbackFoldersConfig.firstWhere(
+                      (config) => config['title'] == folder,
+                      orElse: () => {'title': folder},
+                    );
+                    final internalValue =
+                        folderConfig['internalValue'] as String? ?? folder;
+
                     // Count feedbacks: regular + old feedbacks without folder (assigned to "משובים – כללי")
                     int count;
                     if (folder == 'משובים – כללי') {
@@ -2882,8 +3169,12 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           .where((f) => f.folder == folder || f.folder.isEmpty)
                           .length;
                     } else {
+                      // Use internal value for filtering to match Firestore data
                       count = feedbackStorage
-                          .where((f) => f.folder == folder)
+                          .where(
+                            (f) =>
+                                f.folder == folder || f.folder == internalValue,
+                          )
                           .length;
                     }
                     final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
@@ -2905,7 +3196,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               '/instructor_course_selection_feedbacks',
                             );
                           } else {
-                            setState(() => _selectedFolder = folder);
+                            // Use internal value for navigation/filtering
+                            setState(() => _selectedFolder = internalValue);
                           }
                         },
                         child: Padding(
@@ -3006,17 +3298,17 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         '================================================================\n',
       );
     } else if (_selectedFolder == 'מטווחי ירי') {
-      // SHOOTING RANGES: Include BOTH new schema AND legacy docs
+      // SHOOTING RANGES: Prefer canonical folderKey, fallback to legacy fields
       filteredFeedbacks = feedbackStorage.where((f) {
-        // Exclude temporary drafts
         if (f.isTemporary == true) return false;
 
-        // NEW SCHEMA: Has module field populated
-        if (f.module.isNotEmpty) {
-          return f.module == 'shooting_ranges';
-        }
+        // Prefer canonical folderKey when present
+        if (f.folderKey.isNotEmpty) return f.folderKey == 'shooting_ranges';
 
-        // LEGACY SCHEMA: No module field, use folder
+        // New schema fallback: module
+        if (f.module.isNotEmpty) return f.module == 'shooting_ranges';
+
+        // Legacy fallback: folder label match
         return f.folder == _selectedFolder;
       }).toList();
       debugPrint(
@@ -3040,6 +3332,32 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       debugPrint(
         '================================================================\n',
       );
+    } else if (_selectedFolder == '474 Ranges') {
+      // 474 RANGES: Use canonical folderKey when available, otherwise try legacy fields
+      filteredFeedbacks = feedbackStorage.where((f) {
+        if (f.isTemporary == true) return false;
+
+        if (f.folderKey.isNotEmpty) return f.folderKey == 'ranges_474';
+
+        if (f.module.isNotEmpty) {
+          // module==shooting_ranges may include ranges, but ensure folder label matches legacy 474
+          final lowFolder = f.folder.toLowerCase();
+          if (lowFolder.contains('474') ||
+              lowFolder.contains('474 ranges') ||
+              lowFolder.contains('מטווחים 474')) {
+            return true;
+          }
+        }
+
+        // Legacy fallback: folder label match
+        return f.folder == _selectedFolder || f.folder == 'מטווחים 474';
+      }).toList();
+      debugPrint('\n========== 474 RANGES FILTER ==========');
+      debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
+      debugPrint('Filtered 474 ranges: ${filteredFeedbacks.length}');
+      debugPrint(
+        '================================================================\n',
+      );
     } else {
       // Other folders: use standard folder filtering + exclude temporary
       filteredFeedbacks = feedbackStorage
@@ -3047,12 +3365,13 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           .toList();
     }
 
-    final isRangeFolder = _selectedFolder == 'מטווחי ירי';
+    final isRangeFolder =
+        _selectedFolder == 'מטווחי ירי' || _selectedFolder == '474 Ranges';
 
-    // Apply settlement filter for range feedbacks
-    List<FeedbackModel> finalFilteredFeedbacks = filteredFeedbacks;
+    // Apply settlement filter for range feedbacks (legacy behavior)
+    List<FeedbackModel> preFilteredFeedbacks = filteredFeedbacks;
     if (isRangeFolder) {
-      finalFilteredFeedbacks = filteredFeedbacks
+      preFilteredFeedbacks = filteredFeedbacks
           .where(
             (f) =>
                 selectedSettlement == 'כל היישובים' ||
@@ -3061,13 +3380,27 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           .toList();
     }
 
+    // Apply new generic filters (settlement, exercise, role) with AND logic
+    final List<FeedbackModel> finalFilteredFeedbacks = _applyFilters(
+      preFilteredFeedbacks,
+    );
+
+    // Get filter options from the folder's feedbacks (before user filters applied)
+    final settlementOptions = _getSettlementOptions(filteredFeedbacks);
+    final exerciseOptions = _getExerciseOptions(filteredFeedbacks);
+    final roleOptions = _getRoleOptions(filteredFeedbacks);
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_selectedFolder!),
+          title: Text(_getFolderDisplayLabel(_selectedFolder!)),
           leading: StandardBackButton(
-            onPressed: () => setState(() => _selectedFolder = null),
+            onPressed: () {
+              // Clear filters when going back to folders
+              _clearFilters();
+              setState(() => _selectedFolder = null);
+            },
             tooltip: 'חזרה לתיקיות',
           ),
           actions: [
@@ -3141,9 +3474,16 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               onPressed: _isRefreshing ? null : _refreshFeedbacks,
               tooltip: 'רענן רשימה',
             ),
+            // Admin-only recent range saves
+            if (isAdmin)
+              IconButton(
+                icon: const Icon(Icons.history),
+                tooltip: 'Recent range saves',
+                onPressed: _showRecentRangeSaves,
+              ),
           ],
         ),
-        body: finalFilteredFeedbacks.isEmpty
+        body: finalFilteredFeedbacks.isEmpty && !_hasActiveFilters
             ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -3153,7 +3493,10 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     const Text('אין משובים בתיקייה זו'),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
-                      onPressed: () => setState(() => _selectedFolder = null),
+                      onPressed: () {
+                        _clearFilters();
+                        setState(() => _selectedFolder = null);
+                      },
                       icon: const Icon(Icons.arrow_forward),
                       label: const Text('חזרה לתיקיות'),
                     ),
@@ -3162,117 +3505,247 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               )
             : Column(
                 children: [
-                  if (isRangeFolder)
-                    Card(
-                      color: Colors.blueGrey.shade800,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            SizedBox(
-                              width: 240,
-                              child: Builder(
-                                builder: (ctx) {
-                                  final items =
-                                      ['כל היישובים'] + golanSettlements;
-                                  final value =
-                                      items.contains(selectedSettlement)
-                                      ? selectedSettlement
-                                      : null;
-                                  return DropdownButtonFormField<String>(
-                                    initialValue: value,
+                  // Generic filters bar (for all folders except instructor course)
+                  Card(
+                    color: Colors.blueGrey.shade800,
+                    margin: const EdgeInsets.all(8.0),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Filter row
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            alignment: WrapAlignment.start,
+                            children: [
+                              // Settlement filter
+                              if (settlementOptions.length > 1)
+                                SizedBox(
+                                  width: 180,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue:
+                                        settlementOptions.contains(
+                                          _filterSettlement,
+                                        )
+                                        ? _filterSettlement
+                                        : 'הכל',
                                     isExpanded: true,
                                     decoration: const InputDecoration(
-                                      labelText: 'בחירת יישוב',
+                                      labelText: 'יישוב',
                                       isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
                                     ),
-                                    items: items
+                                    items: settlementOptions
                                         .map(
-                                          (i) => DropdownMenuItem(
-                                            value: i,
-                                            child: Text(i),
+                                          (s) => DropdownMenuItem(
+                                            value: s,
+                                            child: Text(
+                                              s,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
                                         )
                                         .toList(),
                                     onChanged: (v) => setState(
-                                      () => selectedSettlement =
-                                          v ?? 'כל היישובים',
+                                      () => _filterSettlement = v ?? 'הכל',
                                     ),
-                                  );
-                                },
+                                  ),
+                                ),
+                              // Exercise filter
+                              if (exerciseOptions.length > 1)
+                                SizedBox(
+                                  width: 180,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue:
+                                        exerciseOptions.contains(
+                                          _filterExercise,
+                                        )
+                                        ? _filterExercise
+                                        : 'הכל',
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'תרגיל',
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                    ),
+                                    items: exerciseOptions
+                                        .map(
+                                          (e) => DropdownMenuItem(
+                                            value: e,
+                                            child: Text(
+                                              e,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) => setState(
+                                      () => _filterExercise = v ?? 'הכל',
+                                    ),
+                                  ),
+                                ),
+                              // Role filter
+                              if (roleOptions.length > 1)
+                                SizedBox(
+                                  width: 180,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue:
+                                        roleOptions.contains(_filterRole)
+                                        ? _filterRole
+                                        : 'הכל',
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'תפקיד',
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                    ),
+                                    items: roleOptions
+                                        .map(
+                                          (r) => DropdownMenuItem(
+                                            value: r,
+                                            child: Text(
+                                              r,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) => setState(
+                                      () => _filterRole = v ?? 'הכל',
+                                    ),
+                                  ),
+                                ),
+                              // Clear filters button (only show when filters are active)
+                              if (_hasActiveFilters)
+                                TextButton.icon(
+                                  onPressed: _clearFilters,
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  label: const Text('נקה פילטרים'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.orangeAccent,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          // Show filter status
+                          if (_hasActiveFilters) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'מציג ${finalFilteredFeedbacks.length} מתוך ${filteredFeedbacks.length} משובים',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
                               ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Empty state when filters return no results
+                  if (finalFilteredFeedbacks.isEmpty && _hasActiveFilters)
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text('לא נמצאו משובים התואמים לסינון'),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: _clearFilters,
+                              icon: const Icon(Icons.clear),
+                              label: const Text('נקה פילטרים'),
                             ),
                           ],
                         ),
                       ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(12.0),
+                        itemCount: finalFilteredFeedbacks.length,
+                        itemBuilder: (_, i) {
+                          final f = finalFilteredFeedbacks[i];
+
+                          // Build title from feedback data
+                          final title =
+                              (f.folderKey == 'shooting_ranges' ||
+                                  f.module == 'shooting_ranges' ||
+                                  f.folder == 'מטווחי ירי')
+                              ? (f.settlement.isNotEmpty
+                                    ? f.settlement
+                                    : f.name)
+                              : '${f.role} — ${f.name}';
+
+                          // Parse date
+                          final date = f.createdAt.toLocal();
+                          final dateStr =
+                              '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+
+                          // Build metadata lines
+                          final metadataLines = <String>[];
+                          if (f.exercise.isNotEmpty) {
+                            metadataLines.add('תרגיל: ${f.exercise}');
+                          }
+                          if (f.instructorName.isNotEmpty) {
+                            metadataLines.add('מדריך: ${f.instructorName}');
+                          }
+                          if (f.attendeesCount > 0) {
+                            metadataLines.add('משתתפים: ${f.attendeesCount}');
+                          }
+                          metadataLines.add('תאריך: $dateStr');
+
+                          // Get blue tag label - build a map from FeedbackModel
+                          final feedbackData = <String, dynamic>{
+                            'feedbackType': f.type,
+                            'rangeType': f.exercise,
+                            'folder': f.folder,
+                            'module': f.module,
+                          };
+                          final blueTagLabel = getBlueTagLabelFromDoc(
+                            feedbackData,
+                          );
+
+                          // Check delete permissions
+                          final canDelete =
+                              currentUser?.role == 'Admin' ||
+                              f.instructorName == currentUser?.name;
+
+                          return FeedbackListTileCard(
+                            title: title,
+                            metadataLines: metadataLines,
+                            blueTagLabel: blueTagLabel,
+                            canDelete: canDelete,
+                            onOpen: () {
+                              Navigator.of(
+                                context,
+                              ).pushNamed('/feedback_details', arguments: f);
+                            },
+                            onDelete: f.id != null && f.id!.isNotEmpty
+                                ? () => _confirmDeleteFeedback(f.id!, title)
+                                : null,
+                          );
+                        },
+                      ),
                     ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(12.0),
-                      itemCount: finalFilteredFeedbacks.length,
-                      itemBuilder: (_, i) {
-                        final f = finalFilteredFeedbacks[i];
-
-                        // Build title from feedback data
-                        final title =
-                            f.folder == 'מטווחי ירי' ||
-                                f.module == 'shooting_ranges'
-                            ? (f.settlement.isNotEmpty ? f.settlement : f.name)
-                            : '${f.role} — ${f.name}';
-
-                        // Parse date
-                        final date = f.createdAt.toLocal();
-                        final dateStr =
-                            '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-
-                        // Build metadata lines
-                        final metadataLines = <String>[];
-                        if (f.exercise.isNotEmpty) {
-                          metadataLines.add('תרגיל: ${f.exercise}');
-                        }
-                        if (f.instructorName.isNotEmpty) {
-                          metadataLines.add('מדריך: ${f.instructorName}');
-                        }
-                        if (f.attendeesCount > 0) {
-                          metadataLines.add('משתתפים: ${f.attendeesCount}');
-                        }
-                        metadataLines.add('תאריך: $dateStr');
-
-                        // Get blue tag label - build a map from FeedbackModel
-                        final feedbackData = <String, dynamic>{
-                          'feedbackType': f.type,
-                          'rangeType': f.exercise,
-                          'folder': f.folder,
-                          'module': f.module,
-                        };
-                        final blueTagLabel = getBlueTagLabelFromDoc(
-                          feedbackData,
-                        );
-
-                        // Check delete permissions
-                        final canDelete =
-                            currentUser?.role == 'Admin' ||
-                            f.instructorName == currentUser?.name;
-
-                        return FeedbackListTileCard(
-                          title: title,
-                          metadataLines: metadataLines,
-                          blueTagLabel: blueTagLabel,
-                          canDelete: canDelete,
-                          onOpen: () {
-                            Navigator.of(
-                              context,
-                            ).pushNamed('/feedback_details', arguments: f);
-                          },
-                          onDelete: f.id != null && f.id!.isNotEmpty
-                              ? () => _confirmDeleteFeedback(f.id!, title)
-                              : null,
-                        );
-                      },
-                    ),
-                  ),
                 ],
               ),
       ),
@@ -3588,7 +4061,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               Text('תרחיש: ${feedback.scenario}'),
               const SizedBox(height: 8),
             ],
-            if (feedback.folder == 'מטווחי ירי' &&
+            if ((feedback.folderKey == 'shooting_ranges' ||
+                    feedback.folder == 'מטווחי ירי' ||
+                    feedback.module == 'shooting_ranges') &&
                 feedback.attendeesCount > 0) ...[
               Text(
                 'מספר חניכים/נוכחים באימון: ${feedback.attendeesCount}',
@@ -3601,7 +4076,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
             ],
             Text('תפקיד: ${feedback.role}'),
             const SizedBox(height: 8),
-            feedback.folder == 'מטווחי ירי'
+            (feedback.folderKey == 'shooting_ranges' ||
+                    feedback.folder == 'מטווחי ירי' ||
+                    feedback.module == 'shooting_ranges')
                 ? Text('יישוב: ${feedback.settlement}')
                 : Text('שם: ${feedback.name}'),
             const SizedBox(height: 12),

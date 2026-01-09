@@ -71,6 +71,18 @@ String _mapToHebrewLabel(String input) {
     return 'הגנה 474';
   }
 
+  // 474 Ranges folder (new dedicated folder)
+  if (normalized == '474 ranges') {
+    return '474 Ranges';
+  }
+
+  // Shooting Ranges folder
+  if (normalized.contains('shooting') ||
+      normalized.contains('מטווח') ||
+      normalized.contains('ירי')) {
+    return 'מטווחי ירי';
+  }
+
   // General feedback variants
   if (normalized.contains('general') || normalized.contains('כללי')) {
     return 'משוב כללי';

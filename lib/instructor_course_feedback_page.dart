@@ -39,21 +39,91 @@ class _InstructorCourseFeedbackPageState
     'תרגיל הפתעה': 0,
   };
 
+  /// Calculate hitsScore for בוחן רמה
+  /// NEW LOGIC for hits 4/5/6: 4→1, 5→2, 6→3
+  /// EXISTING LOGIC for other values: scaled 1-5 based on hits (6-10 range)
+  double _calculateHitsScore(int hits) {
+    // ✅ NEW: Special scoring for hits 4, 5, 6
+    if (hits == 4) {
+      debugPrint('🎯 BOHEN_REMA: hits=4 → hitsScore=1 (NEW LOGIC)');
+      return 1.0;
+    }
+    if (hits == 5) {
+      debugPrint('🎯 BOHEN_REMA: hits=5 → hitsScore=2 (NEW LOGIC)');
+      return 2.0;
+    }
+    if (hits == 6) {
+      debugPrint('🎯 BOHEN_REMA: hits=6 → hitsScore=3 (NEW LOGIC)');
+      return 3.0;
+    }
+
+    // ✅ EXISTING LOGIC for other hits values (0-3, 7-10+)
+    if (hits <= 0) return 0.0;
+    if (hits < 4) return 1.0; // hits 1-3 → score 1
+    if (hits >= 10) return 5.0; // hits 10+ → score 5
+    // hits 7-9: interpolate between 3.5 and 5
+    // Linear scale: 7→4, 8→4.5, 9→5 (approx)
+    final hitsScore = 3.0 + ((hits - 6) / 4.0) * 2.0; // 7→3.5, 8→4, 9→4.5
+    debugPrint(
+      '🎯 BOHEN_REMA: hits=$hits → hitsScore=${hitsScore.toStringAsFixed(2)} (EXISTING LOGIC)',
+    );
+    return hitsScore.clamp(1.0, 5.0);
+  }
+
+  /// Calculate timeScore for בוחן רמה (UNCHANGED - existing logic)
+  /// Scale: 7 seconds or less → 5, 15 seconds or more → 1
+  double _calculateTimeScore(int timeSeconds) {
+    if (timeSeconds <= 0) return 0.0;
+    if (timeSeconds <= 7) {
+      debugPrint(
+        '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=5 (EXISTING LOGIC)',
+      );
+      return 5.0;
+    }
+    if (timeSeconds >= 15) {
+      debugPrint(
+        '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=1 (EXISTING LOGIC)',
+      );
+      return 1.0;
+    }
+    // Linear interpolation between 7s (score 5) and 15s (score 1)
+    final timeFactor = (timeSeconds - 7) / (15 - 7); // 0 at 7s, 1 at 15s
+    final timeScore = 5.0 - (timeFactor * 4.0); // 5 at 7s, 1 at 15s
+    debugPrint(
+      '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=${timeScore.toStringAsFixed(2)} (EXISTING LOGIC)',
+    );
+    return timeScore.clamp(1.0, 5.0);
+  }
+
   int _calculateLevelTestRating() {
     final hits = int.tryParse(_hitsController.text) ?? 0;
     final timeSeconds = int.tryParse(_timeSecondsController.text) ?? 0;
+
+    // If both are zero, return 0 (no rating yet)
     if (hits == 0 && timeSeconds == 0) return 0;
-    if (hits < 6) return 1;
-    if (timeSeconds > 15 && hits < 8) return 1;
-    if (timeSeconds <= 7 && hits >= 10) return 5;
-    if (timeSeconds >= 15 || hits <= 6) return 1;
-    double timeFactor = (timeSeconds - 7) / (15 - 7);
-    timeFactor = timeFactor.clamp(0.0, 1.0);
-    double hitsFactor = (10 - hits) / (10 - 6);
-    hitsFactor = hitsFactor.clamp(0.0, 1.0);
-    double combinedFactor = (timeFactor + hitsFactor) / 2;
-    double rawScore = 5 - (combinedFactor * 4);
-    return rawScore.round().clamp(1, 5);
+
+    // Calculate separate scores
+    final hitsScore = _calculateHitsScore(hits);
+    final timeScore = _calculateTimeScore(timeSeconds);
+
+    // ✅ NEW FORMULA: finalScore = 50% hitsScore + 50% timeScore
+    final finalScore = (0.5 * hitsScore) + (0.5 * timeScore);
+
+    // Debug log for verification
+    debugPrint('');
+    debugPrint('🔵🔵🔵 BOHEN_REMA FINAL CALCULATION 🔵🔵🔵');
+    debugPrint('   hits=$hits → hitsScore=${hitsScore.toStringAsFixed(2)}');
+    debugPrint(
+      '   time=${timeSeconds}s → timeScore=${timeScore.toStringAsFixed(2)}',
+    );
+    debugPrint(
+      '   finalScore = (0.5 × ${hitsScore.toStringAsFixed(2)}) + (0.5 × ${timeScore.toStringAsFixed(2)}) = ${finalScore.toStringAsFixed(2)}',
+    );
+    debugPrint('   rounded = ${finalScore.round().clamp(1, 5)}');
+    debugPrint('🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵');
+    debugPrint('');
+
+    return finalScore.round().clamp(1, 5);
   }
 
   void _updateLevelTestRating() {
