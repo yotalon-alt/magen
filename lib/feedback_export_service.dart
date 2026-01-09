@@ -494,6 +494,97 @@ class FeedbackExportService {
     }
   }
 
+  /// Shared mapper: Transform instructor_course_evaluations doc to export-ready format
+  /// This function replicates the exact logic from instructor_course_selection_feedbacks_page's _loadFeedbacks
+  /// to ensure bulk export produces identical data to single export
+  static Future<Map<String, dynamic>> mapInstructorScreeningDocToExportRow(
+    DocumentSnapshot doc,
+  ) async {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final Map<String, dynamic> result = Map<String, dynamic>.from(data);
+    result['id'] = doc.id;
+
+    // ✅ RESOLVE INSTRUCTOR NAME (never export email)
+    final createdByUid = data['createdBy'] ?? data['createdByUid'];
+    final createdByName = data['createdByName'] as String?;
+    String instructorName = 'לא ידוע';
+
+    if (createdByUid != null && createdByUid.toString().isNotEmpty) {
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(createdByUid.toString())
+            .get()
+            .timeout(const Duration(seconds: 3));
+        if (userDoc.exists) {
+          final userData = userDoc.data();
+          final displayName = userData?['displayName'] as String?;
+          final fullName = userData?['fullName'] as String?;
+          final name = userData?['name'] as String?;
+
+          if (displayName != null && displayName.isNotEmpty) {
+            instructorName = displayName;
+          } else if (fullName != null && fullName.isNotEmpty) {
+            instructorName = fullName;
+          } else if (name != null && name.isNotEmpty) {
+            instructorName = name;
+          } else {
+            instructorName =
+                'מדריך ${createdByUid.toString().substring(0, 8)}...';
+          }
+        } else {
+          instructorName =
+              'מדריך ${createdByUid.toString().substring(0, 8)}...';
+        }
+      } catch (e) {
+        debugPrint(
+          '⚠️ Failed to fetch instructor name for UID $createdByUid: $e',
+        );
+        instructorName = 'מדריך ${createdByUid.toString().substring(0, 8)}...';
+      }
+    } else if (createdByName != null && createdByName.isNotEmpty) {
+      instructorName = createdByName;
+    }
+    result['instructorName'] = instructorName;
+
+    // ✅ COMPUTE AVERAGE SCORE from fields structure (same logic as _loadFeedbacks)
+    final fields = data['fields'] as Map<String, dynamic>? ?? {};
+    final Map<String, dynamic> scores = {};
+    double totalScore = 0.0;
+    int scoreCount = 0;
+
+    // Map Hebrew category names to English keys (must match UI expectations)
+    final categoryMapping = {
+      'בוחן רמה': 'levelTest',
+      'הדרכה טובה': 'goodInstruction',
+      'הדרכת מבנה': 'structureInstruction',
+      'יבשים': 'dryPractice',
+      'תרגיל הפתעה': 'surpriseExercise',
+    };
+
+    fields.forEach((hebrewName, fieldData) {
+      if (fieldData is Map && fieldData.containsKey('value')) {
+        final value = fieldData['value'];
+        final numValue = (value is num) ? value.toDouble() : 0.0;
+
+        final englishKey = categoryMapping[hebrewName];
+        if (englishKey != null) {
+          scores[englishKey] = numValue;
+          if (numValue > 0) {
+            totalScore += numValue;
+            scoreCount++;
+          }
+        }
+      }
+    });
+
+    final averageScore = scoreCount > 0 ? totalScore / scoreCount : 0.0;
+    result['scores'] = scores;
+    result['averageScore'] = averageScore;
+
+    return result;
+  }
+
   /// Helper method to format date from Firestore Timestamp or string
   static String _formatDate(dynamic date) {
     if (date is Timestamp) {
@@ -1758,10 +1849,13 @@ class FeedbackExportService {
   static Future<void> exportInstructorCourseSelection(String selection) async {
     try {
       debugPrint('🔵 exportInstructorCourseSelection called with: $selection');
+      debugPrint(
+        '   🐛 BUG FIX: Using shared mapper to ensure identical data to single export',
+      );
 
       final excel = Excel.createExcel();
 
-      // ✅ CORRECT: Query instructor_course_feedbacks with isSuitable filter
+      // ✅ CORRECT: Query instructor_course_evaluations (NOT instructor_course_feedbacks)
       final categoriesToExport = <Map<String, dynamic>>[];
       if (selection == 'suitable' || selection == 'both') {
         categoriesToExport.add({
@@ -1784,27 +1878,66 @@ class FeedbackExportService {
 
         debugPrint('📄 Processing category: isSuitable=$isSuitable');
 
-        // ✅ Load data from instructor_course_feedbacks with isSuitable filter
+        // ✅ FIX: Query the CORRECT collection (instructor_course_evaluations, not instructor_course_feedbacks)
+        // ✅ FIX: Use status='final' (not 'finalized') to match UI query
+        debugPrint(
+          '   🔍 Querying: instructor_course_evaluations where status=final, isSuitable=$isSuitable',
+        );
         final snapshot = await FirebaseFirestore.instance
-            .collection('instructor_course_feedbacks')
+            .collection('instructor_course_evaluations')
+            .where('status', isEqualTo: 'final')
             .where('isSuitable', isEqualTo: isSuitable)
-            .where('status', isEqualTo: 'finalized')
             .orderBy('createdAt', descending: true)
             .get()
             .timeout(const Duration(seconds: 15));
 
+        debugPrint(
+          '   📊 Query returned ${snapshot.docs.length} raw documents',
+        );
+
+        // ✅ FIX: Use the shared mapper function to transform each doc
         final feedbacks = <Map<String, dynamic>>[];
-        for (final doc in snapshot.docs) {
-          final data = doc.data();
-          data['id'] = doc.id;
-          feedbacks.add(data);
+        for (var i = 0; i < snapshot.docs.length; i++) {
+          final doc = snapshot.docs[i];
+
+          // Diagnostic: Log first 2 docs
+          if (i < 2) {
+            debugPrint('   🔍 Doc $i: id=${doc.id}');
+            debugPrint('      Raw keys: ${doc.data().keys.toList()}');
+          }
+
+          // ✅ USE SHARED MAPPER: This ensures identical logic to single export
+          final mappedData = await mapInstructorScreeningDocToExportRow(doc);
+          feedbacks.add(mappedData);
+
+          // Diagnostic: Log first mapped doc
+          if (i == 0) {
+            debugPrint('   🔍 First mapped doc:');
+            debugPrint('      candidateName: ${mappedData['candidateName']}');
+            debugPrint('      command: ${mappedData['command']}');
+            debugPrint('      brigade: ${mappedData['brigade']}');
+            debugPrint(
+              '      candidateNumber: ${mappedData['candidateNumber']}',
+            );
+            debugPrint(
+              '      scores keys: ${mappedData['scores']?.keys.toList()}',
+            );
+            debugPrint('      averageScore: ${mappedData['averageScore']}');
+            debugPrint('      instructorName: ${mappedData['instructorName']}');
+          }
         }
 
         debugPrint(
-          '✅ Loaded ${feedbacks.length} feedbacks (suitable=$isSuitable)',
+          '   ✅ Mapped ${feedbacks.length} feedbacks to export format (suitable=$isSuitable)',
         );
 
-        if (feedbacks.isEmpty) {
+        // ✅ FIX: Create sheet even if empty (for "שניהם" export)
+        if (feedbacks.isEmpty && selection == 'both') {
+          debugPrint(
+            '⚠️ No feedbacks for suitable=$isSuitable, but creating empty sheet for "שניהם" export',
+          );
+          // Continue to create empty sheet
+        } else if (feedbacks.isEmpty) {
           debugPrint('⚠️ No feedbacks for suitable=$isSuitable, skipping...');
           continue;
         }
@@ -1845,7 +1978,7 @@ class FeedbackExportService {
           '📊 Score columns (from UI): ${scoreColumns.map((c) => c['label']).join(', ')}',
         );
 
-        // Build headers matching UI structure
+        // Build headers matching UI structure + required instructor & date columns
         final headers = <String>[
           'פיקוד',
           'חטיבה',
@@ -1853,6 +1986,8 @@ class FeedbackExportService {
           'שם מועמד',
           ...scoreColumns.map((c) => c['label']!),
           'ממוצע',
+          'מדריך משב',
+          'תאריך המשוב',
         ];
 
         debugPrint('📑 Headers: ${headers.join(', ')}');
@@ -1999,6 +2134,43 @@ class FeedbackExportService {
           } else {
             cell.value = TextCellValue('');
           }
+          cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+          // מדריך משב (instructor name from shared mapper - never email)
+          cell = sheet.cell(
+            CellIndex.indexByColumnRow(
+              columnIndex: colIndex++,
+              rowIndex: rowIndex,
+            ),
+          );
+          cell.value = TextCellValue(
+            feedback['instructorName']?.toString() ?? 'לא ידוע',
+          );
+          cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+          // תאריך המשוב (feedback date)
+          cell = sheet.cell(
+            CellIndex.indexByColumnRow(
+              columnIndex: colIndex++,
+              rowIndex: rowIndex,
+            ),
+          );
+          final createdAt = feedback['createdAt'];
+          String dateStr = '';
+          if (createdAt is Timestamp) {
+            final dt = createdAt.toDate();
+            dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+          } else if (createdAt is DateTime) {
+            dateStr = DateFormat('dd/MM/yyyy HH:mm').format(createdAt);
+          } else if (createdAt is String) {
+            try {
+              final dt = DateTime.parse(createdAt);
+              dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+            } catch (e) {
+              dateStr = createdAt;
+            }
+          }
+          cell.value = TextCellValue(dateStr);
           cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
         }
 
