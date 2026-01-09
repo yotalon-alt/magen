@@ -1248,6 +1248,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const SarikotFixedPage(),
                 settings: settings,
               );
+            case '/about':
+              return MaterialPageRoute(
+                builder: (_) => const AboutPage(),
+                settings: settings,
+              );
             default:
               return MaterialPageRoute(
                 builder: (_) => const MaterialsPage(),
@@ -1762,6 +1767,19 @@ class _HomePageState extends State<HomePage>
                   textStyle: const TextStyle(fontSize: 14),
                   elevation: 2,
                 ),
+              ),
+            ),
+          ),
+          // Footer
+          Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Text(
+                'משוב מבצר • נוצר על-ידי יותם אלון',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
               ),
             ),
           ),
@@ -5967,6 +5985,11 @@ class MaterialsPage extends StatelessWidget {
         'route': 'sheva',
       },
       {'title': 'סעב"ל', 'subtitle': 'סדר עדיפויות בלחימה', 'route': 'saabal'},
+      {
+        'title': 'אודות המערכת',
+        'subtitle': 'מידע על האפליקציה',
+        'route': 'about',
+      },
     ];
 
     return Directionality(
@@ -6003,6 +6026,8 @@ class MaterialsPage extends StatelessWidget {
                       Navigator.of(ctx).pushNamed('/poruz');
                     } else if (route == 'sarikot') {
                       Navigator.of(ctx).pushNamed('/sarikot');
+                    } else if (route == 'about') {
+                      Navigator.of(ctx).pushNamed('/about');
                     }
                   },
                   child: Padding(
@@ -6433,6 +6458,89 @@ class SarikotFixedPage extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('אודות המערכת'),
+          leading: const StandardBackButton(),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // App icon/logo placeholder
+                Icon(Icons.feedback, size: 80, color: Colors.orangeAccent),
+                const SizedBox(height: 24),
+
+                // App name
+                const Text(
+                  'משוב מבצר',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+
+                // Version
+                const Text(
+                  'גרסה 1.0.0',
+                  style: TextStyle(fontSize: 18, color: Colors.black54),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+
+                // Creator
+                const Text(
+                  'נוצר על-ידי',
+                  style: TextStyle(fontSize: 16, color: Colors.black54),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'יותם אלון',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 48),
+
+                // Description placeholder
+                Card(
+                  color: Colors.grey.shade50,
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: const Text(
+                      'מערכת משובים לבית הספר להגנת היישוב\nחטיבה 474',
+                      style: TextStyle(fontSize: 16, color: Colors.black87),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

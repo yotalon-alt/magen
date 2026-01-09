@@ -218,6 +218,35 @@ class _InstructorCourseSelectionFeedbacksPageState
         final data = doc.data();
         data['id'] = doc.id;
 
+        // ✅ EXTRACT CREATOR INFO: Get instructor who created this feedback
+        final createdByUid = data['createdBy'] ?? data['createdByUid'];
+        final createdByName = data['createdByName'] as String?;
+
+        // ✅ FETCH INSTRUCTOR NAME: Look up user document for creator's name
+        String instructorName = 'לא ידוע';
+        if (createdByName != null && createdByName.isNotEmpty) {
+          instructorName = createdByName;
+        } else if (createdByUid != null && createdByUid.toString().isNotEmpty) {
+          try {
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(createdByUid.toString())
+                .get()
+                .timeout(const Duration(seconds: 3));
+            if (userDoc.exists) {
+              final userName = userDoc.data()?['name'] as String?;
+              if (userName != null && userName.isNotEmpty) {
+                instructorName = userName;
+              }
+            }
+          } catch (e) {
+            debugPrint(
+              '⚠️ Failed to fetch instructor name for UID $createdByUid: $e',
+            );
+          }
+        }
+        data['instructorName'] = instructorName;
+
         // ✅ MAP SCORES: Extract from fields structure and flatten to scores map
         final fields = data['fields'] as Map<String, dynamic>? ?? {};
         final Map<String, dynamic> scores = {};
