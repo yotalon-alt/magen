@@ -37,11 +37,27 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
 
       final isAdmin = currentUser?.role == 'Admin';
 
-      // Query for temporary range feedbacks
+      // ========== QUERY SHAPE FOR FIRESTORE INDEX ==========
+      // ADMIN QUERY:
+      //   - where('isDraft', '==', true)
+      //   - where('module', '==', 'shooting_ranges')
+      //   - orderBy('createdAt', 'DESCENDING')
+      //
+      // INSTRUCTOR QUERY:
+      //   - where('isDraft', '==', true)
+      //   - where('module', '==', 'shooting_ranges')
+      //   - where('instructorId', '==', uid)
+      //   - orderBy('createdAt', 'DESCENDING')
+      //
+      // Required indexes in firestore.indexes.json:
+      //   1. isDraft ASC + module ASC + createdAt DESC (for admin)
+      //   2. isDraft ASC + module ASC + instructorId ASC + createdAt DESC (for instructors)
+      // =====================================================
+
       Query query = FirebaseFirestore.instance
           .collection('feedbacks')
-          .where('folder', isEqualTo: 'מטווחים - משוב זמני')
-          .where('status', isEqualTo: 'temporary');
+          .where('isDraft', isEqualTo: true)
+          .where('module', isEqualTo: 'shooting_ranges');
 
       // Non-admins only see their own temp feedbacks
       if (!isAdmin) {
@@ -77,8 +93,8 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
         debugPrint('Query Details:');
         debugPrint('  Collection: feedbacks');
         debugPrint('  Filters:');
-        debugPrint('    - folder == "מטווחים - משוב זמני"');
-        debugPrint('    - status == "temporary"');
+        debugPrint('    - isDraft == true');
+        debugPrint('    - module == "shooting_ranges"');
         final isAdmin = currentUser?.role == 'Admin';
         if (!isAdmin) {
           debugPrint('    - instructorId == "${currentUser?.uid}"');
@@ -87,7 +103,7 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
         debugPrint('');
         debugPrint('Required Index:');
         debugPrint(
-          '  Fields: folder (ASC) + status (ASC) + ${isAdmin ? "" : "instructorId (ASC) + "}createdAt (DESC)',
+          '  Fields: isDraft (ASC) + module (ASC) + ${isAdmin ? "" : "instructorId (ASC) + "}createdAt (DESC)',
         );
         debugPrint('');
         debugPrint('To fix: Run "firebase deploy --only firestore:indexes"');

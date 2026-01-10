@@ -136,6 +136,7 @@ class FeedbackModel {
   final String
   folderKey; // canonical key: 'ranges_474' | 'shooting_ranges' | ''
   final String folderLabel; // Hebrew display label
+  final String rangeSubType; // 'טווח קצר' or 'טווח רחוק' for display
 
   const FeedbackModel({
     this.id,
@@ -160,6 +161,7 @@ class FeedbackModel {
     this.isTemporary = false,
     this.folderKey = '',
     this.folderLabel = '',
+    this.rangeSubType = '',
   });
 
   static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
@@ -249,6 +251,7 @@ class FeedbackModel {
         if (rawFolder.isNotEmpty) return rawFolder;
         return '';
       })(),
+      rangeSubType: (m['rangeSubType'] ?? '').toString(),
     );
   }
 
@@ -274,6 +277,7 @@ class FeedbackModel {
     bool? isTemporary,
     String? folderKey,
     String? folderLabel,
+    String? rangeSubType,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -297,6 +301,7 @@ class FeedbackModel {
       isTemporary: isTemporary ?? this.isTemporary,
       folderKey: folderKey ?? this.folderKey,
       folderLabel: folderLabel ?? this.folderLabel,
+      rangeSubType: rangeSubType ?? this.rangeSubType,
     );
   }
 
@@ -323,6 +328,7 @@ class FeedbackModel {
       'isTemporary': isTemporary,
       'folderKey': folderKey,
       'folderLabel': folderLabel,
+      'rangeSubType': rangeSubType,
     };
   }
 }
@@ -4138,6 +4144,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             'module': f.module,
                             'rangeType':
                                 '', // Will be inferred from other fields
+                            'rangeSubType': f
+                                .rangeSubType, // ✅ Display label for short/long
                           };
                           final blueTagLabel = getBlueTagLabelFromDoc(
                             feedbackData,
@@ -4534,7 +4542,16 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               ),
               const SizedBox(height: 8),
             ],
-            Text('תפקיד: ${feedback.role}'),
+            // Conditional display: "טווח:" for shooting ranges, "תפקיד:" for others
+            (feedback.folderKey == 'shooting_ranges' ||
+                    feedback.folderKey == 'ranges_474' ||
+                    feedback.folder == 'מטווחי ירי' ||
+                    feedback.folder == 'מטווחים 474' ||
+                    feedback.module == 'shooting_ranges')
+                ? Text(
+                    'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
+                  )
+                : Text('תפקיד: ${feedback.role}'),
             const SizedBox(height: 8),
             (feedback.folderKey == 'shooting_ranges' ||
                     feedback.folder == 'מטווחי ירי' ||

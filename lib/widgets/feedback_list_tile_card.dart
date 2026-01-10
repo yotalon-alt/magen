@@ -5,7 +5,13 @@ import 'package:flutter/material.dart';
 /// Returns the FEEDBACK TYPE label only (not folder, not location)
 String getBlueTagLabelFromDoc(Map<String, dynamic> data) {
   // ====== FEEDBACK TYPE DETECTION ======
-  // Priority: exercise > module+rangeType > feedbackType > legacy inference
+  // Priority: rangeSubType > exercise > module+rangeType > feedbackType > legacy inference
+
+  // 0. ✅ Check rangeSubType field first (highest priority for range feedbacks)
+  final rangeSubType = (data['rangeSubType'] ?? '').toString();
+  if (rangeSubType.isNotEmpty) {
+    return rangeSubType; // Returns "טווח קצר" or "טווח רחוק"
+  }
 
   final exercise = (data['exercise'] ?? '').toString();
   final module = (data['module'] ?? '').toString().toLowerCase();

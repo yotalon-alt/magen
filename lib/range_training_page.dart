@@ -142,6 +142,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   String? selectedSettlement;
   String? rangeFolder; // "474 Ranges" or "Shooting Ranges"
+  String? loadedFolderKey; // ✅ Folder ID loaded from draft (if any)
+  String? loadedFolderLabel; // ✅ Folder label loaded from draft (if any)
   String settlementName = ''; // unified settlement field
   String instructorName = '';
   bool isManualLocation =
@@ -152,6 +154,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   late TextEditingController _attendeesCountController;
 
   late String _rangeType;
+  String? rangeSubType; // "טווח קצר" or "טווח רחוק" for display label
 
   // Short Range specific: multi-stage dynamic list
   List<ShortRangeStageModel> shortRangeStagesList = [];
@@ -227,6 +230,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     stations.add(RangeStation(name: '', bulletsCount: 0));
     _rangeType = widget.rangeType;
 
+    // ✅ Set rangeSubType for display label
+    if (_rangeType == 'קצרים') {
+      rangeSubType = 'טווח קצר';
+    } else if (_rangeType == 'ארוכים') {
+      rangeSubType = 'טווח רחוק';
+    }
+
     // Initialize Long Range with empty stages list (user adds manually)
     if (_rangeType == 'ארוכים') {
       longRangeStagesList = [];
@@ -301,14 +311,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   /// ✅ GET OR CREATE STABLE CONTROLLER: Returns existing or creates new controller
+  /// CRITICAL: Does NOT update existing controller during build to prevent value transformation
   TextEditingController _getController(String key, String initialValue) {
     if (!_textControllers.containsKey(key)) {
+      // ✅ CREATE NEW: Only happens once per key
       _textControllers[key] = TextEditingController(text: initialValue);
+      debugPrint(
+        '🆕 CONTROLLER CREATED: key=$key, initialValue="$initialValue"',
+      );
     } else {
-      // Update text if it changed (e.g., loaded from Firestore)
-      if (_textControllers[key]!.text != initialValue) {
-        _textControllers[key]!.text = initialValue;
-      }
+      // ✅ EXISTING CONTROLLER: DO NOT UPDATE during build
+      // This prevents feedback loop where build -> update controller -> rebuild -> update again
+      // Controller text should ONLY change from:
+      // 1. User typing (onChanged)
+      // 2. Explicit programmatic updates (like loading from Firestore)
+      debugPrint(
+        '♻️ CONTROLLER REUSED: key=$key, currentText="${_textControllers[key]!.text}", wouldBeInitialValue="$initialValue"',
+      );
     }
     return _textControllers[key]!;
   }
@@ -757,24 +776,22 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return maxPointsMap[principleIndex] ?? 0;
   }
 
-  // Calculate total maxPoints across all principles (Surprise Drills)
-  int _getTotalMaxPointsSurprise() {
-    if (widget.mode != 'surprise') return 0;
-    final maxPointsMap = _getDynamicMaxPointsPerPrinciple();
-    return maxPointsMap.values.fold(0, (total, maxPoints) => total + maxPoints);
-  }
-
-  // Calculate average percentage for a trainee (surprise mode only)
-  // Percentage = (totalPoints / totalMaxPoints) * 100
+  // ✅ SURPRISE DRILLS: Calculate average score (0-10) from filled principle scores
+  // Average = sum(filled scores) / count(filled scores)
+  // Ignores empty/zero scores
   double _getTraineeAveragePoints(int traineeIndex) {
     if (traineeIndex >= traineeRows.length) return 0.0;
     if (widget.mode != 'surprise') return 0.0;
 
-    final totalPoints = _getTraineeTotalPoints(traineeIndex);
-    final totalMaxPoints = _getTotalMaxPointsSurprise();
+    final trainee = traineeRows[traineeIndex];
+    final filledScores = trainee.values.values
+        .where((score) => score > 0)
+        .toList();
 
-    if (totalMaxPoints == 0) return 0.0;
-    return (totalPoints / totalMaxPoints) * 100;
+    if (filledScores.isEmpty) return 0.0;
+
+    final sum = filledScores.reduce((a, b) => a + b);
+    return sum / filledScores.length;
   }
 
   // ===== LONG RANGE POINTS CALCULATION (NEW) =====
@@ -821,17 +838,36 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   Future<void> _saveToFirestore() async {
     // בדיקות תקינות - REQUIRED folder selection for Long Range (NOT for Surprise)
     // Surprise Drill has a fixed folder, no selection needed
-    if (widget.mode != 'surprise' &&
-        (rangeFolder == null || rangeFolder!.isEmpty)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('אנא בחר תיקייה')));
-      return;
+    // ✅ IMPROVED: Check BOTH rangeFolder (UI) and loadedFolderKey (from draft)
+    if (widget.mode != 'surprise') {
+      final hasUIFolder = rangeFolder != null && rangeFolder!.isNotEmpty;
+      final hasDraftFolder =
+          loadedFolderKey != null && loadedFolderKey!.isNotEmpty;
+
+      if (!hasUIFolder && !hasDraftFolder) {
+        debugPrint(
+          '❌ SAVE VALIDATION: No folder selected (UI: $rangeFolder, Draft: $loadedFolderKey)',
+        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('אנא בחר תיקייה')));
+        return;
+      }
     }
 
     // Long Range: Validate folder is exactly one of the allowed options
+    // ✅ IMPROVED: Accept valid loadedFolderKey even if rangeFolder UI is not set
     if (_rangeType == 'ארוכים' && widget.mode == 'range') {
-      if (rangeFolder != 'מטווחים 474' && rangeFolder != 'מטווחי ירי') {
+      final hasValidUIFolder =
+          rangeFolder == 'מטווחים 474' || rangeFolder == 'מטווחי ירי';
+      final hasValidDraftFolder =
+          loadedFolderKey == 'ranges_474' ||
+          loadedFolderKey == 'shooting_ranges';
+
+      if (!hasValidUIFolder && !hasValidDraftFolder) {
+        debugPrint(
+          '❌ SAVE VALIDATION: Invalid folder (UI: $rangeFolder, Draft: $loadedFolderKey)',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('אנא בחר תיקייה תקינה: מטווחים 474 או מטווחי ירי'),
@@ -993,34 +1029,143 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           : (_rangeType == 'קצרים' ? 'דיווח קצר' : 'דיווח רחוק');
 
       // ====== UNIFIED FOLDER KEYS ======
-      // Map UI selection to canonical folderKey and folderLabel - NO FALLBACKS
+      // ✅ PRIORITY: Use loaded folder fields from draft if available (prevents recomputation bugs)
+      // If not loaded from draft, map UI selection to canonical folderKey and folderLabel
       String folderKey;
       String folderLabel;
       String folderId = '';
-      final uiFolderValue = (rangeFolder ?? '').toString();
+      final String uiFolderValue = (rangeFolder ?? '')
+          .toString(); // ✅ Declare outside for logging
 
-      // SURPRISE DRILL: Hardcoded folder - no user selection needed
-      if (widget.mode == 'surprise') {
-        folderKey = 'surprise_drills';
-        folderLabel = 'משוב תרגילי הפתעה';
-        folderId = 'surprise_drills';
-      }
-      // Exact matching only - no fallbacks to ensure user selection is respected
-      else if (uiFolderValue == 'מטווחים 474') {
-        folderKey = 'ranges_474';
-        folderLabel = 'מטווחים 474';
-        folderId = 'ranges_474';
+      debugPrint('\n========== FOLDER RESOLUTION START ==========');
+      debugPrint('FOLDER_RESOLVE: uiFolderValue="$uiFolderValue"');
+      debugPrint('FOLDER_RESOLVE: loadedFolderKey="$loadedFolderKey"');
+      debugPrint('FOLDER_RESOLVE: loadedFolderLabel="$loadedFolderLabel"');
+
+      // ✅ CRITICAL: Compute resolvedFolderKey = selectedFolderKey ?? draft.folderKey
+      String? resolvedFolderKey;
+      if (loadedFolderKey != null && loadedFolderKey!.isNotEmpty) {
+        resolvedFolderKey = loadedFolderKey;
+        debugPrint(
+          'FOLDER_RESOLVE: ✅ Using draft folderKey: $resolvedFolderKey',
+        );
+      } else if (widget.mode == 'surprise') {
+        resolvedFolderKey = 'surprise_drills';
+        debugPrint('FOLDER_RESOLVE: ✅ Using hardcoded surprise_drills');
+      } else if (uiFolderValue == 'מטווחים 474') {
+        resolvedFolderKey = 'ranges_474';
+        debugPrint('FOLDER_RESOLVE: ✅ Computed from UI: ranges_474');
       } else if (uiFolderValue == 'מטווחי ירי') {
-        folderKey = 'shooting_ranges';
-        folderLabel = 'מטווחי ירי';
-        folderId = 'shooting_ranges';
+        resolvedFolderKey = 'shooting_ranges';
+        debugPrint('FOLDER_RESOLVE: ✅ Computed from UI: shooting_ranges');
+      }
+
+      // ✅ CRITICAL VALIDATION: Block save if resolvedFolderKey is missing
+      if (resolvedFolderKey == null || resolvedFolderKey.isEmpty) {
+        debugPrint(
+          '❌❌❌ FINAL SAVE BLOCKED: resolvedFolderKey is null/empty ❌❌❌',
+        );
+        debugPrint('   uiFolderValue: $uiFolderValue');
+        debugPrint('   loadedFolderKey: $loadedFolderKey');
+        debugPrint('   mode: ${widget.mode}');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'FINAL SAVE BLOCKED: missing folderKey\n'
+              'UI: $uiFolderValue | Draft: $loadedFolderKey',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        setState(() => _isSaving = false);
+        return;
+      }
+
+      debugPrint('✅ FOLDER_RESOLVE: resolvedFolderKey = $resolvedFolderKey');
+
+      // Check if folder fields were loaded from draft
+      if (loadedFolderKey != null && loadedFolderKey!.isNotEmpty) {
+        // ✅ REUSE LOADED VALUES - Don't recompute to avoid bugs
+        folderKey = loadedFolderKey!;
+        folderLabel =
+            loadedFolderLabel ?? folderKey; // Fallback to key if label missing
+        folderId = folderKey; // Use folderKey as folderId
+        debugPrint(
+          'FOLDER_RESOLVE: ✅ Using LOADED folder fields: folderKey=$folderKey folderLabel=$folderLabel',
+        );
       } else {
-        // Should never reach here due to validation above
-        throw Exception('Invalid folder selection: $uiFolderValue');
+        // ✅ COMPUTE FROM UI SELECTION (new feedback, not from draft)
+
+        // SURPRISE DRILL: Hardcoded folder - no user selection needed
+        if (widget.mode == 'surprise') {
+          folderKey = 'surprise_drills';
+          folderLabel = 'משוב תרגילי הפתעה';
+          folderId = 'surprise_drills';
+        }
+        // Exact matching only - no fallbacks to ensure user selection is respected
+        else if (uiFolderValue == 'מטווחים 474') {
+          folderKey = 'ranges_474';
+          folderLabel = 'מטווחים 474';
+          folderId = 'ranges_474';
+        } else if (uiFolderValue == 'מטווחי ירי') {
+          folderKey = 'shooting_ranges';
+          folderLabel = 'מטווחי ירי';
+          folderId = 'shooting_ranges';
+        } else {
+          // Should never reach here due to validation above
+          debugPrint(
+            '❌ FOLDER_RESOLVE: Invalid UI folder value: $uiFolderValue',
+          );
+          throw Exception('Invalid folder selection: $uiFolderValue');
+        }
+        debugPrint(
+          'FOLDER_RESOLVE: ✅ COMPUTED folder fields from UI: folderKey=$folderKey folderLabel=$folderLabel',
+        );
+      }
+
+      debugPrint(
+        'FOLDER_RESOLVE: Final values: folderKey=$folderKey folderLabel=$folderLabel folderId=$folderId',
+      );
+      debugPrint('========== FOLDER RESOLUTION END ==========\n');
+
+      // ✅ CRITICAL VALIDATION: Ensure folder fields are never empty (defensive check)
+      if (folderKey.isEmpty || folderLabel.isEmpty) {
+        debugPrint(
+          '❌ SAVE ERROR: Empty folder fields! folderKey="$folderKey" folderLabel="$folderLabel"',
+        );
+        debugPrint(
+          '❌ SAVE ERROR: Draft had: loadedFolderKey="$loadedFolderKey" loadedFolderLabel="$loadedFolderLabel"',
+        );
+        debugPrint('❌ SAVE ERROR: UI had: rangeFolder="$rangeFolder"');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'שגיאה פנימית: נתוני תיקייה חסרים. אנא בחר תיקייה מחדש.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
 
       // ✅ Build trainees data from traineeRows model
       final List<Map<String, dynamic>> traineesData = [];
+
+      // ⚠️ DEBUG: Log before normalization for Long Range
+      if (_rangeType == 'ארוכים') {
+        debugPrint('\n╔═══ LONG RANGE SAVE: BEFORE SERIALIZATION ═══╗');
+        debugPrint('║ RangeType: $_rangeType');
+        debugPrint('║ Total trainees: ${traineeRows.length}');
+        for (int i = 0; i < traineeRows.length && i < 3; i++) {
+          final row = traineeRows[i];
+          debugPrint('║ Trainee[$i]: "${row.name}"');
+          debugPrint('║   RAW values from model: ${row.values}');
+        }
+        debugPrint('╚════════════════════════════════════════════╝\n');
+      }
+
       for (int i = 0; i < traineeRows.length; i++) {
         final row = traineeRows[i];
         if (row.name.trim().isEmpty) continue; // Skip empty names
@@ -1029,7 +1174,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final Map<String, int> hitsMap = {};
         row.values.forEach((stationIdx, value) {
           if (value > 0) {
+            // ✅ LONG RANGE PROTECTION: Store exact points (NO division)
+            // Long Range: value is POINTS (0-100), NOT bullets
+            // Short Range: value is HITS (0-bullets)
+            // Both store AS-IS without normalization
             hitsMap['station_$stationIdx'] = value;
+
+            // ⚠️ DEBUG ASSERTION: Detect if value was incorrectly normalized
+            if (_rangeType == 'ארוכים') {
+              // Check if value looks like it was divided by 10
+              // (e.g., original 75 became 7, or 100 became 10)
+              if (value > 0 && value <= 10 && (value * 10) <= 100) {
+                debugPrint(
+                  '⚠️⚠️ WARNING: LONG RANGE value=$value looks suspiciously small! '
+                  'Possible division by 10 bug. Expected range: 0-100 points.',
+                );
+              }
+            }
           }
         });
 
@@ -1048,6 +1209,43 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'totalHits': _getTraineeTotalHits(i),
           'number': i + 1,
         });
+      }
+
+      // ⚠️ DEBUG: Log after serialization for Long Range
+      if (_rangeType == 'ארוכים' && traineesData.isNotEmpty) {
+        debugPrint('\n╔═══ LONG RANGE SAVE: AFTER SERIALIZATION ═══╗');
+        debugPrint('║ Total serialized: ${traineesData.length}');
+
+        // ✅ STRICT VERIFICATION: Check for division bug
+        bool bugDetected = false;
+        for (int i = 0; i < traineesData.length && i < 3; i++) {
+          final t = traineesData[i];
+          final hits = t['hits'] as Map<String, dynamic>? ?? {};
+          debugPrint('║ Trainee[$i]: "${t['name']}"');
+          debugPrint('║   SERIALIZED hits: $hits');
+          debugPrint('║   Total hits: ${t['totalHits']}');
+
+          // Check each value for suspicious division
+          hits.forEach((key, val) {
+            if (val is int && val > 0 && val <= 10) {
+              final possibleOriginal = val * 10;
+              if (possibleOriginal <= 100) {
+                debugPrint(
+                  '║   ⚠️ SUSPICIOUS: $key=$val (could be $possibleOriginal÷10)',
+                );
+                bugDetected = true;
+              }
+            }
+          });
+        }
+
+        if (bugDetected) {
+          debugPrint('║');
+          debugPrint('║ ❌❌❌ BUG DETECTED: Values look normalized by /10 ❌❌❌');
+          debugPrint('║ Expected: 0-100 points, Got: suspicious 0-10 values');
+        }
+
+        debugPrint('╚════════════════════════════════════════════╝\n');
       }
 
       // Resolve instructor's Hebrew full name from Firestore
@@ -1114,6 +1312,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
+        'rangeSubType':
+            rangeSubType, // ✅ Display label for list UI (טווח קצר/טווח רחוק)
         'settlement': isManualLocation
             ? manualLocationText
             : (settlementName.isNotEmpty ? settlementName : selectedSettlement),
@@ -1132,7 +1332,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // ========== SEPARATE COLLECTIONS FOR SURPRISE VS RANGE ==========
       DocumentReference? docRef;
       String collectionPath;
-      String successMessage;
 
       if (widget.mode == 'surprise') {
         // SURPRISE DRILLS: Save to dedicated collection
@@ -1148,9 +1347,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           // Required fields for Surprise Drills
           'module': 'surprise_drill',
           'type': 'surprise_exercise',
-          'isTemporary': false,
+          'isTemporary': false, // ✅ Mark as final (not temp)
+          'isDraft': false, // ✅ Mark as final (not draft)
+          'status': 'final', // ✅ Override baseData status
+          'finalizedAt': FieldValue.serverTimestamp(), // ✅ Track when finalized
           'exercise': 'תרגילי הפתעה',
-          'folder': 'משוב תרגילי הפתעה',
+          'folder': 'משוב תרגילי הפתעה', // ✅ Final folder (not temp)
           'feedbackType': saveType,
           'rangeMode': widget.mode,
           'name': finalSettlement,
@@ -1179,41 +1381,72 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         );
         debugPrint('SAVE_DEBUG: payload keys=${surpriseData.keys.toList()}');
 
-        if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
-          docRef = FirebaseFirestore.instance
+        debugPrint('\n========== FIRESTORE WRITE START ==========');
+
+        // ✅ FIX: Use deterministic draft ID to UPDATE existing temp document
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        final String moduleType = 'surprise_drill';
+        final String draftId =
+            '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
+
+        debugPrint('WRITE: Using draft ID for final save: $draftId');
+        debugPrint(
+          'WRITE: Will UPDATE existing temp document (not create new)',
+        );
+
+        try {
+          // ✅ CRITICAL FIX: UPDATE the existing temp document to convert it to final
+          final finalDocRef = FirebaseFirestore.instance
               .collection(collectionPath)
-              .doc(widget.feedbackId);
-          debugPrint('SAVE: Updating existing doc=${docRef.path}');
-          await docRef.update(surpriseData);
-        } else {
-          debugPrint('SAVE: Creating NEW document in $collectionPath');
-          docRef = await FirebaseFirestore.instance
-              .collection(collectionPath)
-              .add(surpriseData);
-          debugPrint('SAVE: New doc created=${docRef.path}');
+              .doc(draftId); // Use SAME ID as temp save
+
+          debugPrint('WRITE: finalId=$draftId (SAME as temp draft)');
+          debugPrint('WRITE: finalPath=${finalDocRef.path}');
+          debugPrint(
+            'WRITE: This will UPDATE the temp document to final status',
+          );
+
+          debugPrint('WRITE: Awaiting set on finalDocRef...');
+          await finalDocRef.set(surpriseData); // Overwrite temp with final
+          docRef = finalDocRef; // Store for readback
+
+          debugPrint('WRITE: ✅ Final document created=${finalDocRef.path}');
+          debugPrint('========== FIRESTORE WRITE END ==========\n');
+
+          // ✅ SUCCESS SNACKBAR
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('FINAL SAVE OK -> folderKey=$resolvedFolderKey'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } catch (writeError) {
+          debugPrint('❌❌❌ FIRESTORE WRITE FAILED ❌❌❌');
+          debugPrint('WRITE_ERROR: $writeError');
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('FINAL SAVE ERROR: $writeError'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          setState(() => _isSaving = false);
+          rethrow;
         }
 
         // ✅ FINALIZE LOG
         debugPrint(
-          'FINALIZE_SAVE path=${docRef.path} module=surprise_drill type=surprise_exercise isTemporary=false',
+          'FINALIZE_SAVE path=${docRef.path} module=surprise_drill type=surprise_exercise isTemporary=false finalId=${docRef.id}',
+        );
+        debugPrint('FINALIZE_SAVE: Temp document updated to final (same ID)');
+        debugPrint(
+          'FINALIZE_SAVE: No cleanup needed - same document updated in place',
         );
 
-        // Delete temporary draft if it exists
-        if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
-          try {
-            debugPrint('SAVE: Deleting temporary draft: $_editingFeedbackId');
-            await FirebaseFirestore.instance
-                .collection('feedbacks')
-                .doc(_editingFeedbackId)
-                .delete();
-            debugPrint('✅ SAVE: Temporary draft deleted successfully');
-          } catch (e) {
-            debugPrint('⚠️ SAVE: Failed to delete draft: $e');
-          }
-        }
-
         debugPrint('===============================================\n');
-        successMessage = '✅ המשוב נשמר בהצלחה - תרגילי הפתעה';
       } else {
         // SHOOTING RANGES: Save to dedicated collection
         collectionPath = 'feedbacks';
@@ -1234,9 +1467,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           // Required fields for Shooting Ranges
           'module': 'shooting_ranges',
           'type': 'range_feedback',
-          'isTemporary': false,
+          'isTemporary': false, // ✅ Mark as final (not temp)
+          'isDraft': false, // ✅ Mark as final (not draft)
+          'status': 'final', // ✅ Override baseData status
+          'finalizedAt': FieldValue.serverTimestamp(), // ✅ Track when finalized
           'exercise': 'מטווחים',
-          'folder': targetFolder,
+          'folder': targetFolder, // ✅ Final folder (not temp)
           'folderCategory':
               rangeFolder, // Store chosen folder for filtering/export
           'folderKey': folderKey,
@@ -1245,6 +1481,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'feedbackType': saveType,
           'rangeMode': widget.mode,
           'rangeSubFolder': subFolder,
+          // rangeSubType inherited from baseData
           'name': settlementName,
           'role': 'מטווח',
           'scores': {},
@@ -1286,27 +1523,80 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           );
         }
         // Log trainee points (no conversion)
+        debugPrint(
+          '║ ⚠️  POINTS VERIFICATION: Values stored AS-IS, NO division/multiplication',
+        );
         for (int i = 0; i < traineeRows.length && i < 3; i++) {
           final row = traineeRows[i];
           final totalPoints = _getTraineeTotalPointsLongRange(i);
           debugPrint(
-            '║ 👤 Trainee[$i]: "${row.name}" → totalPoints=$totalPoints (values=${row.values})',
+            '║ 👤 Trainee[$i]: "${row.name}" → totalPoints=$totalPoints (RAW values=${row.values})',
           );
+          // Verify: Print first station value as example
+          if (row.values.isNotEmpty) {
+            final firstStationIdx = row.values.keys.first;
+            final firstValue = row.values[firstStationIdx];
+            debugPrint(
+              '║    ↳ Station[$firstStationIdx]: value=$firstValue (stored/displayed AS-IS)',
+            );
+          }
         }
         debugPrint('╚══════════════════════════════════════════════════╝\n');
 
-        if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
-          docRef = FirebaseFirestore.instance
+        debugPrint('\n========== FIRESTORE WRITE START ==========');
+
+        // ✅ FIX: Use deterministic draft ID to UPDATE existing temp document
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        final String moduleType = 'shooting_ranges';
+        final String draftId =
+            '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
+
+        debugPrint('WRITE: Using draft ID for final save: $draftId');
+        debugPrint(
+          'WRITE: Will UPDATE existing temp document (not create new)',
+        );
+
+        try {
+          // ✅ CRITICAL FIX: UPDATE the existing temp document to convert it to final
+          final finalDocRef = FirebaseFirestore.instance
               .collection(collectionPath)
-              .doc(widget.feedbackId);
-          debugPrint('SAVE: Updating existing doc=${docRef.path}');
-          await docRef.update(rangeData);
-        } else {
-          debugPrint('SAVE: Creating NEW document in $collectionPath');
-          docRef = await FirebaseFirestore.instance
-              .collection(collectionPath)
-              .add(rangeData);
-          debugPrint('SAVE: New doc created=${docRef.path}');
+              .doc(draftId); // Use SAME ID as temp save
+
+          debugPrint('WRITE: finalId=$draftId (SAME as temp draft)');
+          debugPrint('WRITE: finalPath=${finalDocRef.path}');
+          debugPrint(
+            'WRITE: This will UPDATE the temp document to final status',
+          );
+
+          debugPrint('WRITE: Awaiting set on finalDocRef...');
+          await finalDocRef.set(rangeData); // Overwrite temp with final
+          docRef = finalDocRef; // Store for readback
+
+          debugPrint('WRITE: ✅ Final document created=${finalDocRef.path}');
+          debugPrint('========== FIRESTORE WRITE END ==========\n');
+
+          // ✅ SUCCESS SNACKBAR
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('FINAL SAVE OK -> folderKey=$resolvedFolderKey'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } catch (writeError) {
+          debugPrint('❌❌❌ FIRESTORE WRITE FAILED ❌❌❌');
+          debugPrint('WRITE_ERROR: $writeError');
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('FINAL SAVE ERROR: $writeError'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          setState(() => _isSaving = false);
+          rethrow;
         }
 
         // ✅ FINALIZE LOG
@@ -1318,62 +1608,53 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('\n╔══════════════════════════════════════════════════╗');
         debugPrint('║  LONG RANGE ACCEPTANCE TEST: POST-SAVE PROOF     ║');
         debugPrint('╠══════════════════════════════════════════════════╣');
-        debugPrint('║ ✅ docId: ${docRef.id}');
-        debugPrint('║ ✅ docPath: ${docRef.path}');
+        debugPrint('║ ✅ finalId: ${docRef.id} (SAME as temp draft)');
+        debugPrint('║ ✅ finalPath: ${docRef.path}');
         debugPrint('║ ✅ folderKey: $folderKey');
         debugPrint('║ ✅ folderLabel: $folderLabel');
         debugPrint('║ ✅ targetFolder: $targetFolder');
-        debugPrint('║ ✅ SINGLE WRITE COMPLETED - NO DUPLICATES');
+        debugPrint('║ ✅ UPDATE IN PLACE - temp converted to final');
+        debugPrint('║ ✅ Status changed: temporary → final');
+        debugPrint('║ ✅ Folder changed: משוב זמני → $targetFolder');
         debugPrint('╚══════════════════════════════════════════════════╝\n');
 
-        // Delete temporary draft if it exists
-        if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
-          try {
-            debugPrint('SAVE: Deleting temporary draft: $_editingFeedbackId');
-            await FirebaseFirestore.instance
-                .collection('feedbacks')
-                .doc(_editingFeedbackId)
-                .delete();
-            debugPrint('✅ SAVE: Temporary draft deleted successfully');
-          } catch (e) {
-            debugPrint('⚠️ SAVE: Failed to delete draft: $e');
-          }
-        }
-
         debugPrint('===============================================\n');
-        successMessage = '✅ המשוב נשמר בהצלחה - מטווחים';
       }
 
       debugPrint('SAVE: Write completed, path=${docRef.path}');
 
       // ========== IMMEDIATE READBACK VERIFICATION ==========
+      debugPrint('\n========== READBACK VERIFICATION START ==========');
+      debugPrint('READBACK: Verifying finalDocRef at ${docRef.path}');
+      debugPrint('READBACK: finalId=${docRef.id}');
       try {
         final snap = await docRef.get();
-        debugPrint('SAVE_READBACK: exists=${snap.exists}');
+        debugPrint('READBACK: exists=${snap.exists} (MUST be true)');
         if (snap.exists) {
           final savedData = snap.data() as Map<String, dynamic>?;
           final savedTrainees = savedData?['trainees'] as List?;
+          final savedDraftId = savedData?['draftId'] as String?;
+          debugPrint('READBACK: traineesCount=${savedTrainees?.length ?? 0}');
+          if (savedDraftId != null) {
+            debugPrint('READBACK: sourceDraftId=$savedDraftId (tracked)');
+          }
           debugPrint(
-            'SAVE_READBACK: traineesCount=${savedTrainees?.length ?? 0}',
+            'READBACK: ✅ VERIFIED - Final document persisted successfully',
           );
-          debugPrint('✅ SAVE VERIFIED: Document persisted successfully');
+          debugPrint('READBACK: Collection: feedbacks');
+          debugPrint('READBACK: Document ID: ${docRef.id}');
         } else {
-          debugPrint('❌ SAVE WARNING: Document not found on readback!');
+          debugPrint('READBACK: ❌❌❌ CRITICAL ERROR - Document not found!');
+          debugPrint(
+            'READBACK: This should NEVER happen after successful write',
+          );
         }
       } catch (readbackError) {
-        debugPrint('⚠️ SAVE: Readback verification failed: $readbackError');
+        debugPrint('READBACK: ⚠️ ERROR - Verification failed: $readbackError');
       }
+      debugPrint('========== READBACK VERIFICATION END ==========\n');
 
       if (!mounted) return;
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(successMessage),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
 
       // Navigate back to appropriate feedbacks list
       // Since we're using nested navigation, just pop back
@@ -1464,14 +1745,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           ? 'תרגילי הפתעה - משוב זמני'
           : 'מטווחים - משוב זמני';
 
-      // Draft: unify folderKey/label
+      // Draft: unify folderKey/label - EXACT matching to prevent ambiguity
       String draftFolderKey;
       String draftFolderLabel;
-      final dfLow = (rangeFolder ?? '').toLowerCase();
-      if (dfLow.contains('474') || dfLow.contains('מטווח')) {
+      // ✅ FIX: Use exact matching instead of .contains() to avoid false positives
+      // (e.g., 'מטווחי ירי' contains 'מטווח' substring, causing wrong classification)
+      if (rangeFolder == 'מטווחים 474' || rangeFolder == '474 Ranges') {
         draftFolderKey = 'ranges_474';
         draftFolderLabel = 'מטווחים 474';
+      } else if (rangeFolder == 'מטווחי ירי' ||
+          rangeFolder == 'Shooting Ranges') {
+        draftFolderKey = 'shooting_ranges';
+        draftFolderLabel = 'מטווחי ירי';
       } else {
+        // Fallback: default to shooting_ranges if unrecognized
         draftFolderKey = 'shooting_ranges';
         draftFolderLabel = 'מטווחי ירי';
       }
@@ -1541,10 +1828,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
 
       final Map<String, dynamic> payload = {
-        'status': 'temporary',
+        'status': 'temporary', // ✅ Required for temp list filtering
+        'isDraft': true, // ✅ Required for temp list filtering (backward compat)
         'module': moduleType,
         'isTemporary': true,
-        'folder': folderName,
+        'folder':
+            folderName, // 'מטווחים - משוב זמני' or 'תרגילי הפתעה - משוב זמני'
         'folderKey': draftFolderKey,
         'folderLabel': draftFolderLabel,
         'feedbackType': (_rangeType == 'קצרים'
@@ -1556,6 +1845,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
+        'rangeSubType': rangeSubType, // ✅ Add display label field
         'settlement': selectedSettlement ?? '',
         'settlementName': settlementName,
         'rangeFolder': rangeFolder ?? '',
@@ -1697,6 +1987,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final rawSettlement = data['settlement'] as String?;
       final rawSettlementName = data['settlementName'] as String?;
       final rawRangeFolder = data['rangeFolder'] as String?;
+      final rawFolderKey = data['folderKey'] as String?; // ✅ Load folder ID
+      final rawFolderLabel =
+          data['folderLabel'] as String?; // ✅ Load folder label
       final rawAttendeesCount = data['attendeesCount'] as num?;
       final rawSelectedShortRangeStage =
           data['selectedShortRangeStage'] as String?;
@@ -1713,6 +2006,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('DRAFT_LOAD: settlement=$rawSettlement');
       debugPrint('DRAFT_LOAD: settlementName=$rawSettlementName');
       debugPrint('DRAFT_LOAD: rangeFolder=$rawRangeFolder');
+      debugPrint('DRAFT_LOAD: folderKey=$rawFolderKey'); // ✅ Debug log
+      debugPrint('DRAFT_LOAD: folderLabel=$rawFolderLabel'); // ✅ Debug log
       debugPrint('DRAFT_LOAD: attendeesCount=$rawAttendeesCount');
       debugPrint(
         'DRAFT_LOAD: selectedShortRangeStage=$rawSelectedShortRangeStage',
@@ -1748,6 +2043,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
 
       debugPrint('DRAFT_LOAD: Loaded ${loadedRows.length} trainee rows');
+      // ⚠️ POINTS VERIFICATION: Log loaded points for Long Range (no conversion)
+      if (_rangeType == 'ארוכים' && loadedRows.isNotEmpty) {
+        debugPrint('╔═══ LONG RANGE POINTS LOAD VERIFICATION ═══╗');
+        for (int i = 0; i < loadedRows.length && i < 3; i++) {
+          final row = loadedRows[i];
+          debugPrint('║ Trainee[$i]: "${row.name}" RAW values=${row.values}');
+          if (row.values.isNotEmpty) {
+            final firstIdx = row.values.keys.first;
+            debugPrint(
+              '║   Station[$firstIdx]: value=${row.values[firstIdx]} (NO conversion applied)',
+            );
+          }
+        }
+        debugPrint('╚═══════════════════════════════════════════════╝');
+      }
 
       // ✅ Parse stations
       final List<RangeStation> loadedStations = [];
@@ -1805,7 +2115,31 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // Update metadata
         selectedSettlement = rawSettlement ?? selectedSettlement;
         settlementName = rawSettlementName ?? settlementName;
-        rangeFolder = rawRangeFolder ?? rangeFolder;
+
+        // ✅ FIX: Restore rangeFolder UI value from folderKey/folderLabel (for dropdown display)
+        // Priority: Use folderKey to determine correct UI value, fallback to rawRangeFolder
+        if (rawFolderKey != null && rawFolderKey.isNotEmpty) {
+          if (rawFolderKey == 'ranges_474') {
+            rangeFolder = 'מטווחים 474';
+          } else if (rawFolderKey == 'shooting_ranges') {
+            rangeFolder = 'מטווחי ירי';
+          } else {
+            // Unknown folderKey, use folderLabel or rawRangeFolder as fallback
+            rangeFolder = rawFolderLabel ?? rawRangeFolder;
+          }
+        } else if (rawFolderLabel != null && rawFolderLabel.isNotEmpty) {
+          // Fallback to folderLabel if folderKey is missing
+          rangeFolder = rawFolderLabel;
+        } else {
+          // Last resort: use rawRangeFolder (may be null)
+          rangeFolder = rawRangeFolder ?? rangeFolder;
+        }
+
+        loadedFolderKey =
+            rawFolderKey; // ✅ Store loaded folder ID (can be null)
+        loadedFolderLabel =
+            rawFolderLabel; // ✅ Store loaded folder label (can be null)
+        rangeSubType = data['rangeSubType'] as String?; // ✅ Load display label
         isManualLocation = data['isManualLocation'] as bool? ?? false;
         manualLocationText = data['manualLocationText'] as String? ?? '';
         _settlementDisplayText = isManualLocation
@@ -2926,13 +3260,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           overflow: TextOverflow.ellipsis,
                                           softWrap: false,
                                         ),
-                                        // Surprise Drills: Show dynamic maxPoints
+                                        // ✅ SURPRISE DRILLS: Show "מקס׳: 10" for each principle
                                         if (widget.mode == 'surprise') ...[
-                                          Text(
-                                            '${_getMaxPointsForPrinciple(stationIndex)}',
+                                          const Text(
+                                            'מקס׳: 10',
                                             style: TextStyle(
                                               fontSize: 10,
-                                              color: Colors.grey.shade600,
+                                              color: Colors.black54,
                                               fontWeight: FontWeight.w600,
                                             ),
                                             textAlign: TextAlign.center,
@@ -3485,6 +3819,34 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             }
 
                                             // Standard single input for non-level-tester stations
+                                            // ✅ LONG RANGE SCORE MODEL:
+                                            // - TextField shows/stores EXACT POINTS entered by instructor (0-100)
+                                            // - NO conversion, NO division, NO truncation
+                                            // - Persists value AS-IS to trainee.values[stationIndex]
+                                            // - Validation: clamps to stage.maxPoints (usually 100)
+
+                                            // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
+                                            if (_rangeType == 'ארוכים') {
+                                              debugPrint(
+                                                '\n🔍 LONG RANGE DEBUG: Building TextField',
+                                              );
+                                              debugPrint(
+                                                '   traineeIdx=$traineeIdx, stationIndex=$stationIndex',
+                                              );
+                                              debugPrint(
+                                                '   currentValue from row.getValue($stationIndex)=$currentValue',
+                                              );
+                                              debugPrint(
+                                                '   row.values[$stationIndex]=${row.getValue(stationIndex)}',
+                                              );
+                                              debugPrint(
+                                                '   controllerKey=$controllerKey',
+                                              );
+                                              debugPrint(
+                                                '   Will pass to controller: initialValue="${currentValue == 0 ? '' : currentValue.toString()}"',
+                                              );
+                                            }
+
                                             return SizedBox(
                                               width: stationColumnWidth,
                                               child: Align(
@@ -3502,134 +3864,196 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           const EdgeInsets.symmetric(
                                                             horizontal: 2.0,
                                                           ),
-                                                      child: TextField(
-                                                        controller: _getController(
-                                                          controllerKey,
-                                                          currentValue == 0
-                                                              ? ''
-                                                              : currentValue
-                                                                    .toString(),
-                                                        ),
-                                                        focusNode:
-                                                            _getFocusNode(
-                                                              focusKey,
-                                                            ),
-                                                        decoration: const InputDecoration(
-                                                          isDense: true,
-                                                          border:
-                                                              OutlineInputBorder(),
-                                                          hintText: '0',
-                                                          contentPadding:
-                                                              EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 10,
-                                                              ),
-                                                        ),
-                                                        keyboardType:
-                                                            TextInputType
-                                                                .number,
-                                                        inputFormatters: [
-                                                          FilteringTextInputFormatter
-                                                              .digitsOnly,
-                                                        ],
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                        style: const TextStyle(
-                                                          fontSize: 12,
-                                                        ),
-                                                        maxLines: 1,
-                                                        onChanged: (v) {
-                                                          final score =
-                                                              int.tryParse(v) ??
-                                                              0;
+                                                      child: Builder(
+                                                        builder: (context) {
+                                                          final controller =
+                                                              _getController(
+                                                                controllerKey,
+                                                                currentValue ==
+                                                                        0
+                                                                    ? ''
+                                                                    : currentValue
+                                                                          .toString(),
+                                                              );
 
-                                                          // Validation based on mode
-                                                          if (widget.mode ==
-                                                              'surprise') {
-                                                            if (score < 0 ||
-                                                                score > 10) {
-                                                              ScaffoldMessenger.of(
-                                                                context,
-                                                              ).showSnackBar(
-                                                                const SnackBar(
-                                                                  content: Text(
-                                                                    'ציון חייב להיות בין 1 ל-10',
+                                                          // 🐛 DEBUG: Verify controller text AFTER getting it
+                                                          if (_rangeType ==
+                                                              'ארוכים') {
+                                                            debugPrint(
+                                                              '   📱 Controller.text after _getController="${controller.text}"',
+                                                            );
+                                                          }
+
+                                                          return TextField(
+                                                            controller:
+                                                                controller,
+                                                            focusNode:
+                                                                _getFocusNode(
+                                                                  focusKey,
+                                                                ),
+                                                            decoration: const InputDecoration(
+                                                              isDense: true,
+                                                              border:
+                                                                  OutlineInputBorder(),
+                                                              hintText: '0',
+                                                              contentPadding:
+                                                                  EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        8,
+                                                                    vertical:
+                                                                        10,
                                                                   ),
-                                                                  duration:
-                                                                      Duration(
+                                                            ),
+                                                            keyboardType:
+                                                                TextInputType
+                                                                    .number,
+                                                            inputFormatters: [
+                                                              FilteringTextInputFormatter
+                                                                  .digitsOnly,
+                                                              // ✅ LONG RANGE: Allow up to 3 digits (0-100)
+                                                              LengthLimitingTextInputFormatter(
+                                                                3,
+                                                              ),
+                                                            ],
+                                                            textAlign: TextAlign
+                                                                .center,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 12,
+                                                                ),
+                                                            maxLines: 1,
+                                                            onChanged: (v) {
+                                                              // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
+                                                              if (_rangeType ==
+                                                                  'ארוכים') {
+                                                                debugPrint(
+                                                                  '\n📝 LONG RANGE onChanged: rawInput="$v"',
+                                                                );
+                                                              }
+
+                                                              // ✅ LONG RANGE SCORE INPUT:
+                                                              // Parse raw score - NO conversion
+                                                              final score =
+                                                                  int.tryParse(
+                                                                    v,
+                                                                  ) ??
+                                                                  0;
+
+                                                              // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
+                                                              if (_rangeType ==
+                                                                  'ארוכים') {
+                                                                debugPrint(
+                                                                  '   parsedScore=$score',
+                                                                );
+                                                              }
+
+                                                              // Validation based on mode
+                                                              if (widget.mode ==
+                                                                  'surprise') {
+                                                                // ✅ Surprise drill: 0-10 scale (integers only)
+                                                                if (score < 0 ||
+                                                                    score >
+                                                                        10) {
+                                                                  ScaffoldMessenger.of(
+                                                                    context,
+                                                                  ).showSnackBar(
+                                                                    const SnackBar(
+                                                                      content: Text(
+                                                                        'ציון חייב להיות בין 0 ל-10',
+                                                                      ),
+                                                                      duration: Duration(
                                                                         seconds:
                                                                             1,
                                                                       ),
-                                                                ),
-                                                              );
-                                                              return;
-                                                            }
-                                                          } else {
-                                                            // Long Range validation against stage maxPoints
-                                                            if (_rangeType ==
-                                                                    'ארוכים' &&
-                                                                stationIndex <
-                                                                    longRangeStagesList
-                                                                        .length) {
-                                                              final stage =
-                                                                  longRangeStagesList[stationIndex];
-                                                              if (score >
-                                                                  stage
-                                                                      .maxPoints) {
-                                                                ScaffoldMessenger.of(
-                                                                  context,
-                                                                ).showSnackBar(
-                                                                  SnackBar(
-                                                                    content: Text(
-                                                                      'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
                                                                     ),
-                                                                    duration:
-                                                                        const Duration(
+                                                                  );
+                                                                  return;
+                                                                }
+                                                              } else {
+                                                                // Long Range: validate against stage maxPoints (0-100)
+                                                                // ✅ CRITICAL: Only clamp if exceeds max, never divide/convert
+                                                                if (_rangeType ==
+                                                                        'ארוכים' &&
+                                                                    stationIndex <
+                                                                        longRangeStagesList
+                                                                            .length) {
+                                                                  final stage =
+                                                                      longRangeStagesList[stationIndex];
+                                                                  if (score >
+                                                                      stage
+                                                                          .maxPoints) {
+                                                                    ScaffoldMessenger.of(
+                                                                      context,
+                                                                    ).showSnackBar(
+                                                                      SnackBar(
+                                                                        content:
+                                                                            Text(
+                                                                              'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
+                                                                            ),
+                                                                        duration: const Duration(
                                                                           seconds:
                                                                               1,
                                                                         ),
-                                                                  ),
-                                                                );
-                                                                return;
-                                                              }
-                                                            } else if (score >
-                                                                station
-                                                                    .bulletsCount) {
-                                                              // Short Range validation against station bulletsCount
-                                                              ScaffoldMessenger.of(
-                                                                context,
-                                                              ).showSnackBar(
-                                                                SnackBar(
-                                                                  content: Text(
-                                                                    'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                                                  ),
-                                                                  duration:
-                                                                      const Duration(
+                                                                      ),
+                                                                    );
+                                                                    return;
+                                                                  }
+                                                                } else if (score >
+                                                                    station
+                                                                        .bulletsCount) {
+                                                                  // Short Range: validate against bullets count
+                                                                  ScaffoldMessenger.of(
+                                                                    context,
+                                                                  ).showSnackBar(
+                                                                    SnackBar(
+                                                                      content: Text(
+                                                                        'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                                      ),
+                                                                      duration: const Duration(
                                                                         seconds:
                                                                             1,
                                                                       ),
-                                                                ),
+                                                                    ),
+                                                                  );
+                                                                  return;
+                                                                }
+                                                              }
+                                                              // ✅ STORE RAW SCORE: No conversion, no division
+                                                              // Long Range: stores exact points (0-100)
+                                                              // Short Range: stores exact hits
+                                                              row.setValue(
+                                                                stationIndex,
+                                                                score,
                                                               );
-                                                              return;
-                                                            }
-                                                          }
-                                                          // ✅ ONLY UPDATE DATA: No setState, no save
-                                                          row.setValue(
-                                                            stationIndex,
-                                                            score,
+
+                                                              // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
+                                                              if (_rangeType ==
+                                                                  'ארוכים') {
+                                                                debugPrint(
+                                                                  '   ✅ STORED: row.values[$stationIndex]=$score',
+                                                                );
+                                                                debugPrint(
+                                                                  '   Verification: row.getValue($stationIndex)=${row.getValue(stationIndex)}',
+                                                                );
+                                                              }
+
+                                                              _scheduleAutoSave();
+                                                            },
+                                                            onSubmitted: (v) {
+                                                              // ✅ IMMEDIATE SAVE: User pressed Enter
+                                                              // Store exact parsed value
+                                                              final score =
+                                                                  int.tryParse(
+                                                                    v,
+                                                                  ) ??
+                                                                  0;
+                                                              row.setValue(
+                                                                stationIndex,
+                                                                score,
+                                                              );
+                                                              _saveImmediately();
+                                                            },
                                                           );
-                                                          _scheduleAutoSave();
-                                                        },
-                                                        onSubmitted: (v) {
-                                                          // ✅ IMMEDIATE SAVE: User pressed Enter
-                                                          final score =
-                                                              int.tryParse(v) ??
-                                                              0;
-                                                          row.setValue(
-                                                            stationIndex,
-                                                            score,
-                                                          );
-                                                          _saveImmediately();
                                                         },
                                                       ),
                                                     ),
@@ -3669,13 +4093,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 alignment: Alignment.center,
                                                 child: Builder(
                                                   builder: (_) {
-                                                    final avgPoints =
+                                                    // ✅ SURPRISE DRILLS: Show average score (0-10) with 1 decimal
+                                                    final avgScore =
                                                         _getTraineeAveragePoints(
                                                           traineeIdx,
                                                         );
                                                     return Text(
-                                                      avgPoints > 0
-                                                          ? avgPoints
+                                                      avgScore > 0
+                                                          ? avgScore
                                                                 .toStringAsFixed(
                                                                   1,
                                                                 )
@@ -3684,9 +4109,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                         fontWeight:
                                                             FontWeight.bold,
                                                         fontSize: 11,
-                                                        color: avgPoints >= 7
+                                                        // Color thresholds for 0-10 scale: >=7=green, >=5=orange, <5=red
+                                                        color: avgScore >= 7.0
                                                             ? Colors.green
-                                                            : avgPoints >= 5
+                                                            : avgScore >= 5.0
                                                             ? Colors.orange
                                                             : Colors.red,
                                                       ),
@@ -4517,6 +4943,10 @@ class TraineeRowModel {
     } else {
       values[stationIndex] = value;
     }
+    // 🐛 DEBUG: Log what was stored (no filtering - always log for verification)
+    debugPrint(
+      '💾 setValue: stationIndex=$stationIndex, value=$value, stored=${values[stationIndex]}',
+    );
   }
 
   // Get time value for a specific station (for בוחן רמה)
