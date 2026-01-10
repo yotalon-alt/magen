@@ -571,6 +571,86 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
   }
 }
 
+/// Migration function to fix incorrectly saved feedback types
+Future<void> migrateFeedbackRouting() async {
+  debugPrint('\n🔧 ===== FEEDBACK ROUTING MIGRATION START =====');
+
+  final targetExercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+  final allowedFolders = ['מחלקות ההגנה – חטיבה 474', 'משובים – כללי'];
+  final incorrectFolders = ['מטווחים 474', '474 Ranges', 'מטווחי ירי'];
+
+  int migratedCount = 0;
+  int errorCount = 0;
+
+  try {
+    // Query all feedbacks of target exercise types
+    final query = FirebaseFirestore.instance
+        .collection('feedbacks')
+        .where('exercise', whereIn: targetExercises);
+
+    final snapshot = await query.get();
+    debugPrint('Found ${snapshot.docs.length} feedbacks to check');
+
+    for (final doc in snapshot.docs) {
+      try {
+        final data = doc.data();
+        final exercise = data['exercise'] as String? ?? '';
+        final currentFolder = data['folder'] as String? ?? '';
+        final settlement = data['settlement'] as String? ?? '';
+
+        debugPrint('\n📝 Checking feedback: ${doc.id}');
+        debugPrint('   Exercise: $exercise');
+        debugPrint('   Current folder: $currentFolder');
+        debugPrint('   Settlement: $settlement');
+
+        // Check if feedback is in wrong folder
+        if (incorrectFolders.contains(currentFolder) ||
+            !allowedFolders.contains(currentFolder)) {
+          // Determine correct folder
+          String correctFolder;
+          if (currentFolder == 'מחלקות ההגנה – חטיבה 474' ||
+              settlement.isNotEmpty) {
+            correctFolder = 'מחלקות ההגנה – חטיבה 474';
+          } else {
+            correctFolder = 'משובים – כללי';
+          }
+
+          debugPrint('   ❌ NEEDS MIGRATION');
+          debugPrint('   Target folder: $correctFolder');
+
+          // Update the feedback document
+          await doc.reference.update({
+            'folder': correctFolder,
+            'migrated': true,
+            'migratedAt': DateTime.now(),
+            'originalFolder': currentFolder,
+          });
+
+          migratedCount++;
+          debugPrint('   ✅ Migrated successfully');
+
+          // Log migration for verification
+          debugPrint(
+            'MIGRATED: ${doc.id} from "$currentFolder" to "$correctFolder"',
+          );
+        } else {
+          debugPrint('   ✅ Already in correct folder');
+        }
+      } catch (e) {
+        errorCount++;
+        debugPrint('   ❌ Error migrating ${doc.id}: $e');
+      }
+    }
+  } catch (e) {
+    debugPrint('❌ Migration failed: $e');
+  }
+
+  debugPrint('\n🔧 ===== MIGRATION SUMMARY =====');
+  debugPrint('   Total migrated: $migratedCount');
+  debugPrint('   Errors: $errorCount');
+  debugPrint('🔧 ===== MIGRATION COMPLETE =====\n');
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -1043,8 +1123,49 @@ class _ReadinessPageState extends State<ReadinessPage> {
   }
 }
 
-class AlertsPage extends StatelessWidget {
+class AlertsPage extends StatefulWidget {
   const AlertsPage({super.key});
+  @override
+  State<AlertsPage> createState() => _AlertsPageState();
+}
+
+class _AlertsPageState extends State<AlertsPage> {
+  bool _isMigrating = false;
+
+  Future<void> _runMigration() async {
+    setState(() => _isMigrating = true);
+
+    try {
+      await migrateFeedbackRouting();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Migration completed successfully! Check console for details.',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Refresh feedback storage after migration
+        await loadFeedbacksForCurrentUser(isAdmin: true);
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Migration failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isMigrating = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = currentUser?.role == 'Admin';
@@ -1056,20 +1177,84 @@ class AlertsPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('התראות מבצעיות'),
           leading: const StandardBackButton(),
+          actions: [
+            // Migration button for admins
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: ElevatedButton.icon(
+                onPressed: _isMigrating ? null : _runMigration,
+                icon: _isMigrating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.build_circle, size: 18),
+                label: Text(_isMigrating ? 'Migrating...' : 'Migrate Data'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
         ),
-        body: ListView(
-          children: alerts.map((a) {
-            if (a.containsKey('who')) {
-              return ListTile(
-                title: Text('נפילה מעל 10%: ${a['who']}'),
-                subtitle: Text('מ ${a['from']} ל ${a['to']} — ${a['drop']}'),
-              );
-            }
-            return ListTile(
-              title: Text('קטגוריה חלשה: ${a['category']}'),
-              subtitle: Text('ממוצע ${a['avg']}'),
-            );
-          }).toList(),
+        body: Column(
+          children: [
+            // Migration info card
+            Card(
+              color: Colors.blue.shade50,
+              margin: const EdgeInsets.all(12.0),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Data Migration Tool',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Fixes incorrectly saved feedback types (מעגל פתוח, מעגל פרוץ, סריקות רחוב) '
+                      'that were saved to wrong folders. Moves them to correct folders only.',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Alerts list
+            Expanded(
+              child: ListView(
+                children: alerts.map((a) {
+                  if (a.containsKey('who')) {
+                    return ListTile(
+                      title: Text('נפילה מעל 10%: ${a['who']}'),
+                      subtitle: Text(
+                        'מ ${a['from']} ל ${a['to']} — ${a['drop']}',
+                      ),
+                    );
+                  }
+                  return ListTile(
+                    title: Text('קטגוריה חלשה: ${a['category']}'),
+                    subtitle: Text('ממוצע ${a['avg']}'),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2222,10 +2407,59 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       final now = DateTime.now();
       final uid = currentUser?.uid ?? '';
 
+      // ✅ CRITICAL: Validate folder routing for specific feedback types
+      final targetExercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+      final allowedFolders = [
+        'מחלקות ההגנה – חטיבה 474',
+        'משובים – כללי',
+        'עבודה במבנה',
+      ];
+
+      if (targetExercises.contains(selectedExercise)) {
+        if (!allowedFolders.contains(selectedFolder)) {
+          setState(() {
+            _isSaving = false;
+          });
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'שגיאה: תרגיל "$selectedExercise" יכול להישמר רק תחת "${allowedFolders.join('" או "')}"',
+              ),
+            ),
+          );
+          return;
+        }
+      }
+
       // Resolve instructor's Hebrew full name from Firestore
       String resolvedInstructorName = instructorNameDisplay;
       if (uid.isNotEmpty) {
         resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
+      // Map selected folder to canonical fields for these specific feedback types
+      String folderKey = '';
+      String folderLabel = selectedFolder ?? '';
+
+      if (targetExercises.contains(selectedExercise)) {
+        switch (selectedFolder) {
+          case 'מחלקות ההגנה – חטיבה 474':
+            folderKey = 'defense_474';
+            folderLabel = 'מחלקות ההגנה 474';
+            break;
+          case 'משובים – כללי':
+            folderKey = 'general_feedback';
+            folderLabel = 'משובים כללי';
+            break;
+          case 'עבודה במבנה':
+            folderKey = 'structure_work';
+            folderLabel = 'עבודה במבנה';
+            break;
+          default:
+            // Should never reach here due to validation above
+            throw Exception('Invalid folder selection: $selectedFolder');
+        }
       }
 
       final Map<String, dynamic> doc = {
@@ -2243,11 +2477,25 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'commandText': adminCommandText,
         'commandStatus': adminCommandStatus,
         'folder': selectedFolder ?? '',
+        'folderKey': folderKey,
+        'folderLabel': folderLabel,
         'scenario': scenario,
         'settlement': settlement,
         'attendeesCount': 0,
         'instructorId': uid,
       };
+
+      // Debug logging for folder routing
+      if (targetExercises.contains(selectedExercise)) {
+        debugPrint('\n========== FEEDBACK SAVE: SPECIFIC TYPE ==========');
+        debugPrint('SAVE: exercise=$selectedExercise');
+        debugPrint('SAVE: selectedFolder=$selectedFolder');
+        debugPrint('SAVE: folderKey=$folderKey');
+        debugPrint('SAVE: folderLabel=$folderLabel');
+        debugPrint('SAVE: Will appear under משובים → $selectedFolder');
+        debugPrint('SAVE: Single destination only - no duplicates');
+        debugPrint('===============================================\n');
+      }
 
       final ref = await FirebaseFirestore.instance
           .collection('feedbacks')
@@ -2319,17 +2567,32 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               const SizedBox(height: 8),
               Builder(
                 builder: (ctx) {
-                  // Allowed folders for these exercises
-                  final allowedFolders = [
-                    'מחלקות ההגנה – חטיבה 474',
-                    'משובים – כללי',
-                    'עבודה במבנה',
-                  ];
+                  // Determine allowed folders based on selected exercise
+                  List<String> allowedFolders;
+
+                  // For specific exercises, allow all 3 folders
+                  if (selectedExercise == 'מעגל פתוח' ||
+                      selectedExercise == 'מעגל פרוץ' ||
+                      selectedExercise == 'סריקות רחוב') {
+                    allowedFolders = [
+                      'מחלקות ההגנה – חטיבה 474',
+                      'משובים – כללי',
+                      'עבודה במבנה',
+                    ];
+                  } else {
+                    // For other exercises, keep the original 3 folders
+                    allowedFolders = [
+                      'מחלקות ההגנה – חטיבה 474',
+                      'משובים – כללי',
+                      'עבודה במבנה',
+                    ];
+                  }
+
                   return DropdownButtonFormField<String>(
                     initialValue: selectedFolder,
                     hint: const Text('בחר תיקייה (חובה)'),
                     decoration: const InputDecoration(
-                      labelText: 'תיקייה',
+                      labelText: 'בחירת תיקייה',
                       border: OutlineInputBorder(),
                     ),
                     items: allowedFolders
@@ -2711,6 +2974,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   String _filterExercise = 'הכל';
   String _filterRole = 'הכל';
 
+  // Selection mode state (for 474 ranges multi-select export)
+  bool _selectionMode = false;
+  final Set<String> _selectedFeedbackIds = {};
+  bool _isExporting = false;
+
   /// Helper: Get Hebrew display label for folder (handles internal values)
   String _getFolderDisplayLabel(String internalValue) {
     final config = _feedbackFoldersConfig.firstWhere(
@@ -2940,6 +3208,77 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('שגיאה במחיקת משוב: $e')));
+    }
+  }
+
+  /// Export selected 474 ranges feedbacks
+  Future<void> _exportSelected474Ranges() async {
+    setState(() => _isExporting = true);
+
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+
+      if (_selectedFeedbackIds.isEmpty) {
+        throw Exception('לא נבחרו משובים לייצוא');
+      }
+
+      // Fetch all selected feedback documents from Firestore
+      final feedbacksData = await Future.wait(
+        _selectedFeedbackIds.map((id) async {
+          final doc = await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(id)
+              .get()
+              .timeout(const Duration(seconds: 10));
+
+          if (doc.exists && doc.data() != null) {
+            return doc.data()!;
+          }
+          return <String, dynamic>{};
+        }),
+      );
+
+      // Filter out empty documents
+      final validData = feedbacksData.where((data) => data.isNotEmpty).toList();
+
+      if (validData.isEmpty) {
+        throw Exception('לא נמצאו נתוני משוב תקינים');
+      }
+
+      // Export using shared service
+      await FeedbackExportService.export474RangesFeedbacks(
+        feedbacksData: validData,
+        fileNamePrefix: '474_ranges_selected',
+      );
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ נוצר בהצלחה!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Clear selection after successful export
+      setState(() {
+        _selectionMode = false;
+        _selectedFeedbackIds.clear();
+      });
+    } catch (e) {
+      debugPrint('❌ Export error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
     }
   }
 
@@ -3404,6 +3743,23 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
             tooltip: 'חזרה לתיקיות',
           ),
           actions: [
+            // Selection mode toggle for 474 ranges folder (Admin only)
+            if ((_selectedFolder == 'מטווחים 474' ||
+                    _selectedFolder == '474 Ranges') &&
+                isAdmin &&
+                finalFilteredFeedbacks.isNotEmpty)
+              IconButton(
+                icon: Icon(_selectionMode ? Icons.close : Icons.checklist),
+                onPressed: () {
+                  setState(() {
+                    _selectionMode = !_selectionMode;
+                    if (!_selectionMode) {
+                      _selectedFeedbackIds.clear();
+                    }
+                  });
+                },
+                tooltip: _selectionMode ? 'בטל בחירה' : 'בחר לייצוא',
+              ),
             // Export button for Surprise Drills folder (Admin only)
             if (_selectedFolder == 'משוב תרגילי הפתעה' &&
                 isAdmin &&
@@ -3505,6 +3861,66 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               )
             : Column(
                 children: [
+                  // Selection mode action bar for 474 ranges
+                  if (_selectionMode &&
+                      (_selectedFolder == 'מטווחים 474' ||
+                          _selectedFolder == '474 Ranges'))
+                    Container(
+                      color: Colors.blueGrey.shade700,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            'נבחרו: ${_selectedFeedbackIds.length}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_selectedFeedbackIds.isNotEmpty)
+                            ElevatedButton.icon(
+                              onPressed: _isExporting
+                                  ? null
+                                  : _exportSelected474Ranges,
+                              icon: _isExporting
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : const Icon(Icons.download, size: 18),
+                              label: const Text('ייצוא'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectionMode = false;
+                                _selectedFeedbackIds.clear();
+                              });
+                            },
+                            child: const Text('בטל'),
+                          ),
+                        ],
+                      ),
+                    ),
                   // Generic filters bar (for all folders except instructor course)
                   Card(
                     color: Colors.blueGrey.shade800,
@@ -3714,11 +4130,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           metadataLines.add('תאריך: $dateStr');
 
                           // Get blue tag label - build a map from FeedbackModel
+                          // Pass exercise for type detection, not as rangeType
                           final feedbackData = <String, dynamic>{
                             'feedbackType': f.type,
-                            'rangeType': f.exercise,
+                            'exercise': f.exercise,
                             'folder': f.folder,
                             'module': f.module,
+                            'rangeType':
+                                '', // Will be inferred from other fields
                           };
                           final blueTagLabel = getBlueTagLabelFromDoc(
                             feedbackData,
@@ -3729,17 +4148,52 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               currentUser?.role == 'Admin' ||
                               f.instructorName == currentUser?.name;
 
+                          // Check if 474 ranges folder for selection mode
+                          final is474Ranges =
+                              _selectedFolder == 'מטווחים 474' ||
+                              _selectedFolder == '474 Ranges';
+
                           return FeedbackListTileCard(
                             title: title,
                             metadataLines: metadataLines,
                             blueTagLabel: blueTagLabel,
-                            canDelete: canDelete,
+                            canDelete: canDelete && !_selectionMode,
+                            selectionMode: _selectionMode && is474Ranges,
+                            isSelected: _selectedFeedbackIds.contains(f.id),
+                            onSelectionToggle: f.id != null && f.id!.isNotEmpty
+                                ? () {
+                                    setState(() {
+                                      if (_selectedFeedbackIds.contains(f.id)) {
+                                        _selectedFeedbackIds.remove(f.id);
+                                      } else {
+                                        _selectedFeedbackIds.add(f.id!);
+                                      }
+                                    });
+                                  }
+                                : null,
                             onOpen: () {
-                              Navigator.of(
-                                context,
-                              ).pushNamed('/feedback_details', arguments: f);
+                              if (_selectionMode && is474Ranges) {
+                                // In selection mode, clicking toggles selection
+                                if (f.id != null && f.id!.isNotEmpty) {
+                                  setState(() {
+                                    if (_selectedFeedbackIds.contains(f.id)) {
+                                      _selectedFeedbackIds.remove(f.id);
+                                    } else {
+                                      _selectedFeedbackIds.add(f.id!);
+                                    }
+                                  });
+                                }
+                              } else {
+                                // Normal mode, open feedback details
+                                Navigator.of(
+                                  context,
+                                ).pushNamed('/feedback_details', arguments: f);
+                              }
                             },
-                            onDelete: f.id != null && f.id!.isNotEmpty
+                            onDelete:
+                                f.id != null &&
+                                    f.id!.isNotEmpty &&
+                                    !_selectionMode
                                 ? () => _confirmDeleteFeedback(f.id!, title)
                                 : null,
                           );
@@ -4023,10 +4477,16 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         currentUser != null &&
         (currentUser?.role == 'Admin' || currentUser?.role == 'Instructor');
     final isAdmin = currentUser?.role == 'Admin';
+    final is474Ranges =
+        feedback.folder == 'מטווחים 474' ||
+        feedback.folder == '474 Ranges' ||
+        feedback.folderKey == 'ranges_474';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('פרטי משוב'),
         leading: const StandardBackButton(),
+        actions: [],
       ),
       body: Padding(
         padding: const EdgeInsets.all(12.0),
@@ -4382,6 +4842,336 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 ),
                               ),
                             ],
+                          ],
+                        );
+                      },
+                    ),
+                  ]
+                : [],
+
+            // סיכום ופירוט מקצים למשובי מטווחים 474
+            ...is474Ranges && feedback.id != null && feedback.id!.isNotEmpty
+                ? <Widget>[
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('feedbacks')
+                          .doc(feedback.id)
+                          .get(),
+                      builder: (context, snapshot) {
+                        debugPrint('\n🔍 474 RANGES DETAILS SCREEN');
+                        debugPrint('   Feedback ID: ${feedback.id}');
+                        debugPrint('   Folder: ${feedback.folder}');
+                        debugPrint('   FolderKey: ${feedback.folderKey}');
+                        debugPrint(
+                          '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
+                        );
+
+                        if (!snapshot.hasData || !snapshot.data!.exists) {
+                          debugPrint('   ❌ No snapshot data or doc not exists');
+                          return const SizedBox.shrink();
+                        }
+
+                        final data =
+                            snapshot.data!.data() as Map<String, dynamic>?;
+                        if (data == null) {
+                          debugPrint('   ❌ Snapshot data is null');
+                          return const SizedBox.shrink();
+                        }
+
+                        debugPrint('   ✅ Document keys: ${data.keys.toList()}');
+
+                        final stations =
+                            (data['stations'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+                        final trainees =
+                            (data['trainees'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+
+                        debugPrint('   Stations count: ${stations.length}');
+                        debugPrint('   Trainees count: ${trainees.length}');
+
+                        if (trainees.isNotEmpty) {
+                          final firstTrainee = trainees[0];
+                          final firstTraineeHits = firstTrainee['hits'] ?? {};
+                          debugPrint(
+                            '   First trainee: ${firstTrainee['name']}',
+                          );
+                          debugPrint(
+                            '   First trainee hits keys: ${firstTraineeHits is Map ? firstTraineeHits.keys.toList() : 'Not a map'}',
+                          );
+                        }
+
+                        if (stations.isEmpty || trainees.isEmpty) {
+                          debugPrint(
+                            '   ⚠️ Either stations or trainees are empty',
+                          );
+                          return Card(
+                            color: Colors.blueGrey.shade800,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'מטווח 474 - אין נתונים מפורטים',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'מקצים: ${stations.length}, חניכים: ${trainees.length}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        // חישוב סך הכל פגיעות וכדורים למטווח 474
+                        int totalHits = 0;
+
+                        // סך כל הפגיעות - סכום כל פגיעות החניכים
+                        for (final trainee in trainees) {
+                          totalHits +=
+                              (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                        }
+
+                        // חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
+                        int totalBulletsPerTrainee = 0;
+                        for (final station in stations) {
+                          totalBulletsPerTrainee +=
+                              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                        }
+                        final totalBullets =
+                            trainees.length * totalBulletsPerTrainee;
+
+                        // חישוב אחוז כללי
+                        final percentage = totalBullets > 0
+                            ? ((totalHits / totalBullets) * 100)
+                                  .toStringAsFixed(1)
+                            : '0.0';
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // כרטיס סיכום כללי למטווח 474
+                            Card(
+                              color: Colors.blueGrey.shade800,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  children: [
+                                    const Text(
+                                      'סיכום כללי - מטווח 474',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceAround,
+                                      children: [
+                                        Column(
+                                          children: [
+                                            const Text('סך פגיעות/כדורים'),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$totalHits/$totalBullets',
+                                              style: const TextStyle(
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.orangeAccent,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Column(
+                                          children: [
+                                            const Text('אחוז פגיעה כללי'),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$percentage%',
+                                              style: const TextStyle(
+                                                fontSize: 32,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.greenAccent,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // פירוט מקצים למטווח 474
+                            const Text(
+                              'פירוט מקצים',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            ...stations.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final station = entry.value;
+                              final stationName =
+                                  station['name'] ?? 'מקצה ${index + 1}';
+                              final stationBulletsPerTrainee =
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+
+                              // חישוב סך פגיעות למקצה
+                              int stationHits = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null) {
+                                  stationHits +=
+                                      (hits['station_$index'] as num?)
+                                          ?.toInt() ??
+                                      0;
+                                }
+                              }
+
+                              // חישוב נכון: מספר חניכים × כדורים במקצה
+                              final totalStationBullets =
+                                  trainees.length * stationBulletsPerTrainee;
+
+                              // חישוב אחוז פגיעות למקצה
+                              final stationPercentage = totalStationBullets > 0
+                                  ? ((stationHits / totalStationBullets) * 100)
+                                        .toStringAsFixed(1)
+                                  : '0.0';
+
+                              return InkWell(
+                                onTap: () {
+                                  _showStationDetailsModal(
+                                    context,
+                                    index,
+                                    stationName.toString(),
+                                    stationBulletsPerTrainee,
+                                    trainees,
+                                  );
+                                },
+                                child: Card(
+                                  color: Colors.blueGrey.shade700,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // שורה 1: שם המקצה
+                                        Text(
+                                          stationName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        // מדדים מרוכזים בשורה אחת
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceEvenly,
+                                          children: [
+                                            // סך כל כדורים
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$totalStationBullets',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white70,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  'סך כל כדורים',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            // סך כל פגיעות
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$stationHits',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.orangeAccent,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  'סך כל פגיעות',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            // אחוז פגיעות
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$stationPercentage%',
+                                                  style: const TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.greenAccent,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  'אחוז פגיעות',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        const Text(
+                                          'לחץ לפרטי החניכים במקצה',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
                           ],
                         );
                       },
@@ -4834,7 +5624,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
                             // Check if this is a range/reporter feedback
                             final isRangeFeedback =
-                                feedback.folder == 'מטווחי ירי' &&
+                                (feedback.folder == 'מטווחי ירי' ||
+                                    feedback.folder == 'מטווחים 474' ||
+                                    feedback.folderKey == 'shooting_ranges' ||
+                                    feedback.folderKey == 'ranges_474') &&
                                 feedback.id != null &&
                                 feedback.id!.isNotEmpty;
 

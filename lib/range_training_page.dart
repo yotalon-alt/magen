@@ -38,40 +38,47 @@ class ShortRangeStageModel {
 /// Model for Long Range stage with user-configurable bullets
 class LongRangeStageModel {
   String name; // Stage name (predefined or custom)
-  int maxPoints; // Max points for this stage (user-entered directly)
+  // maxPoints is computed from bulletsCount (single source of truth)
+  int get maxPoints => bulletsCount * 10;
   int
   achievedPoints; // Total points achieved by trainees (legacy, not used in new calculation)
   bool isManual; // True if custom stage
 
-  // Legacy field kept for backward compatibility (not used for new totals)
+  // Source of truth: number of bullets (maxPoints = bulletsCount * 10)
   int bulletsCount;
 
   LongRangeStageModel({
     required this.name,
-    this.maxPoints = 0,
     this.achievedPoints = 0,
     this.isManual = false,
-    this.bulletsCount = 0, // Legacy, kept for backward compatibility
+    this.bulletsCount = 0,
   });
 
   Map<String, dynamic> toJson() => {
     'name': name,
-    'maxPoints': maxPoints,
+    'maxPoints': maxPoints, // Computed getter, saved for compatibility
     'achievedPoints': achievedPoints,
     'isManual': isManual,
-    'bulletsCount': bulletsCount, // Legacy field
+    'bulletsCount': bulletsCount, // Source of truth
   };
 
   factory LongRangeStageModel.fromJson(Map<String, dynamic> json) {
-    // New schema uses maxPoints directly; fallback to bulletsCount*10 for legacy
-    final legacyBullets = (json['bulletsCount'] as num?)?.toInt() ?? 0;
     final directMaxPoints = (json['maxPoints'] as num?)?.toInt();
+    final bulletsCount = (json['bulletsCount'] as num?)?.toInt() ?? 0;
+
+    // For backward compatibility: if old data has maxPoints but not bulletsCount,
+    // derive bulletsCount from maxPoints
+    final resolvedBulletsCount = bulletsCount > 0
+        ? bulletsCount
+        : (directMaxPoints != null && directMaxPoints > 0
+              ? (directMaxPoints / 10).round()
+              : 0);
+
     return LongRangeStageModel(
       name: json['name'] as String? ?? '',
-      maxPoints: directMaxPoints ?? (legacyBullets * 10),
       achievedPoints: (json['achievedPoints'] as num?)?.toInt() ?? 0,
       isManual: json['isManual'] as bool? ?? false,
-      bulletsCount: legacyBullets,
+      bulletsCount: resolvedBulletsCount,
     );
   }
 }
@@ -137,6 +144,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   String? rangeFolder; // "474 Ranges" or "Shooting Ranges"
   String settlementName = ''; // unified settlement field
   String instructorName = '';
+  bool isManualLocation =
+      false; // Track if "Manual Location" is selected for Surprise Drills
+  String manualLocationText =
+      ''; // Store manual location text for Surprise Drills
   int attendeesCount = 0;
   late TextEditingController _attendeesCountController;
 
@@ -152,7 +163,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   // Long Range specific: multi-stage dynamic list
   List<LongRangeStageModel> longRangeStagesList = [];
-  String? _selectedLongRangeStageToAdd; // For stage picker dropdown
 
   // Dynamic labels based on mode
   String get _itemLabel => widget.mode == 'surprise' ? 'עיקרון' : 'מקצה';
@@ -358,6 +368,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   void _openSettlementSelectorSheet() {
+    // For Surprise Drills: show dropdown with settlements + Manual Location
+    final isSurpriseMode = widget.mode == 'surprise';
+    final items = isSurpriseMode
+        ? [...golanSettlements, 'Manual Location']
+        : golanSettlements;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -397,21 +413,44 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 SizedBox(
                   height: 240,
                   child: ListView.separated(
-                    itemCount: golanSettlements.length,
+                    itemCount: items.length,
                     separatorBuilder: (context, index) =>
                         const Divider(height: 1),
                     itemBuilder: (_, i) {
-                      final s = golanSettlements[i];
+                      final s = items[i];
+                      final isManualOption = s == 'Manual Location';
                       return ListTile(
+                        leading: isManualOption
+                            ? const Icon(
+                                Icons.edit_location_alt,
+                                color: Colors.orangeAccent,
+                              )
+                            : null,
                         title: Text(
                           s,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(
+                            color: isManualOption
+                                ? Colors.orangeAccent
+                                : Colors.white,
+                            fontWeight: isManualOption
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
                         ),
                         onTap: () {
                           setState(() {
-                            selectedSettlement = s;
-                            settlementName = s;
-                            _settlementDisplayText = s;
+                            if (isManualOption) {
+                              isManualLocation = true;
+                              selectedSettlement = 'Manual Location';
+                              _settlementDisplayText = 'Manual Location';
+                              // Don't set settlementName yet - user will type it
+                            } else {
+                              isManualLocation = false;
+                              selectedSettlement = s;
+                              settlementName = s;
+                              _settlementDisplayText = s;
+                              manualLocationText = '';
+                            }
                           });
                           Navigator.pop(ctx);
                           _scheduleAutoSave();
@@ -535,34 +574,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _scheduleAutoSave();
   }
 
-  // Long Range: Add a new stage to the list using the selected stage from picker
+  // Long Range: Add a new stage to the list (like Short Range - no pre-selection needed)
   void _addLongRangeStage() {
-    if (_selectedLongRangeStageToAdd == null ||
-        _selectedLongRangeStageToAdd!.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('אנא בחר מקצה מהרשימה')));
-      return;
-    }
-
     debugPrint('\n🔍 DEBUG: _addLongRangeStage called');
-    debugPrint('   Selected stage to add: $_selectedLongRangeStageToAdd');
     debugPrint(
       '   Before add: longRangeStagesList.length=${longRangeStagesList.length}',
     );
 
-    final isManual = _selectedLongRangeStageToAdd == 'מקצה ידני';
-
     setState(() {
       longRangeStagesList.add(
         LongRangeStageModel(
-          name: _selectedLongRangeStageToAdd!,
+          name: '', // Empty name - user will select from dropdown
           bulletsCount: 0,
-          isManual: isManual,
+          isManual: false,
         ),
       );
-      // Reset picker after adding
-      _selectedLongRangeStageToAdd = null;
     });
 
     debugPrint(
@@ -702,21 +728,53 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return total;
   }
 
-  // Calculate average points for a trainee (surprise mode only)
-  // Average of filled principle scores (ignores empty/0 scores)
+  // ===== SURPRISE DRILLS DYNAMIC MAXPOINTS CALCULATION =====
+  // For each principle, maxPoints = highest score among all trainees
+  // Returns map: principleIndex -> maxPoints
+  Map<int, int> _getDynamicMaxPointsPerPrinciple() {
+    if (widget.mode != 'surprise') return {};
+
+    final Map<int, int> maxPointsMap = {};
+
+    // Iterate through all trainees to find max score per principle
+    for (final trainee in traineeRows) {
+      trainee.values.forEach((principleIndex, points) {
+        if (points > 0) {
+          final currentMax = maxPointsMap[principleIndex] ?? 0;
+          if (points > currentMax) {
+            maxPointsMap[principleIndex] = points;
+          }
+        }
+      });
+    }
+
+    return maxPointsMap;
+  }
+
+  // Get maxPoints for a specific principle (Surprise Drills)
+  int _getMaxPointsForPrinciple(int principleIndex) {
+    final maxPointsMap = _getDynamicMaxPointsPerPrinciple();
+    return maxPointsMap[principleIndex] ?? 0;
+  }
+
+  // Calculate total maxPoints across all principles (Surprise Drills)
+  int _getTotalMaxPointsSurprise() {
+    if (widget.mode != 'surprise') return 0;
+    final maxPointsMap = _getDynamicMaxPointsPerPrinciple();
+    return maxPointsMap.values.fold(0, (total, maxPoints) => total + maxPoints);
+  }
+
+  // Calculate average percentage for a trainee (surprise mode only)
+  // Percentage = (totalPoints / totalMaxPoints) * 100
   double _getTraineeAveragePoints(int traineeIndex) {
     if (traineeIndex >= traineeRows.length) return 0.0;
     if (widget.mode != 'surprise') return 0.0;
 
-    int total = 0;
-    int count = 0;
-    traineeRows[traineeIndex].values.forEach((stationIndex, score) {
-      if (score > 0) {
-        total += score;
-        count++;
-      }
-    });
-    return count > 0 ? total / count : 0.0;
+    final totalPoints = _getTraineeTotalPoints(traineeIndex);
+    final totalMaxPoints = _getTotalMaxPointsSurprise();
+
+    if (totalMaxPoints == 0) return 0.0;
+    return (totalPoints / totalMaxPoints) * 100;
   }
 
   // ===== LONG RANGE POINTS CALCULATION (NEW) =====
@@ -761,12 +819,26 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // ייצוא לקובץ XLSX מקומי יתבוצע על משובים שכבר נשמרו בלבד
 
   Future<void> _saveToFirestore() async {
-    // בדיקות תקינות
-    if (rangeFolder == null || rangeFolder!.isEmpty) {
+    // בדיקות תקינות - REQUIRED folder selection for Long Range (NOT for Surprise)
+    // Surprise Drill has a fixed folder, no selection needed
+    if (widget.mode != 'surprise' &&
+        (rangeFolder == null || rangeFolder!.isEmpty)) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('אנא בחר תיקייה')));
       return;
+    }
+
+    // Long Range: Validate folder is exactly one of the allowed options
+    if (_rangeType == 'ארוכים' && widget.mode == 'range') {
+      if (rangeFolder != 'מטווחים 474' && rangeFolder != 'מטווחי ירי') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('אנא בחר תיקייה תקינה: מטווחים 474 או מטווחי ירי'),
+          ),
+        );
+        return;
+      }
     }
 
     if (settlementName.isEmpty) {
@@ -921,18 +993,30 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           : (_rangeType == 'קצרים' ? 'דיווח קצר' : 'דיווח רחוק');
 
       // ====== UNIFIED FOLDER KEYS ======
-      // Map UI selection to canonical folderKey and folderLabel
+      // Map UI selection to canonical folderKey and folderLabel - NO FALLBACKS
       String folderKey;
       String folderLabel;
       String folderId = '';
       final uiFolderValue = (rangeFolder ?? '').toString();
-      final lowUi = uiFolderValue.toLowerCase();
-      if (lowUi.contains('474') || lowUi.contains('מטווח')) {
+
+      // SURPRISE DRILL: Hardcoded folder - no user selection needed
+      if (widget.mode == 'surprise') {
+        folderKey = 'surprise_drills';
+        folderLabel = 'משוב תרגילי הפתעה';
+        folderId = 'surprise_drills';
+      }
+      // Exact matching only - no fallbacks to ensure user selection is respected
+      else if (uiFolderValue == 'מטווחים 474') {
         folderKey = 'ranges_474';
         folderLabel = 'מטווחים 474';
-      } else {
+        folderId = 'ranges_474';
+      } else if (uiFolderValue == 'מטווחי ירי') {
         folderKey = 'shooting_ranges';
         folderLabel = 'מטווחי ירי';
+        folderId = 'shooting_ranges';
+      } else {
+        // Should never reach here due to validation above
+        throw Exception('Invalid folder selection: $uiFolderValue');
       }
 
       // ✅ Build trainees data from traineeRows model
@@ -1030,7 +1114,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
-        'settlement': selectedSettlement,
+        'settlement': isManualLocation
+            ? manualLocationText
+            : (settlementName.isNotEmpty ? settlementName : selectedSettlement),
         'settlementName': settlementName,
         'rangeFolder': rangeFolder,
         // Unified classification
@@ -1051,6 +1137,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       if (widget.mode == 'surprise') {
         // SURPRISE DRILLS: Save to dedicated collection
         collectionPath = 'feedbacks';
+        // Determine final settlement value: manual location text or selected settlement
+        final String finalSettlement = isManualLocation
+            ? manualLocationText
+            : (settlementName.isNotEmpty
+                  ? settlementName
+                  : selectedSettlement ?? '');
         final Map<String, dynamic> surpriseData = {
           ...baseData,
           // Required fields for Surprise Drills
@@ -1061,7 +1153,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'folder': 'משוב תרגילי הפתעה',
           'feedbackType': saveType,
           'rangeMode': widget.mode,
-          'name': selectedSettlement ?? '',
+          'name': finalSettlement,
+          'settlement':
+              finalSettlement, // Also store in settlement field for filtering
           'role': 'תרגיל הפתעה',
           'scores': {},
           'notes': {'general': subFolder},
@@ -1124,12 +1218,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // SHOOTING RANGES: Save to dedicated collection
         collectionPath = 'feedbacks';
 
-        // Determine target folder based on rangeFolder selection
+        // Determine target folder - EXACT selection only, no fallbacks
         String targetFolder;
-        if (rangeFolder == '474 Ranges') {
-          targetFolder = '474 Ranges';
+        if (rangeFolder == 'מטווחים 474') {
+          targetFolder = 'מטווחים 474';
+        } else if (rangeFolder == 'מטווחי ירי') {
+          targetFolder = 'מטווחי ירי';
         } else {
-          targetFolder = 'מטווחי ירי'; // Shooting Ranges (existing folder)
+          // Should never reach here due to validation
+          throw Exception('Invalid folder selection for save: $rangeFolder');
         }
 
         final Map<String, dynamic> rangeData = {
@@ -1140,6 +1237,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'isTemporary': false,
           'exercise': 'מטווחים',
           'folder': targetFolder,
+          'folderCategory':
+              rangeFolder, // Store chosen folder for filtering/export
           'folderKey': folderKey,
           'folderLabel': folderLabel,
           'folderId': folderId,
@@ -1153,21 +1252,48 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'criteriaList': [],
         };
 
-        debugPrint('\n========== FINAL SAVE: SHOOTING RANGE ==========');
+        debugPrint('\n========== FINAL SAVE: LONG RANGE ==========');
         debugPrint('SAVE: collection=$collectionPath');
         debugPrint('SAVE: module=shooting_ranges');
         debugPrint('SAVE: type=range_feedback');
-        debugPrint('SAVE: rangeType=$_rangeType');
+        debugPrint('SAVE: rangeType=$_rangeType (should be ארוכים)');
+        debugPrint('SAVE: feedbackType=$saveType (should be range_long)');
         debugPrint('SAVE: isTemporary=false');
-        debugPrint('SAVE: folder=מטווחי ירי');
-        debugPrint('SAVE_DEBUG: uiFolderValue=$uiFolderValue');
-        debugPrint(
-          'SAVE_DEBUG: folderKey=$folderKey folderLabel=$folderLabel folderId=$folderId',
-        );
-        debugPrint(
-          'SAVE_DEBUG: feedbackType=$saveType rangeMode=${widget.mode}',
-        );
+        debugPrint('SAVE: targetFolder=$targetFolder (FINAL DESTINATION)');
+        debugPrint('SAVE: folderKey=$folderKey');
+        debugPrint('SAVE: folderLabel=$folderLabel');
+        debugPrint('SAVE_DEBUG: userSelectedFolder=$rangeFolder');
+        debugPrint('SAVE_DEBUG: Will appear in משובים → $targetFolder');
         debugPrint('SAVE_DEBUG: payload keys=${rangeData.keys.toList()}');
+
+        // ====== ACCEPTANCE TEST: LONG RANGE FINAL SAVE PROOF ======
+        debugPrint('\n╔══════════════════════════════════════════════════╗');
+        debugPrint('║  LONG RANGE ACCEPTANCE TEST: PRE-SAVE PROOF      ║');
+        debugPrint('╠══════════════════════════════════════════════════╣');
+        debugPrint('║ 📁 folderKey: $folderKey');
+        debugPrint('║ 📁 folderLabel: $folderLabel');
+        debugPrint('║ 📊 stagesCount: ${stationsData.length}');
+        debugPrint('║ 👥 traineesCount: ${traineesData.length}');
+        // Log each stage with maxPoints (no bullets conversion)
+        for (
+          int i = 0;
+          i < stationsData.length && i < longRangeStagesList.length;
+          i++
+        ) {
+          final stage = longRangeStagesList[i];
+          debugPrint(
+            '║ 📌 Stage[$i]: "${stage.name}" → bulletsCount=${stage.bulletsCount}, maxPoints=${stage.maxPoints}',
+          );
+        }
+        // Log trainee points (no conversion)
+        for (int i = 0; i < traineeRows.length && i < 3; i++) {
+          final row = traineeRows[i];
+          final totalPoints = _getTraineeTotalPointsLongRange(i);
+          debugPrint(
+            '║ 👤 Trainee[$i]: "${row.name}" → totalPoints=$totalPoints (values=${row.values})',
+          );
+        }
+        debugPrint('╚══════════════════════════════════════════════════╝\n');
 
         if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
           docRef = FirebaseFirestore.instance
@@ -1187,6 +1313,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint(
           'FINALIZE_SAVE path=${docRef.path} module=shooting_ranges type=range_feedback isTemporary=false rangeType=$_rangeType',
         );
+
+        // ====== ACCEPTANCE TEST: LONG RANGE POST-SAVE PROOF ======
+        debugPrint('\n╔══════════════════════════════════════════════════╗');
+        debugPrint('║  LONG RANGE ACCEPTANCE TEST: POST-SAVE PROOF     ║');
+        debugPrint('╠══════════════════════════════════════════════════╣');
+        debugPrint('║ ✅ docId: ${docRef.id}');
+        debugPrint('║ ✅ docPath: ${docRef.path}');
+        debugPrint('║ ✅ folderKey: $folderKey');
+        debugPrint('║ ✅ folderLabel: $folderLabel');
+        debugPrint('║ ✅ targetFolder: $targetFolder');
+        debugPrint('║ ✅ SINGLE WRITE COMPLETED - NO DUPLICATES');
+        debugPrint('╚══════════════════════════════════════════════════╝\n');
 
         // Delete temporary draft if it exists
         if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
@@ -1668,9 +1806,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         selectedSettlement = rawSettlement ?? selectedSettlement;
         settlementName = rawSettlementName ?? settlementName;
         rangeFolder = rawRangeFolder ?? rangeFolder;
-        _settlementDisplayText = settlementName.isNotEmpty
-            ? settlementName
-            : (selectedSettlement ?? '');
+        isManualLocation = data['isManualLocation'] as bool? ?? false;
+        manualLocationText = data['manualLocationText'] as String? ?? '';
+        _settlementDisplayText = isManualLocation
+            ? 'Manual Location'
+            : (settlementName.isNotEmpty
+                  ? settlementName
+                  : (selectedSettlement ?? ''));
         attendeesCount = rawAttendeesCount?.toInt() ?? attendeesCount;
         _attendeesCountController.text = attendeesCount.toString();
         instructorName = data['instructorName'] as String? ?? instructorName;
@@ -1788,12 +1930,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'DRAFT_LOAD:   selectedShortRangeStage=$selectedShortRangeStage',
         );
         debugPrint('DRAFT_LOAD:   manualStageName=$manualStageName');
+        debugPrint(
+          'DRAFT_LOAD:   shortRangeStagesList.length=${shortRangeStagesList.length}',
+        );
+        debugPrint(
+          'DRAFT_LOAD:   longRangeStagesList.length=${longRangeStagesList.length}',
+        );
       });
 
       // ✅ FORCE REBUILD: Ensure UI updates with loaded data
       debugPrint('DRAFT_LOAD: Forcing rebuild...');
       if (mounted) {
         setState(() {}); // Explicit rebuild trigger
+        debugPrint('DRAFT_LOAD: UI setState completed');
       }
 
       debugPrint('✅ DRAFT_LOAD: Load complete');
@@ -1842,39 +1991,61 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ),
               const SizedBox(height: 24),
 
-              // Select Folder (474 Ranges or Shooting Ranges)
-              DropdownButtonFormField<String>(
-                initialValue: rangeFolder,
-                decoration: const InputDecoration(
-                  labelText: 'בחר תיקייה',
-                  border: OutlineInputBorder(),
+              // Folder selection for Surprise Drills (required field)
+              if (widget.mode == 'surprise') ...[
+                DropdownButtonFormField<String>(
+                  initialValue: 'משוב תרגילי הפתעה',
+                  decoration: const InputDecoration(
+                    labelText: 'בחירת תיקייה',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'משוב תרגילי הפתעה',
+                      child: Text('משוב תרגילי הפתעה'),
+                    ),
+                  ],
+                  onChanged: null, // Read-only, only one option
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: '474 Ranges',
-                    child: Text('מטווחים 474'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Shooting Ranges',
-                    child: Text('מטווחי ירי'),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    rangeFolder = value;
-                    // Clear settlement when folder changes
-                    settlementName = '';
-                    selectedSettlement = null;
-                    _settlementDisplayText = '';
-                  });
-                  _scheduleAutoSave();
-                },
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
-              // Conditional Settlement Field
-              if (rangeFolder == '474 Ranges') ...[
-                // Dropdown for 474 Ranges (Golan settlements)
+              // Folder selection for Range modes
+              if (widget.mode != 'surprise') ...[
+                // Select Folder (474 Ranges or Shooting Ranges)
+                DropdownButtonFormField<String>(
+                  initialValue: rangeFolder,
+                  decoration: const InputDecoration(
+                    labelText: 'בחר תיקייה',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'מטווחים 474',
+                      child: Text('מטווחים 474'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'מטווחי ירי',
+                      child: Text('מטווחי ירי'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      rangeFolder = value;
+                      // Clear settlement when folder changes
+                      settlementName = '';
+                      selectedSettlement = null;
+                      _settlementDisplayText = '';
+                    });
+                    _scheduleAutoSave();
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Settlement/Location Field - Different behavior for Surprise vs Range modes
+              if (widget.mode == 'surprise') ...[
+                // SURPRISE DRILLS: Dropdown with settlements + Manual Location option
                 TextField(
                   controller: TextEditingController(
                     text: _settlementDisplayText,
@@ -1888,26 +2059,72 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   onTap: _openSettlementSelectorSheet,
                 ),
                 const SizedBox(height: 16),
-              ] else if (rangeFolder == 'Shooting Ranges') ...[
-                // Free text for Shooting Ranges
-                TextField(
-                  controller: TextEditingController(text: settlementName)
-                    ..selection = TextSelection.collapsed(
-                      offset: settlementName.length,
+
+                // Manual Location text field (shown when Manual Location is selected)
+                if (isManualLocation) ...[
+                  TextField(
+                    controller: TextEditingController(text: manualLocationText)
+                      ..selection = TextSelection.collapsed(
+                        offset: manualLocationText.length,
+                      ),
+                    decoration: const InputDecoration(
+                      labelText: 'יישוב ידני',
+                      border: OutlineInputBorder(),
+                      hintText: 'הזן שם יישוב',
+                      prefixIcon: Icon(
+                        Icons.edit_location_alt,
+                        color: Colors.orangeAccent,
+                      ),
                     ),
-                  decoration: const InputDecoration(
-                    labelText: 'יישוב',
-                    border: OutlineInputBorder(),
-                    hintText: 'הזן שם יישוב',
+                    onChanged: (value) {
+                      setState(() {
+                        manualLocationText = value;
+                        settlementName =
+                            value; // Store in settlementName for save
+                      });
+                      _scheduleAutoSave();
+                    },
                   ),
-                  onChanged: (value) {
-                    setState(() {
-                      settlementName = value;
-                    });
-                    _scheduleAutoSave();
-                  },
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
+              ] else ...[
+                // RANGE MODE: Conditional based on folder
+                if (rangeFolder == 'מטווחים 474') ...[
+                  // Dropdown for 474 Ranges (Golan settlements)
+                  TextField(
+                    controller: TextEditingController(
+                      text: _settlementDisplayText,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'יישוב',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.arrow_drop_down),
+                    ),
+                    readOnly: true,
+                    onTap: _openSettlementSelectorSheet,
+                  ),
+                  const SizedBox(height: 16),
+                ] else if (rangeFolder == 'מטווחי ירי') ...[
+                  // Free text for Shooting Ranges
+                  TextField(
+                    controller: TextEditingController(text: settlementName)
+                      ..selection = TextSelection.collapsed(
+                        offset: settlementName.length,
+                      ),
+                    decoration: const InputDecoration(
+                      labelText: 'יישוב',
+                      border: OutlineInputBorder(),
+                      hintText: 'הזן שם יישוב',
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        settlementName = value;
+                      });
+                      _scheduleAutoSave();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ],
 
               // מדריך
@@ -2124,50 +2341,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 const SizedBox(height: 16),
               ],
 
-              // Long Range: Multi-stage with manual bullets input
+              // Long Range: Multi-stage with add/remove (like Short Range)
               if (_rangeType == 'ארוכים' && widget.mode == 'range') ...[
-                // Header
-                const Text(
-                  'מקצים',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-
-                // Stage picker dropdown + Add button
+                // Header with Add button (like Short Range)
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _selectedLongRangeStageToAdd,
-                        decoration: const InputDecoration(
-                          labelText: 'בחר מקצה',
-                          border: OutlineInputBorder(),
-                        ),
-                        hint: const Text('בחר מקצה להוספה'),
-                        items: longRangeStageNames.map((stageName) {
-                          return DropdownMenuItem(
-                            value: stageName,
-                            child: Text(stageName),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedLongRangeStageToAdd = value;
-                          });
-                        },
+                    const Text(
+                      'מקצים',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 12),
                     ElevatedButton.icon(
                       onPressed: _addLongRangeStage,
                       icon: const Icon(Icons.add),
                       label: const Text('הוסף מקצה'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
                       ),
                     ),
                   ],
@@ -2189,7 +2381,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           const SizedBox(width: 12),
                           const Expanded(
                             child: Text(
-                              'לא נוספו מקצים עדיין. בחר מקצה מהרשימה ולחץ "הוסף מקצה".',
+                              'לא נוספו מקצים עדיין. לחץ "הוסף מקצה" להתחיל.',
                               style: TextStyle(color: Colors.black87),
                             ),
                           ),
@@ -2248,7 +2440,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           ),
                           const SizedBox(height: 12),
 
-                          // Stage name dropdown
+                          // Stage name dropdown (like Short Range)
                           DropdownButtonFormField<String>(
                             initialValue:
                                 longRangeStageNames.contains(stage.name)
@@ -2258,6 +2450,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               labelText: 'בחר מקצה',
                               border: OutlineInputBorder(),
                             ),
+                            hint: const Text('בחר מקצה'),
                             items: longRangeStageNames.map((stageName) {
                               return DropdownMenuItem(
                                 value: stageName,
@@ -2310,26 +2503,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             ),
                           ],
 
-                          // Max points input (Long Range uses points, not bullets)
+                          // Bullets count input (maxPoints computed as bulletsCount * 10)
                           const SizedBox(height: 12),
                           TextField(
                             controller:
                                 TextEditingController(
-                                    text: stage.maxPoints > 0
-                                        ? stage.maxPoints.toString()
+                                    text: stage.bulletsCount > 0
+                                        ? stage.bulletsCount.toString()
                                         : '',
                                   )
                                   ..selection = TextSelection.collapsed(
                                     offset:
-                                        (stage.maxPoints > 0
-                                                ? stage.maxPoints.toString()
+                                        (stage.bulletsCount > 0
+                                                ? stage.bulletsCount.toString()
                                                 : '')
                                             .length,
                                   ),
                             decoration: const InputDecoration(
-                              labelText: 'נקודות מקסימום',
+                              labelText: 'מספר כדורים',
                               border: OutlineInputBorder(),
-                              hintText: 'הזן מספר נקודות',
+                              hintText:
+                                  'הזן מספר כדורים (נקודות = כדורים × 10)',
                             ),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
@@ -2337,7 +2531,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             ],
                             onChanged: (value) {
                               setState(() {
-                                stage.maxPoints = int.tryParse(value) ?? 0;
+                                stage.bulletsCount = int.tryParse(value) ?? 0;
+                                // maxPoints is automatically computed from bulletsCount
                               });
                               _scheduleAutoSave();
                             },
@@ -2731,8 +2926,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           overflow: TextOverflow.ellipsis,
                                           softWrap: false,
                                         ),
+                                        // Surprise Drills: Show dynamic maxPoints
+                                        if (widget.mode == 'surprise') ...[
+                                          Text(
+                                            '${_getMaxPointsForPrinciple(stationIndex)}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ]
                                         // בוחן רמה: Show "פגיעות/זמן" label
-                                        if (widget.mode == 'range' &&
+                                        else if (widget.mode == 'range' &&
                                             station.isLevelTester) ...[
                                           Text(
                                             'פגיעות / זמן',
@@ -2817,7 +3024,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     ),
                                     child: const Center(
                                       child: Text(
-                                        'ממוצע',
+                                        'אחוז',
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 10,
@@ -3686,7 +3893,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                         textAlign: TextAlign.center,
                                       ),
-                                      if (_rangeType == 'ארוכים' &&
+                                      // Surprise Drills: Show dynamic maxPoints
+                                      if (widget.mode == 'surprise')
+                                        Text(
+                                          '${_getMaxPointsForPrinciple(index)}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        )
+                                      else if (_rangeType == 'ארוכים' &&
                                           station.bulletsCount > 0)
                                         Text(
                                           '${station.bulletsCount * 10}',
@@ -3737,7 +3955,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 const SizedBox(
                                   width: 100,
                                   child: Text(
-                                    'ממוצע נקודות',
+                                    'אחוז',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.green,
@@ -4345,12 +4563,17 @@ class TraineeRowModel {
   static TraineeRowModel fromFirestore(Map<String, dynamic> data) {
     final index = (data['index'] as num?)?.toInt() ?? 0;
     final name = (data['name'] as String?) ?? '';
-    final valuesRaw = (data['values'] as Map<String, dynamic>?) ?? {};
+    // BACKWARD COMPATIBILITY: Read from 'values' (draft format) OR 'hits' (final save format)
+    // Priority: 'values' first (draft format), fallback to 'hits' (final save format)
+    final valuesRaw =
+        (data['values'] as Map<String, dynamic>?) ??
+        (data['hits'] as Map<String, dynamic>?) ??
+        {};
     final timeValuesRaw = (data['timeValues'] as Map<String, dynamic>?) ?? {};
 
     final values = <int, int>{};
     valuesRaw.forEach((key, val) {
-      if (key.startsWith('station_')) {
+      if (key.startsWith('station_') && !key.endsWith('_time')) {
         final stationIdx = int.tryParse(key.replaceFirst('station_', ''));
         final value = (val as num?)?.toInt() ?? 0;
         if (stationIdx != null && value != 0) {

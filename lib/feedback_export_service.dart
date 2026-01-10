@@ -2454,26 +2454,80 @@ class FeedbackExportService {
       debugPrint('📊 Total unique drill columns: ${orderedDrillNames.length}');
       debugPrint('📊 Drill column order: $orderedDrillNames');
 
-      // ========== PHASE 2: Build headers ==========
-      // Structure: [metadata columns] + [שם] + [drill columns...] + [ממוצע]
+      // ========== PHASE 2: Build headers (matching UI exactly) ==========
+      // Structure: [שם] + [principle columns in UI order...] + [ממוצע]
       final List<CellValue> headers = [
-        // Metadata columns
-        TextCellValue('תיקייה'),
-        TextCellValue('תאריך ושעה'),
-        TextCellValue('מדריך'),
-        TextCellValue('יישוב'),
-        TextCellValue('חטיבה'),
-        // Trainee info
-        TextCellValue('מס׳'),
-        TextCellValue('שם'),
-        // Dynamic drill columns (in order)
+        TextCellValue('שם'), // Trainee name column
+        // Dynamic principle columns (in exact UI order)
         ...orderedDrillNames.map((name) => TextCellValue(name)),
-        // Summary column
+        // Summary column (percentage)
         TextCellValue('ממוצע'),
       ];
 
       sheet.appendRow(headers);
       debugPrint('📝 Headers added: ${headers.length} columns');
+
+      // ========== PHASE 2.5: Compute and add MAX row ==========
+      // Calculate dynamic maxPoints per principle (same as UI calculation)
+      final Map<String, int> maxPointsPerPrinciple = {};
+
+      for (
+        int feedbackIdx = 0;
+        feedbackIdx < feedbacksData.length;
+        feedbackIdx++
+      ) {
+        final feedbackData = feedbacksData[feedbackIdx];
+        final drillNamesForThisFeedback = feedbackDrillOrder[feedbackIdx] ?? [];
+
+        // Build drill name to station index mapping for THIS feedback
+        final Map<String, int> drillNameToStationIdx = {};
+        for (int idx = 0; idx < drillNamesForThisFeedback.length; idx++) {
+          drillNameToStationIdx[drillNamesForThisFeedback[idx]] = idx;
+        }
+
+        // Extract trainees
+        final rawTrainees = feedbackData['trainees'];
+        if (rawTrainees is List) {
+          for (final t in rawTrainees) {
+            if (t is Map) {
+              final hitsMap = (t['hits'] is Map)
+                  ? Map<String, dynamic>.from(t['hits'] as Map)
+                  : <String, dynamic>{};
+
+              // For each principle, find max score across all trainees
+              for (final drillName in orderedDrillNames) {
+                final stationIdx = drillNameToStationIdx[drillName];
+                if (stationIdx != null) {
+                  final value = hitsMap['station_$stationIdx'];
+                  if (value != null && value is num && value > 0) {
+                    final intValue = value.toInt();
+                    final currentMax = maxPointsPerPrinciple[drillName] ?? 0;
+                    if (intValue > currentMax) {
+                      maxPointsPerPrinciple[drillName] = intValue;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      debugPrint('📊 Computed maxPoints per principle: $maxPointsPerPrinciple');
+
+      // Build MAX row
+      final List<CellValue> maxRow = [
+        TextCellValue('מקסימום'), // Label in name column
+        // MaxPoints for each principle
+        ...orderedDrillNames.map((name) {
+          final maxPoints = maxPointsPerPrinciple[name] ?? 0;
+          return maxPoints > 0 ? IntCellValue(maxPoints) : TextCellValue('');
+        }),
+        TextCellValue(''), // Empty in average column
+      ];
+
+      sheet.appendRow(maxRow);
+      debugPrint('📝 MAX row added with maxPoints per principle');
 
       int totalRowsAdded = 0;
       int totalTraineesProcessed = 0;
@@ -2489,44 +2543,6 @@ class FeedbackExportService {
 
         debugPrint(
           '\n📄 Processing feedback ${feedbackIdx + 1}/${feedbacksData.length} (docId=$docId)',
-        );
-
-        // Extract metadata
-        final folderName = (feedbackData['folder'] ?? 'תרגילי הפתעה')
-            .toString();
-        final instructorName =
-            (feedbackData['createdByName'] ??
-                    feedbackData['instructorName'] ??
-                    '')
-                .toString();
-        final settlement =
-            (feedbackData['settlement'] ??
-                    feedbackData['settlementName'] ??
-                    feedbackData['name'] ??
-                    '')
-                .toString();
-        final brigade =
-            (feedbackData['brigade'] ?? feedbackData['rangeFolder'] ?? '')
-                .toString();
-
-        // Parse date
-        final createdAt = feedbackData['createdAt'];
-        String dateStr = '';
-        if (createdAt is Timestamp) {
-          dateStr = DateFormat('dd/MM/yyyy HH:mm').format(createdAt.toDate());
-        } else if (createdAt is String) {
-          final dt = DateTime.tryParse(createdAt);
-          if (dt != null) {
-            dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
-          } else {
-            dateStr = createdAt;
-          }
-        } else if (createdAt is DateTime) {
-          dateStr = DateFormat('dd/MM/yyyy HH:mm').format(createdAt);
-        }
-
-        debugPrint(
-          '   📍 Metadata: instructor=$instructorName, settlement=$settlement, date=$dateStr',
         );
 
         // Build drill name to station index mapping for THIS feedback
@@ -2550,22 +2566,9 @@ class FeedbackExportService {
 
         debugPrint('   👥 Trainees loaded: ${trainees.length}');
 
-        // If no trainees, add one metadata-only row
+        // If no trainees, skip this feedback
         if (trainees.isEmpty) {
-          debugPrint('   ⚠️ No trainees found - adding metadata-only row');
-          final List<CellValue> row = [
-            TextCellValue(folderName),
-            TextCellValue(dateStr),
-            TextCellValue(instructorName),
-            TextCellValue(settlement),
-            TextCellValue(brigade),
-            TextCellValue(''),
-            TextCellValue(''),
-            ...orderedDrillNames.map((_) => TextCellValue('')),
-            TextCellValue(''),
-          ];
-          sheet.appendRow(row);
-          totalRowsAdded++;
+          debugPrint('   ⚠️ No trainees found - skipping this feedback');
           continue;
         }
 
@@ -2573,8 +2576,6 @@ class FeedbackExportService {
         for (int traineeIdx = 0; traineeIdx < trainees.length; traineeIdx++) {
           final trainee = trainees[traineeIdx];
           final traineeName = (trainee['name'] ?? '').toString();
-          final traineeNumber = (trainee['number'] ?? traineeIdx + 1)
-              .toString();
 
           // Extract hits map
           Map<String, dynamic> hitsMap = {};
@@ -2589,7 +2590,9 @@ class FeedbackExportService {
 
           // Build scores in orderedDrillNames order
           final List<CellValue> drillScores = [];
-          final List<num> filledValues = [];
+          final List<int> traineePoints = []; // Points achieved per principle
+          final List<int> maxPointsForThisTrainee =
+              []; // Max points per principle
 
           for (final drillName in orderedDrillNames) {
             // Find station index for this drill in THIS feedback
@@ -2601,9 +2604,13 @@ class FeedbackExportService {
               if (value != null && value is num && value > 0) {
                 final intValue = value.toInt();
                 drillScores.add(IntCellValue(intValue));
-                filledValues.add(intValue);
+                traineePoints.add(intValue);
+                maxPointsForThisTrainee.add(
+                  maxPointsPerPrinciple[drillName] ?? 0,
+                );
               } else {
                 drillScores.add(TextCellValue(''));
+                // Don't add to traineePoints or maxPoints if value is empty/0
               }
             } else {
               // This drill wasn't in this feedback (from another feedback's drills)
@@ -2611,26 +2618,28 @@ class FeedbackExportService {
             }
           }
 
-          // Calculate average of filled values
+          // Calculate percentage-based average (matching UI)
+          // totalPoints = sum of trainee's points
+          // totalMaxPoints = sum of maxPoints for principles where trainee has scores
+          // averagePercent = (totalPoints / totalMaxPoints) * 100
           String avgDisplay = '';
-          if (filledValues.isNotEmpty) {
-            final sum = filledValues.fold<num>(0, (a, b) => a + b);
-            final avg = sum / filledValues.length;
-            if (avg == avg.toInt()) {
-              avgDisplay = avg.toInt().toString();
+          if (traineePoints.isNotEmpty && maxPointsForThisTrainee.isNotEmpty) {
+            final totalPoints = traineePoints.fold<int>(0, (a, b) => a + b);
+            final totalMaxPoints = maxPointsForThisTrainee.fold<int>(
+              0,
+              (a, b) => a + b,
+            );
+
+            if (totalMaxPoints > 0) {
+              final avgPercent = (totalPoints / totalMaxPoints) * 100;
+              avgDisplay = avgPercent.toStringAsFixed(1);
             } else {
-              avgDisplay = avg.toStringAsFixed(1);
+              avgDisplay = '0.0';
             }
           }
 
-          // Build row
+          // Build row: [שם] + [principle scores...] + [ממוצע %]
           final List<CellValue> row = [
-            TextCellValue(folderName),
-            TextCellValue(dateStr),
-            TextCellValue(instructorName),
-            TextCellValue(settlement),
-            TextCellValue(brigade),
-            TextCellValue(traineeNumber),
             TextCellValue(traineeName),
             ...drillScores,
             TextCellValue(avgDisplay),
@@ -2639,17 +2648,17 @@ class FeedbackExportService {
           // DEBUG: Print first trainee row payload
           if (traineeIdx == 0 && feedbackIdx == 0) {
             debugPrint('   🔍 FIRST TRAINEE ROW PAYLOAD:');
+            debugPrint('      traineeName=$traineeName');
             debugPrint(
-              '      folder=$folderName, date=$dateStr, instructor=$instructorName',
-            );
-            debugPrint('      settlement=$settlement, brigade=$brigade');
-            debugPrint(
-              '      traineeNum=$traineeNumber, traineeName=$traineeName',
+              '      drillScores=${traineePoints.map((v) => v.toString()).toList()}',
             );
             debugPrint(
-              '      drillScores=${filledValues.map((v) => v.toString()).toList()}',
+              '      totalPoints=${traineePoints.fold<int>(0, (a, b) => a + b)}',
             );
-            debugPrint('      avg=$avgDisplay');
+            debugPrint(
+              '      totalMaxPoints=${maxPointsForThisTrainee.fold<int>(0, (a, b) => a + b)}',
+            );
+            debugPrint('      avg=$avgDisplay%');
           }
 
           sheet.appendRow(row);
@@ -2657,7 +2666,7 @@ class FeedbackExportService {
           totalTraineesProcessed++;
 
           debugPrint(
-            '      ✅ Added row: ${filledValues.length} scores, avg=$avgDisplay',
+            '      ✅ Added row: ${traineePoints.length} scores, avg=$avgDisplay%',
           );
         }
       }
@@ -2709,6 +2718,282 @@ class FeedbackExportService {
       debugPrint('🔵🔵🔵 SURPRISE DRILLS EXPORT COMPLETE 🔵🔵🔵\n');
     } catch (e, stackTrace) {
       debugPrint('❌ Export error: $e');
+      debugPrint('   Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// Export 474 Ranges feedbacks to XLSX with Hebrew RTL support
+  /// Structure: One sheet per feedback with metadata, trainees, stages, and totals
+  static Future<void> export474RangesFeedbacks({
+    required List<Map<String, dynamic>> feedbacksData,
+    String fileNamePrefix = '474_ranges_export',
+  }) async {
+    try {
+      debugPrint('\n🔵🔵🔵 STARTING 474 RANGES EXPORT 🔵🔵🔵');
+      debugPrint('📊 Total feedbacks received: ${feedbacksData.length}');
+
+      if (feedbacksData.isEmpty) {
+        throw Exception('אין נתונים לייצוא');
+      }
+
+      final excel = Excel.createExcel();
+
+      // Delete default sheet
+      if (excel.tables.keys.contains('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      // Create one sheet per feedback
+      for (
+        int feedbackIdx = 0;
+        feedbackIdx < feedbacksData.length;
+        feedbackIdx++
+      ) {
+        final feedbackData = feedbacksData[feedbackIdx];
+
+        // Extract metadata
+        final settlement =
+            (feedbackData['settlement'] ?? feedbackData['settlementName'] ?? '')
+                .toString();
+        final createdAt = feedbackData['createdAt'];
+        DateTime date = DateTime.now();
+        if (createdAt is Timestamp) {
+          date = createdAt.toDate();
+        } else if (createdAt is String) {
+          date = DateTime.tryParse(createdAt) ?? DateTime.now();
+        }
+        final dateStr = DateFormat('dd-MM-yyyy').format(date);
+
+        // Create unique sheet name: settlement + date (max 31 chars for Excel)
+        String sheetName = '$settlement $dateStr';
+        if (sheetName.length > 31) {
+          sheetName = sheetName.substring(0, 31);
+        }
+        // Ensure uniqueness by adding index if needed
+        String finalSheetName = sheetName;
+        int suffix = 1;
+        while (excel.tables.keys.contains(finalSheetName)) {
+          final suffixStr = ' (${suffix++})';
+          final maxLen = 31 - suffixStr.length;
+          finalSheetName =
+              sheetName.substring(0, maxLen < 0 ? 0 : maxLen) + suffixStr;
+        }
+
+        final sheet = excel[finalSheetName];
+        sheet.isRTL = true; // Hebrew RTL mode
+
+        debugPrint(
+          '\n📄 Processing feedback ${feedbackIdx + 1}: sheet="$finalSheetName"',
+        );
+
+        // ========== METADATA SECTION ==========
+        final instructorName =
+            (feedbackData['instructorName'] ??
+                    feedbackData['createdByName'] ??
+                    '')
+                .toString();
+        final rangeType = (feedbackData['rangeType'] ?? '').toString();
+        final attendeesCount =
+            (feedbackData['attendeesCount'] as num?)?.toInt() ?? 0;
+
+        sheet.appendRow([TextCellValue('מטווחים 474')]);
+        sheet.appendRow([TextCellValue('תאריך: $dateStr')]);
+        sheet.appendRow([TextCellValue('מדריך: $instructorName')]);
+        sheet.appendRow([TextCellValue('יישוב: $settlement')]);
+        sheet.appendRow([TextCellValue('סוג: $rangeType')]);
+        sheet.appendRow([TextCellValue('מספר חניכים: $attendeesCount')]);
+        sheet.appendRow([TextCellValue('')]); // Empty row separator
+
+        // ========== EXTRACT STAGES AND TRAINEES ==========
+        final rawStations = feedbackData['stations'];
+        final List<Map<String, dynamic>> stages = [];
+        if (rawStations is List) {
+          for (final s in rawStations) {
+            if (s is Map) {
+              stages.add(Map<String, dynamic>.from(s));
+            }
+          }
+        }
+
+        final rawTrainees = feedbackData['trainees'];
+        final List<Map<String, dynamic>> trainees = [];
+        if (rawTrainees is List) {
+          for (final t in rawTrainees) {
+            if (t is Map) {
+              trainees.add(Map<String, dynamic>.from(t));
+            }
+          }
+        }
+
+        debugPrint(
+          '   📊 Stages: ${stages.length}, Trainees: ${trainees.length}',
+        );
+
+        if (stages.isEmpty || trainees.isEmpty) {
+          debugPrint('   ⚠️ No stages or trainees - adding empty sheet');
+          sheet.appendRow([TextCellValue('אין נתונים')]);
+          continue;
+        }
+
+        // ========== BUILD HEADERS ==========
+        // Structure: [שם חניך] + [stage columns...] + [סה"כ פגיעות] + [סה"כ כדורים] + [אחוז כללי]
+        final List<CellValue> headers = [
+          TextCellValue('שם חניך'),
+          ...stages.map(
+            (stage) => TextCellValue((stage['name'] ?? '').toString()),
+          ),
+          TextCellValue('סה"כ פגיעות'),
+          TextCellValue('סה"כ כדורים'),
+          TextCellValue('אחוז כללי'),
+        ];
+        sheet.appendRow(headers);
+
+        // ========== ADD MAX BULLETS ROW ==========
+        // Show bullets per stage (for reference)
+        final List<CellValue> bulletsRow = [
+          TextCellValue('כדורים למקצה'),
+          ...stages.map((stage) {
+            final bullets = (stage['bulletsCount'] as num?)?.toInt() ?? 0;
+            return bullets > 0 ? IntCellValue(bullets) : TextCellValue('');
+          }),
+          TextCellValue(''),
+          IntCellValue(
+            stages.fold<int>(
+              0,
+              (total, s) => total + ((s['bulletsCount'] as num?)?.toInt() ?? 0),
+            ),
+          ),
+          TextCellValue(''),
+        ];
+        sheet.appendRow(bulletsRow);
+
+        // ========== ADD TRAINEE ROWS ==========
+        int totalRowsAdded = 0;
+
+        for (final trainee in trainees) {
+          final traineeName = (trainee['name'] ?? '').toString();
+
+          // Extract hits map
+          final hitsMap =
+              (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
+
+          // Build row: name + stage scores + totals
+          final List<CellValue> traineeRow = [TextCellValue(traineeName)];
+
+          int traineeHitsTotal = 0;
+          int traineeBulletsTotal = 0;
+
+          for (int stageIdx = 0; stageIdx < stages.length; stageIdx++) {
+            final stage = stages[stageIdx];
+            final hits = (hitsMap['station_$stageIdx'] as num?)?.toInt() ?? 0;
+            final bullets = (stage['bulletsCount'] as num?)?.toInt() ?? 0;
+
+            traineeHitsTotal += hits;
+            traineeBulletsTotal += bullets;
+
+            // Show as "hits/bullets"
+            if (hits > 0 || bullets > 0) {
+              traineeRow.add(TextCellValue('$hits/$bullets'));
+            } else {
+              traineeRow.add(TextCellValue(''));
+            }
+          }
+
+          // Add totals
+          traineeRow.add(IntCellValue(traineeHitsTotal));
+          traineeRow.add(IntCellValue(traineeBulletsTotal));
+
+          // Calculate percentage
+          final percentage = traineeBulletsTotal > 0
+              ? ((traineeHitsTotal / traineeBulletsTotal) * 100)
+                    .toStringAsFixed(1)
+              : '0.0';
+          traineeRow.add(TextCellValue('$percentage%'));
+
+          sheet.appendRow(traineeRow);
+          totalRowsAdded++;
+        }
+
+        debugPrint('   ✅ Added $totalRowsAdded trainee rows');
+
+        // ========== ADD SUMMARY ROW ==========
+        sheet.appendRow([TextCellValue('')]); // Empty separator
+
+        // Calculate totals across all trainees
+        int grandTotalHits = 0;
+        int grandTotalBullets = 0;
+
+        for (final trainee in trainees) {
+          final hitsMap =
+              (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
+          for (int stageIdx = 0; stageIdx < stages.length; stageIdx++) {
+            final hits = (hitsMap['station_$stageIdx'] as num?)?.toInt() ?? 0;
+            final bullets =
+                (stages[stageIdx]['bulletsCount'] as num?)?.toInt() ?? 0;
+            grandTotalHits += hits;
+            grandTotalBullets += bullets;
+          }
+        }
+
+        final grandPercentage = grandTotalBullets > 0
+            ? ((grandTotalHits / grandTotalBullets) * 100).toStringAsFixed(1)
+            : '0.0';
+
+        final List<CellValue> summaryRow = [
+          TextCellValue('סה"כ כללי'),
+          ...List.generate(stages.length, (_) => TextCellValue('')),
+          IntCellValue(grandTotalHits),
+          IntCellValue(grandTotalBullets),
+          TextCellValue('$grandPercentage%'),
+        ];
+        sheet.appendRow(summaryRow);
+      }
+
+      debugPrint('\n📊 EXPORT SUMMARY:');
+      debugPrint('   Total sheets created: ${excel.tables.keys.length}');
+
+      // ========== SAVE AND EXPORT ==========
+      final fileBytes = excel.encode();
+      if (fileBytes == null) {
+        throw Exception('שגיאה ביצירת קובץ XLSX');
+      }
+
+      final now = DateTime.now();
+      final fileName =
+          '${fileNamePrefix}_${DateFormat('yyyy-MM-dd_HH-mm').format(now)}.xlsx';
+
+      if (kIsWeb) {
+        final blob = html.Blob([
+          fileBytes,
+        ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+        debugPrint('✅ Web export completed: $fileName');
+      } else {
+        Directory? directory;
+        if (Platform.isAndroid) {
+          directory = await getDownloadsDirectory();
+        } else if (Platform.isIOS) {
+          directory = await getApplicationDocumentsDirectory();
+        }
+
+        if (directory == null) {
+          throw Exception('לא ניתן לקבל תיקיית שמירה');
+        }
+
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        debugPrint('✅ Mobile export completed: $filePath');
+      }
+
+      debugPrint('🔵🔵🔵 474 RANGES EXPORT COMPLETE 🔵🔵🔵\n');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 474 Ranges export error: $e');
       debugPrint('   Stack trace: $stackTrace');
       rethrow;
     }
