@@ -80,20 +80,23 @@ class ShortRangeStageModel {
   }
 }
 
-/// Model for Long Range stage with user-configurable bullets
+/// Model for Long Range stage with direct max score entry
 class LongRangeStageModel {
   String name; // Stage name (predefined or custom)
-  // maxPoints is computed from bulletsCount (single source of truth)
-  int get maxPoints => bulletsCount * 10;
   int
-  achievedPoints; // Total points achieved by trainees (legacy, not used in new calculation)
+  maxPoints; // Maximum score for this stage (entered directly by instructor)
+  int
+  achievedPoints; // Total points achieved by trainees (calculated from trainee data)
   bool isManual; // True if custom stage
 
-  // Source of truth: number of bullets (maxPoints = bulletsCount * 10)
+  // ✅ Bullet tracking field (TRACKING/DISPLAY ONLY - does NOT affect long-range scoring)
+  // Long Range: Used only to track bullets fired per stage (for reference)
+  // Short Range: Used for hit validation and percentage calculations
   int bulletsCount;
 
   LongRangeStageModel({
     required this.name,
+    this.maxPoints = 0,
     this.achievedPoints = 0,
     this.isManual = false,
     this.bulletsCount = 0,
@@ -101,29 +104,19 @@ class LongRangeStageModel {
 
   Map<String, dynamic> toJson() => {
     'name': name,
-    'maxPoints': maxPoints, // Computed getter, saved for compatibility
+    'maxPoints': maxPoints, // Direct score value entered by instructor
     'achievedPoints': achievedPoints,
     'isManual': isManual,
-    'bulletsCount': bulletsCount, // Source of truth
+    'bulletsCount': bulletsCount, // For tracking only (doesn't affect scoring)
   };
 
   factory LongRangeStageModel.fromJson(Map<String, dynamic> json) {
-    final directMaxPoints = (json['maxPoints'] as num?)?.toInt();
-    final bulletsCount = (json['bulletsCount'] as num?)?.toInt() ?? 0;
-
-    // For backward compatibility: if old data has maxPoints but not bulletsCount,
-    // derive bulletsCount from maxPoints
-    final resolvedBulletsCount = bulletsCount > 0
-        ? bulletsCount
-        : (directMaxPoints != null && directMaxPoints > 0
-              ? (directMaxPoints / 10).round()
-              : 0);
-
     return LongRangeStageModel(
       name: json['name'] as String? ?? '',
+      maxPoints: (json['maxPoints'] as num?)?.toInt() ?? 0,
       achievedPoints: (json['achievedPoints'] as num?)?.toInt() ?? 0,
       isManual: json['isManual'] as bool? ?? false,
-      bulletsCount: resolvedBulletsCount,
+      bulletsCount: (json['bulletsCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -772,6 +765,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return total;
   }
 
+  /// Get total bullets - SHORT RANGE AND SURPRISE ONLY
+  /// Long range has its own tracking function: _getTotalBulletsLongRangeTracking()
   int _getTotalBullets() {
     // For Short Range, use shortRangeStagesList
     if (_rangeType == 'קצרים' && shortRangeStagesList.isNotEmpty) {
@@ -781,13 +776,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
       return total;
     }
-    // For Long Range, use longRangeStagesList
-    if (_rangeType == 'ארוכים' && longRangeStagesList.isNotEmpty) {
-      int total = 0;
-      for (var stage in longRangeStagesList) {
-        total += stage.bulletsCount;
-      }
-      return total;
+    // ⚠️ LONG RANGE: Should NOT call this function - use points instead
+    if (_rangeType == 'ארוכים') {
+      debugPrint(
+        '⚠️ WARNING: _getTotalBullets called for long range - should use points!',
+      );
+      return 0; // Return 0 to prevent incorrect calculations
     }
     // For Surprise or legacy, use stations list
     int total = 0;
@@ -877,14 +871,242 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return total;
   }
 
+  /// ===== V2 DATA MODEL FOR LONG-RANGE FEEDBACKS =====
+  /// Build canonical V2 data structure from current UI state
+  /// V2 ensures points/points calculations (bullets never affect scoring)
+  Map<String, dynamic> _buildLrV2() {
+    if (_rangeType != 'ארוכים') return {};
+
+    final N = traineeRows.length;
+    if (N == 0 || longRangeStagesList.isEmpty) return {};
+
+    // Build stages array with maxScorePoints (NOT bullets!)
+    final List<Map<String, dynamic>> stages = [];
+    for (int i = 0; i < longRangeStagesList.length; i++) {
+      final stage = longRangeStagesList[i];
+      stages.add({
+        'id': 'stage_$i',
+        'name': stage.name,
+        'maxScorePoints': stage.maxPoints, // Instructor-entered max score
+        'bulletsTracking':
+            stage.bulletsCount, // Tracking only, never used for scoring
+      });
+    }
+
+    // Build trainee values map: { traineeKey: { stageId: pointsRaw } }
+    final Map<String, Map<String, int>> traineeValues = {};
+    for (int tIdx = 0; tIdx < traineeRows.length; tIdx++) {
+      final row = traineeRows[tIdx];
+      final traineeKey = 'trainee_$tIdx';
+      final Map<String, int> stagePoints = {};
+
+      row.values.forEach((stationIdx, points) {
+        if (stationIdx < stages.length) {
+          final stageId = 'stage_$stationIdx';
+          stagePoints[stageId] = points; // Store RAW points as entered
+        }
+      });
+
+      traineeValues[traineeKey] = stagePoints;
+    }
+
+    return {
+      'version': 2,
+      'traineesCount': N,
+      'stages': stages,
+      'traineeValues': traineeValues,
+    };
+  }
+
+  /// Migrate legacy long-range feedback to V2 model
+  /// Returns V2 structure ready to persist to Firestore
+  Map<String, dynamic> _migrateLongRangeToV2(
+    Map<String, dynamic> feedbackData,
+  ) {
+    debugPrint('\n🔄 ===== LR_V2_MIGRATION START =====');
+
+    final rawStations = feedbackData['stations'] as List?;
+    final rawTrainees = feedbackData['trainees'] as List?;
+
+    if (rawStations == null || rawTrainees == null) {
+      debugPrint(
+        '⚠️ LR_V2_MIGRATION: Missing stations or trainees, cannot migrate',
+      );
+      debugPrint('🔄 ===== LR_V2_MIGRATION END (FAILED) =====\n');
+      return {};
+    }
+
+    final N = rawTrainees.length;
+    debugPrint('🔄 LR_V2_MIGRATION: N=$N trainees');
+
+    // Build stages array
+    final List<Map<String, dynamic>> stages = [];
+    for (int i = 0; i < rawStations.length; i++) {
+      final stationData = rawStations[i] as Map<String, dynamic>?;
+      if (stationData == null) continue;
+
+      final name = stationData['name'] as String? ?? 'Stage ${i + 1}';
+
+      // Determine maxScorePoints from legacy data
+      int maxScorePoints = 0;
+      if (stationData.containsKey('maxPoints')) {
+        maxScorePoints = (stationData['maxPoints'] as num?)?.toInt() ?? 0;
+      } else if (stationData.containsKey('maxScorePoints')) {
+        maxScorePoints = (stationData['maxScorePoints'] as num?)?.toInt() ?? 0;
+      }
+      // If neither exists, leave as 0 (mark as missing max)
+
+      final bulletsTracking =
+          (stationData['bulletsCount'] as num?)?.toInt() ?? 0;
+
+      stages.add({
+        'id': 'stage_$i',
+        'name': name,
+        'maxScorePoints': maxScorePoints,
+        'bulletsTracking': bulletsTracking,
+      });
+
+      debugPrint(
+        '🔄   Stage[$i]: "$name" maxScorePoints=$maxScorePoints (bullets=$bulletsTracking tracking-only)',
+      );
+    }
+
+    // Build trainee values
+    final Map<String, Map<String, int>> traineeValues = {};
+    for (int tIdx = 0; tIdx < rawTrainees.length; tIdx++) {
+      final traineeData = rawTrainees[tIdx] as Map<String, dynamic>?;
+      if (traineeData == null) continue;
+
+      final traineeName =
+          traineeData['name'] as String? ?? 'Trainee ${tIdx + 1}';
+      final traineeKey = 'trainee_$tIdx';
+      final hitsMap = traineeData['hits'] as Map<String, dynamic>? ?? {};
+
+      final Map<String, int> stagePoints = {};
+      hitsMap.forEach((key, value) {
+        // Key format: station_0, station_1, etc.
+        final match = RegExp(r'station_(\d+)').firstMatch(key);
+        if (match != null) {
+          final stationIdx = int.parse(match.group(1)!);
+          if (stationIdx < stages.length) {
+            final stageId = 'stage_$stationIdx';
+            final pointsRaw = (value as num?)?.toInt() ?? 0;
+            stagePoints[stageId] =
+                pointsRaw; // Use stored value AS-IS (no normalization)
+          }
+        }
+      });
+
+      traineeValues[traineeKey] = stagePoints;
+      debugPrint('🔄   Trainee[$tIdx]: "$traineeName" points=$stagePoints');
+    }
+
+    final v2Data = {
+      'version': 2,
+      'traineesCount': N,
+      'stages': stages,
+      'traineeValues': traineeValues,
+    };
+
+    debugPrint('🔄 LR_V2_MIGRATION: Created V2 model');
+    debugPrint('🔄   totalStages=${stages.length}');
+    debugPrint('🔄   totalTrainees=$N');
+    debugPrint('🔄 ===== LR_V2_MIGRATION END (SUCCESS) =====\n');
+
+    return v2Data;
+  }
+
+  /// Calculate summary using V2 data model
+  /// Returns { totalAchieved, totalMax, stageResults: [{stageId, achieved, max}] }
+  Map<String, dynamic> _calculateSummaryFromV2(Map<String, dynamic> lrV2) {
+    final stages = lrV2['stages'] as List? ?? [];
+    final traineeValues = lrV2['traineeValues'] as Map<String, dynamic>? ?? {};
+    final N = lrV2['traineesCount'] as int? ?? 0;
+
+    int totalAchieved = 0;
+    int totalMax = 0;
+    final List<Map<String, dynamic>> stageResults = [];
+
+    for (int i = 0; i < stages.length; i++) {
+      final stageData = stages[i] as Map<String, dynamic>;
+      final stageId = stageData['id'] as String;
+      final maxScorePoints =
+          (stageData['maxScorePoints'] as num?)?.toInt() ?? 0;
+
+      // Calculate achieved points for this stage across all trainees
+      int stageAchieved = 0;
+      traineeValues.forEach((traineeKey, stagePoints) {
+        if (stagePoints is Map<String, dynamic>) {
+          final points = (stagePoints[stageId] as num?)?.toInt() ?? 0;
+          stageAchieved += points;
+        }
+      });
+
+      // Per-stage max = N * maxScorePoints
+      final stageMax = N * maxScorePoints;
+
+      stageResults.add({
+        'stageId': stageId,
+        'stageName': stageData['name'] as String? ?? '',
+        'achieved': stageAchieved,
+        'max': stageMax,
+      });
+
+      totalAchieved += stageAchieved;
+      totalMax += stageMax;
+    }
+
+    return {
+      'totalAchieved': totalAchieved,
+      'totalMax': totalMax,
+      'stageResults': stageResults,
+    };
+  }
+
   /// Get total max points across all Long Range stages
+  /// Formula: N * SUM(stage.maxPoints) where N = number of trainees
+  /// Example: 3 trainees, 3 stages (100,100,100) → 3 * 300 = 900
   int _getTotalMaxPointsLongRange() {
     if (_rangeType != 'ארוכים') return 0;
     if (longRangeStagesList.isEmpty) return 0;
 
+    // N = number of trainees in this feedback
+    final N = traineeRows.length;
+    if (N == 0) return 0;
+
+    // Sum all stage maxPoints
+    int sumOfStageMaxPoints = 0;
+    final List<int> stageMaxPointsList = [];
+    for (var stage in longRangeStagesList) {
+      sumOfStageMaxPoints += stage.maxPoints;
+      stageMaxPointsList.add(stage.maxPoints);
+    }
+
+    // Total = N * SUM(stage.maxPoints)
+    final totalMaxPoints = N * sumOfStageMaxPoints;
+
+    // 🔍 DEBUG: Log calculation breakdown
+    debugPrint('\n🎯 LONG-RANGE SUMMARY DENOMINATOR CALCULATION:');
+    debugPrint('   N (trainees) = $N');
+    debugPrint('   Stage maxPoints = $stageMaxPointsList');
+    debugPrint('   SUM(stage.maxPoints) = $sumOfStageMaxPoints');
+    debugPrint(
+      '   totalMaxPoints = N * SUM = $N * $sumOfStageMaxPoints = $totalMaxPoints',
+    );
+    debugPrint('   Expected format: achieved/$totalMaxPoints\n');
+
+    return totalMaxPoints;
+  }
+
+  /// REMOVED: _getTraineeTotalBulletsLongRange
+  /// Long range uses POINTS ONLY - bullets are for tracking/display only, not calculations
+
+  /// Get total bullets for long range (TRACKING/DISPLAY ONLY - does NOT affect scoring)
+  /// This is purely for displaying how many bullets were fired, not for calculations
+  int _getTotalBulletsLongRangeTracking() {
     int total = 0;
     for (var stage in longRangeStagesList) {
-      total += stage.maxPoints;
+      total += stage.bulletsCount;
     }
     return total;
   }
@@ -1235,6 +1457,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final row = traineeRows[i];
         if (row.name.trim().isEmpty) continue; // Skip empty names
 
+        // ⚠️ DEBUG: Log BEFORE serialization (long-range only)
+        if (_rangeType == 'ארוכים' && row.values.isNotEmpty) {
+          debugPrint('\n🔍 PRE-SAVE DEBUG: Trainee "${row.name}"');
+          debugPrint('   RAW row.values (from model): ${row.values}');
+        }
+
         // Build hits map from values, only include non-zero
         final Map<String, int> hitsMap = {};
         row.values.forEach((stationIdx, value) {
@@ -1281,6 +1509,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('\n╔═══ LONG RANGE SAVE: AFTER SERIALIZATION ═══╗');
         debugPrint('║ Platform: ${kIsWeb ? "WEB" : "MOBILE"}');
         debugPrint('║ Total serialized: ${traineesData.length}');
+        debugPrint('║');
+        debugPrint('║ ✅ VERIFICATION: RAW POINTS PRESERVATION');
+        debugPrint(
+          '║    Expected: Points entered by instructor (e.g., 58 stays 58)',
+        );
+        debugPrint(
+          '║    Bug check: If 58 became 5, normalization bug detected!',
+        );
+        debugPrint('║');
 
         // ✅ STRICT VERIFICATION: Check for division bug
         bool bugDetected = false;
@@ -1627,6 +1864,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('SAVE_DEBUG: userSelectedFolder=$rangeFolder');
         debugPrint('SAVE_DEBUG: Will appear in משובים → $targetFolder');
         debugPrint('SAVE_DEBUG: payload keys=${rangeData.keys.toList()}');
+
+        // ✅ BUILD AND PERSIST V2 DATA MODEL FOR LONG RANGE
+        final lrV2 = _buildLrV2();
+        if (lrV2.isNotEmpty) {
+          rangeData['lrV2'] = lrV2;
+          debugPrint('\n✅ LR_V2_SAVE: Built V2 data model');
+          debugPrint('   V2 traineesCount=${lrV2['traineesCount']}');
+          debugPrint('   V2 stages count=${(lrV2['stages'] as List).length}');
+
+          final stages = lrV2['stages'] as List;
+          for (int i = 0; i < stages.length; i++) {
+            final stage = stages[i] as Map<String, dynamic>;
+            debugPrint(
+              '   V2 Stage[$i]: maxScorePoints=${stage['maxScorePoints']}, bullets=${stage['bulletsTracking']} (tracking)',
+            );
+          }
+        }
 
         // ====== ACCEPTANCE TEST: LONG RANGE FINAL SAVE PROOF ======
         debugPrint('\n╔══════════════════════════════════════════════════╗');
@@ -2352,6 +2606,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       ?.map((x) => x.toString())
                       .toList() ??
                   ['זמן', 'פגיעות'],
+              maxPoints: (m['maxPoints'] as num?)
+                  ?.toInt(), // Long Range: max score
+              achievedPoints: (m['achievedPoints'] as num?)
+                  ?.toInt(), // Long Range: achieved score
             ),
           );
         }
@@ -2404,6 +2662,44 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           });
         }
         debugPrint('╚═══════════════════════════════════════╝\n');
+      }
+
+      // ✅ CHECK FOR V2 DATA MODEL AND MIGRATE IF NEEDED (before setState)
+      Map<String, dynamic>? lrV2 = data['lrV2'] as Map<String, dynamic>?;
+      if (_rangeType == 'ארוכים') {
+        if (lrV2 == null || lrV2.isEmpty) {
+          debugPrint('🔄 LR_V2_LOAD: V2 data missing, running migration...');
+          lrV2 = _migrateLongRangeToV2(data);
+
+          if (lrV2.isNotEmpty) {
+            // ✅ PERSIST V2 BACK TO FIRESTORE (one-time migration)
+            try {
+              await docRef.update({'lrV2': lrV2});
+              debugPrint('✅ LR_V2_MIGRATED: Persisted V2 to Firestore');
+            } catch (e) {
+              debugPrint('⚠️ LR_V2_MIGRATION: Failed to persist: $e');
+            }
+          }
+        } else {
+          debugPrint(
+            '✅ LR_V2_LOAD: V2 data found (version=${lrV2['version']})',
+          );
+        }
+
+        // ✅ CALCULATE SUMMARY FROM V2
+        if (lrV2.isNotEmpty) {
+          final summary = _calculateSummaryFromV2(lrV2);
+          debugPrint('\n📊 LR_V2_SUMMARY CALCULATION:');
+          debugPrint(
+            '   Total: ${summary['totalAchieved']}/${summary['totalMax']}',
+          );
+          final stageResults = summary['stageResults'] as List;
+          for (final stageResult in stageResults) {
+            debugPrint(
+              '   ${stageResult['stageName']}: ${stageResult['achieved']}/${stageResult['max']}',
+            );
+          }
+        }
       }
 
       // ✅ UPDATE STATE: Replace all data with loaded data
@@ -2510,15 +2806,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               final isManual = station.isManual;
               final stageName = station.name;
 
-              // Extract bulletsCount - check for maxPoints to calculate backwards
-              int bulletsCount = station.bulletsCount;
+              // ✅ Read maxPoints from station (NOT from bulletsCount!)
+              final int maxPoints = station.maxPoints ?? 0;
+              final int bulletsCount = station.bulletsCount;
+              final int achievedPoints = station.achievedPoints ?? 0;
 
               longRangeStagesList.add(
                 LongRangeStageModel(
                   name: stageName,
-                  bulletsCount: bulletsCount,
-                  achievedPoints:
-                      station.hits ?? 0, // achieved stored in hits field
+                  maxPoints: maxPoints, // ✅ Restore user-entered max score
+                  bulletsCount: bulletsCount, // ✅ Tracking only
+                  achievedPoints: achievedPoints, // ✅ Restore achieved points
                   isManual: isManual,
                 ),
               );
@@ -3067,11 +3365,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     ),
                                     if (stage.maxPoints > 0)
                                       Text(
-                                        '${stage.maxPoints} נק׳',
+                                        'מקסימום: ${stage.maxPoints} נק׳',
                                         style: TextStyle(
                                           fontSize: 14,
                                           color: Colors.grey.shade700,
                                           fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    if (stage.bulletsCount > 0)
+                                      Text(
+                                        'כדורים: ${stage.bulletsCount}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
                                         ),
                                       ),
                                   ],
@@ -3113,7 +3419,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     ? stage.name
                                     : (value ?? '');
                                 stage.isManual = isManual;
-                                // Keep maxPoints when changing stage type
                               });
                               _scheduleAutoSave();
                             },
@@ -3152,7 +3457,41 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             ),
                           ],
 
-                          // Bullets count input (maxPoints computed as bulletsCount * 10)
+                          // Max score input (direct entry, no multiplication)
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller:
+                                TextEditingController(
+                                    text: stage.maxPoints > 0
+                                        ? stage.maxPoints.toString()
+                                        : '',
+                                  )
+                                  ..selection = TextSelection.collapsed(
+                                    offset:
+                                        (stage.maxPoints > 0
+                                                ? stage.maxPoints.toString()
+                                                : '')
+                                            .length,
+                                  ),
+                            decoration: const InputDecoration(
+                              labelText: 'ציון מקסימלי',
+                              border: OutlineInputBorder(),
+                              hintText: 'הזן ציון מקסימלי (לדוגמה: 100 או 50)',
+                              helperText: 'הציון המקסימלי שניתן להשיג במקצה זה',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                stage.maxPoints = int.tryParse(value) ?? 0;
+                              });
+                              _scheduleAutoSave();
+                            },
+                          ),
+
+                          // Bullet tracking field (for display only)
                           const SizedBox(height: 12),
                           TextField(
                             controller:
@@ -3169,10 +3508,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             .length,
                                   ),
                             decoration: const InputDecoration(
-                              labelText: 'מספר כדורים',
+                              labelText: 'מספר כדורים (למעקב בלבד)',
                               border: OutlineInputBorder(),
-                              hintText:
-                                  'הזן מספר כדורים (נקודות = כדורים × 10)',
+                              hintText: 'הזן מספר כדורים',
+                              helperText:
+                                  'שדה זה למעקב בלבד, לא משפיע על הציון',
+                              suffixIcon: Icon(Icons.info_outline, size: 20),
                             ),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
@@ -3181,7 +3522,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             onChanged: (value) {
                               setState(() {
                                 stage.bulletsCount = int.tryParse(value) ?? 0;
-                                // maxPoints is automatically computed from bulletsCount
                               });
                               _scheduleAutoSave();
                             },
@@ -3607,9 +3947,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           ),
                                         ] else if (widget.mode == 'range' &&
                                             _rangeType == 'ארוכים' &&
-                                            station.bulletsCount > 0) ...[
+                                            stationIndex <
+                                                longRangeStagesList.length &&
+                                            longRangeStagesList[stationIndex]
+                                                    .maxPoints >
+                                                0) ...[
                                           Text(
-                                            '${station.bulletsCount * 10}',
+                                            '${longRangeStagesList[stationIndex].maxPoints}',
                                             style: TextStyle(
                                               fontSize: 10,
                                               color: Colors.grey.shade600,
@@ -3727,6 +4071,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     decoration: BoxDecoration(
                                       color: Colors.green.shade50,
                                       border: Border(
+                                        left: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
                                         bottom: BorderSide(
                                           color: Colors.grey.shade300,
                                         ),
@@ -3739,6 +4086,31 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 10,
                                           color: Colors.green,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        softWrap: false,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 70,
+                                    height: 56,
+                                    padding: const EdgeInsets.all(4.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'סהכ כדורים',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10,
+                                          color: Colors.orange,
                                         ),
                                         textAlign: TextAlign.center,
                                         softWrap: false,
@@ -4384,14 +4756,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                   );
                                                                   return;
                                                                 }
-                                                              } else {
-                                                                // Long Range: validate against stage maxPoints (0-100)
-                                                                // ✅ CRITICAL: Only clamp if exceeds max, never divide/convert
-                                                                if (_rangeType ==
-                                                                        'ארוכים' &&
-                                                                    stationIndex <
-                                                                        longRangeStagesList
-                                                                            .length) {
+                                                              } else if (_rangeType ==
+                                                                  'ארוכים') {
+                                                                // ✅ LONG RANGE: Validate against stage maxPoints (POINTS-ONLY)
+                                                                // CRITICAL: NEVER validate against bullets for long-range
+                                                                if (stationIndex <
+                                                                    longRangeStagesList
+                                                                        .length) {
                                                                   final stage =
                                                                       longRangeStagesList[stationIndex];
                                                                   if (score >
@@ -4413,25 +4784,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     );
                                                                     return;
                                                                   }
-                                                                } else if (score >
-                                                                    station
-                                                                        .bulletsCount) {
-                                                                  // Short Range: validate against bullets count
-                                                                  ScaffoldMessenger.of(
-                                                                    context,
-                                                                  ).showSnackBar(
-                                                                    SnackBar(
-                                                                      content: Text(
-                                                                        'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                                                      ),
-                                                                      duration: const Duration(
-                                                                        seconds:
-                                                                            1,
-                                                                      ),
-                                                                    ),
-                                                                  );
-                                                                  return;
                                                                 }
+                                                                // ✅ For long-range, accept ANY value if stage not found (defensive)
+                                                              } else if (score >
+                                                                  station
+                                                                      .bulletsCount) {
+                                                                // ✅ SHORT RANGE ONLY: Validate against bullets count
+                                                                ScaffoldMessenger.of(
+                                                                  context,
+                                                                ).showSnackBar(
+                                                                  SnackBar(
+                                                                    content: Text(
+                                                                      'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                                    ),
+                                                                    duration:
+                                                                        const Duration(
+                                                                          seconds:
+                                                                              1,
+                                                                        ),
+                                                                  ),
+                                                                );
+                                                                return;
                                                               }
                                                               // ✅ STORE RAW SCORE: No conversion, no division
                                                               // Long Range: stores exact points (0-100)
@@ -4605,6 +4978,28 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 ),
                                               ),
                                             ),
+                                            // Total bullets tracking column (Long Range)
+                                            SizedBox(
+                                              width: 70,
+                                              height: rowHeight,
+                                              child: Align(
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  _getTotalBulletsLongRangeTracking()
+                                                      .toString(),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.orange,
+                                                    fontSize: 10,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ),
                                           ] else ...[
                                             // Short Range: Hits-based totals
                                             SizedBox(
@@ -4752,9 +5147,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           textAlign: TextAlign.center,
                                         )
                                       else if (_rangeType == 'ארוכים' &&
-                                          station.bulletsCount > 0)
+                                          index < longRangeStagesList.length &&
+                                          longRangeStagesList[index].maxPoints >
+                                              0)
                                         Text(
-                                          '${station.bulletsCount * 10}',
+                                          '${longRangeStagesList[index].maxPoints}',
                                           style: TextStyle(
                                             fontSize: 10,
                                             color: Colors.grey.shade600,
@@ -4832,6 +5229,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.green,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    'סהכ כדורים',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orange,
                                       fontSize: 12,
                                     ),
                                     textAlign: TextAlign.center,
@@ -5143,6 +5552,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         inputFormatters: [
                                           FilteringTextInputFormatter
                                               .digitsOnly,
+                                          // ✅ LONG RANGE: Allow up to 3 digits (0-150)
+                                          LengthLimitingTextInputFormatter(3),
                                         ],
                                         textAlign: TextAlign.center,
                                         onChanged: (v) {
@@ -5150,14 +5561,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
                                           // Validation based on mode
                                           if (widget.mode == 'surprise') {
-                                            // Surprise mode: 1-10 scale
+                                            // Surprise mode: 0-10 scale
                                             if (score < 0 || score > 10) {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
                                                 const SnackBar(
                                                   content: Text(
-                                                    'ציון חייב להיות בין 1 ל-10',
+                                                    'ציון חייב להיות בין 0 ל-10',
                                                   ),
                                                   duration: Duration(
                                                     seconds: 1,
@@ -5166,23 +5577,46 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                               );
                                               return;
                                             }
-                                          } else {
-                                            // Range mode: hits limited by bullets
-                                            if (score > station.bulletsCount) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                          } else if (_rangeType == 'ארוכים') {
+                                            // ✅ LONG RANGE: Validate against stage maxPoints (POINTS-ONLY)
+                                            // CRITICAL: NEVER validate against bullets for long-range
+                                            if (stationIndex <
+                                                longRangeStagesList.length) {
+                                              final stage =
+                                                  longRangeStagesList[stationIndex];
+                                              if (score > stage.maxPoints) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
+                                                    ),
+                                                    duration: const Duration(
+                                                      seconds: 1,
+                                                    ),
                                                   ),
-                                                  duration: const Duration(
-                                                    seconds: 1,
-                                                  ),
-                                                ),
-                                              );
-                                              return;
+                                                );
+                                                return;
+                                              }
                                             }
+                                            // ✅ Accept any value if stage not found (defensive)
+                                          } else if (score >
+                                              station.bulletsCount) {
+                                            // ✅ SHORT RANGE ONLY: Validate against bullets count
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
+                                                ),
+                                                duration: const Duration(
+                                                  seconds: 1,
+                                                ),
+                                              ),
+                                            );
+                                            return;
                                           }
                                           // ✅ ONLY UPDATE DATA: No setState, no save
                                           row.setValue(stationIndex, score);
@@ -5274,6 +5708,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             textAlign: TextAlign.center,
                                           );
                                         },
+                                      ),
+                                    ),
+                                    // Total bullets tracking column (Long Range)
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        _getTotalBulletsLongRangeTracking()
+                                            .toString(),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                        textAlign: TextAlign.center,
                                       ),
                                     ),
                                   ] else ...[
@@ -5488,6 +5935,12 @@ class RangeStation {
   bool isLevelTester; // האם מקצה "בוחן רמה"
   List<String> selectedRubrics; // רובליקות נבחרות למקצה ידני
 
+  // ✅ Long Range only: Max score points (e.g., 50, 100, 150) - NEVER derived from bulletsCount
+  int? maxPoints;
+
+  // ✅ Long Range only: Achieved points (0 to maxPoints)
+  int? achievedPoints;
+
   RangeStation({
     required this.name,
     required this.bulletsCount,
@@ -5496,6 +5949,8 @@ class RangeStation {
     this.isManual = false,
     this.isLevelTester = false,
     List<String>? selectedRubrics,
+    this.maxPoints,
+    this.achievedPoints,
   }) : selectedRubrics = selectedRubrics ?? ['זמן', 'פגיעות'];
 
   // בדיקה אם המקצה הוא "בוחן רמה"
@@ -5538,6 +5993,8 @@ extension RangeStationJson on RangeStation {
       'isManual': isManual,
       'isLevelTester': isLevelTester,
       'selectedRubrics': selectedRubrics,
+      'maxPoints': maxPoints, // Long Range: max score (e.g., 150)
+      'achievedPoints': achievedPoints, // Long Range: achieved score
     };
   }
 }

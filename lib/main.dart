@@ -4960,29 +4960,137 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             feedbackType == 'דווח רחוק' ||
                             rangeSubType == 'טווח רחוק';
 
-                        // חישוב סך הכל פגיעות וכדורים למטווח 474
-                        int totalHits = 0;
+                        debugPrint(
+                          '\n🔍 ===== 474 RANGES FEEDBACK DETAILS =====',
+                        );
+                        debugPrint('   Feedback ID: ${feedback.id}');
+                        debugPrint('   feedbackType: $feedbackType');
+                        debugPrint('   rangeSubType: $rangeSubType');
+                        debugPrint('   isLongRange: $isLongRange');
+                        debugPrint(
+                          '   trainees.length (N): ${trainees.length}',
+                        );
+                        debugPrint('   stations.length: ${stations.length}');
 
-                        // סך כל הפגיעות - סכום כל פגיעות החניכים
-                        for (final trainee in trainees) {
-                          totalHits +=
-                              (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                        // ✅ AUTO-MIGRATE: Fix old long-range feedbacks missing maxScorePoints
+                        bool needsMigration = false;
+                        if (isLongRange) {
+                          for (int i = 0; i < stations.length; i++) {
+                            final station = stations[i];
+                            final maxScorePoints = station['maxScorePoints'];
+                            if (maxScorePoints == null) {
+                              needsMigration = true;
+                              // Use legacy maxPoints if exists, else 0 (NEVER default to 10)
+                              final legacyMaxPoints =
+                                  (station['maxPoints'] as num?)?.toInt() ?? 0;
+                              stations[i]['maxScorePoints'] = legacyMaxPoints;
+                              debugPrint(
+                                '   🔧 MIGRATION: station[$i] missing maxScorePoints, set to $legacyMaxPoints (from legacy maxPoints)',
+                              );
+                            }
+                          }
+
+                          if (needsMigration && feedback.id != null) {
+                            debugPrint(
+                              '   💾 MIGRATION: Writing corrected stations to Firestore...',
+                            );
+                            // Schedule migration outside builder to avoid async in sync context
+                            Future.microtask(() async {
+                              try {
+                                await FirebaseFirestore.instance
+                                    .collection('feedbacks')
+                                    .doc(feedback.id)
+                                    .update({'stations': stations});
+                                debugPrint(
+                                  '   ✅ MIGRATION: Stations updated in Firestore',
+                                );
+                              } catch (e) {
+                                debugPrint('   ❌ MIGRATION ERROR: $e');
+                              }
+                            });
+                          }
                         }
 
-                        // חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
-                        int totalBulletsPerTrainee = 0;
-                        for (final station in stations) {
-                          totalBulletsPerTrainee +=
-                              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                        // ✅ CONDITIONAL LOGIC: Points for long range, hits for short range
+                        int totalValue = 0;
+                        int totalMax = 0;
+
+                        if (isLongRange) {
+                          // LONG RANGE: Use points-based calculation
+                          debugPrint(
+                            '\n   📊 LONG RANGE CALCULATION (POINTS):',
+                          );
+
+                          // Sum achieved points from trainees
+                          for (final trainee in trainees) {
+                            final traineePoints =
+                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                            totalValue += traineePoints;
+                          }
+
+                          // Calculate totalMax from N * SUM(maxScorePoints)
+                          int sumMaxScorePoints = 0;
+                          for (int i = 0; i < stations.length; i++) {
+                            final station = stations[i];
+                            final stageName = station['name'] ?? 'Stage $i';
+                            final maxScorePoints =
+                                (station['maxScorePoints'] as num?)?.toInt() ??
+                                0;
+                            final legacyMaxPoints =
+                                (station['maxPoints'] as num?)?.toInt() ?? 0;
+                            final bulletsTracking =
+                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
+
+                            debugPrint('   Stage[$i]: "$stageName"');
+                            debugPrint('      maxScorePoints: $maxScorePoints');
+                            debugPrint(
+                              '      legacy maxPoints: $legacyMaxPoints',
+                            );
+                            debugPrint(
+                              '      bulletsTracking: $bulletsTracking',
+                            );
+                            debugPrint(
+                              '      ✅ USED maxScorePoints: $maxScorePoints',
+                            );
+
+                            sumMaxScorePoints += maxScorePoints;
+                          }
+
+                          totalMax = trainees.length * sumMaxScorePoints;
+                          debugPrint('\n   📐 TOTAL MAX CALCULATION:');
+                          debugPrint('      N (trainees): ${trainees.length}');
+                          debugPrint(
+                            '      SUM(maxScorePoints): $sumMaxScorePoints',
+                          );
+                          debugPrint(
+                            '      totalMax = N × SUM = ${trainees.length} × $sumMaxScorePoints = $totalMax',
+                          );
+                          debugPrint(
+                            '      totalValue (achieved): $totalValue',
+                          );
+                          debugPrint('      RESULT: $totalValue / $totalMax');
+                        } else {
+                          // SHORT RANGE: Use hits/bullets (existing logic)
+                          for (final trainee in trainees) {
+                            totalValue +=
+                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                          }
+                          int totalBulletsPerTrainee = 0;
+                          for (final station in stations) {
+                            totalBulletsPerTrainee +=
+                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                          }
+                          totalMax = trainees.length * totalBulletsPerTrainee;
                         }
-                        final totalBullets =
-                            trainees.length * totalBulletsPerTrainee;
 
                         // חישוב אחוז כללי
-                        final percentage = totalBullets > 0
-                            ? ((totalHits / totalBullets) * 100)
-                                  .toStringAsFixed(1)
+                        final percentage = totalMax > 0
+                            ? ((totalValue / totalMax) * 100).toStringAsFixed(1)
                             : '0.0';
+
+                        debugPrint(
+                          '🔍 ===== END 474 RANGES FEEDBACK DETAILS =====\n',
+                        );
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -5015,7 +5123,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                               ),
                                               const SizedBox(height: 8),
                                               Text(
-                                                '$totalHits / $totalBullets',
+                                                '$totalValue / $totalMax',
                                                 style: const TextStyle(
                                                   fontSize: 32,
                                                   fontWeight: FontWeight.bold,
@@ -5043,7 +5151,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   ),
                                                   const SizedBox(height: 4),
                                                   Text(
-                                                    '$totalHits/$totalBullets',
+                                                    '$totalValue/$totalMax',
                                                     style: const TextStyle(
                                                       fontSize: 24,
                                                       fontWeight:
@@ -5092,40 +5200,50 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               final station = entry.value;
                               final stationName =
                                   station['name'] ?? 'מקצה ${index + 1}';
-                              final stationBulletsPerTrainee =
-                                  (station['bulletsCount'] as num?)?.toInt() ??
-                                  0;
 
-                              // חישוב סך פגיעות למקצה
-                              int stationHits = 0;
+                              // ✅ CONDITIONAL: For long range use maxScorePoints, for short use bullets
+                              final stationMaxPerTrainee = isLongRange
+                                  ? ((station['maxScorePoints'] as num?)
+                                            ?.toInt() ??
+                                        0)
+                                  : ((station['bulletsCount'] as num?)
+                                            ?.toInt() ??
+                                        0);
+
+                              // חישוב סך פגיעות/נקודות למקצה
+                              int stationValue = 0;
                               for (final trainee in trainees) {
                                 final hits =
                                     trainee['hits'] as Map<String, dynamic>?;
                                 if (hits != null) {
-                                  stationHits +=
+                                  stationValue +=
                                       (hits['station_$index'] as num?)
                                           ?.toInt() ??
                                       0;
                                 }
                               }
 
-                              // חישוב נכון: מספר חניכים × כדורים במקצה
-                              final totalStationBullets =
-                                  trainees.length * stationBulletsPerTrainee;
+                              // חישוב נכון: מספר חניכים × max per trainee
+                              final totalStationMax =
+                                  trainees.length * stationMaxPerTrainee;
 
                               // חישוב אחוז פגיעות למקצה
-                              final stationPercentage = totalStationBullets > 0
-                                  ? ((stationHits / totalStationBullets) * 100)
+                              final stationPercentage = totalStationMax > 0
+                                  ? ((stationValue / totalStationMax) * 100)
                                         .toStringAsFixed(1)
                                   : '0.0';
 
                               return InkWell(
                                 onTap: () {
+                                  // For long range: pass maxPoints instead of bullets
+                                  final modalMaxValue = isLongRange
+                                      ? stationMaxPerTrainee
+                                      : stationMaxPerTrainee;
                                   _showStationDetailsModal(
                                     context,
                                     index,
                                     stationName.toString(),
-                                    stationBulletsPerTrainee,
+                                    modalMaxValue,
                                     trainees,
                                   );
                                 },
@@ -5152,13 +5270,13 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.spaceEvenly,
                                           children: [
-                                            // סך כל כדורים
+                                            // סך כל כדורים/נקודות מקסימליות
                                             Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.center,
                                               children: [
                                                 Text(
-                                                  '$totalStationBullets',
+                                                  '$totalStationMax',
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.white70,
@@ -5176,13 +5294,13 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                 ),
                                               ],
                                             ),
-                                            // סך כל פגיעות
+                                            // סך כל פגיעות/נקודות
                                             Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.center,
                                               children: [
                                                 Text(
-                                                  '$stationHits',
+                                                  '$stationValue',
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.orangeAccent,
