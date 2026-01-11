@@ -5088,6 +5088,17 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             ? ((totalValue / totalMax) * 100).toStringAsFixed(1)
                             : '0.0';
 
+                        // ✅ LONG RANGE: Calculate total bullets fired (tracking only)
+                        int totalBulletsFired = 0;
+                        if (isLongRange) {
+                          for (final station in stations) {
+                            final bulletsTracking =
+                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                            totalBulletsFired +=
+                                bulletsTracking * trainees.length;
+                          }
+                        }
+
                         debugPrint(
                           '🔍 ===== END 474 RANGES FEEDBACK DETAILS =====\n',
                         );
@@ -5110,10 +5121,11 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       ),
                                     ),
                                     const SizedBox(height: 12),
-                                    // ✅ LONG RANGE: Show ONLY points, NO percentage
+                                    // ✅ LONG RANGE: Show points, percentage, and bullets fired
                                     isLongRange
                                         ? Column(
                                             children: [
+                                              // Points display
                                               Text(
                                                 'סך נקודות',
                                                 style: TextStyle(
@@ -5130,12 +5142,32 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   color: Colors.orangeAccent,
                                                 ),
                                               ),
+                                              const SizedBox(height: 8),
+                                              // Percentage (from points only)
+                                              Text(
+                                                '$percentage%',
+                                                style: const TextStyle(
+                                                  fontSize: 24,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.greenAccent,
+                                                ),
+                                              ),
                                               const SizedBox(height: 4),
                                               const Text(
-                                                'נקודות',
+                                                'אחוז הצלחה',
                                                 style: TextStyle(
-                                                  fontSize: 14,
+                                                  fontSize: 12,
                                                   color: Colors.white60,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              // Total bullets fired (tracking only)
+                                              Text(
+                                                'סה"כ כדורים שנורו: $totalBulletsFired',
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.white70,
+                                                  fontStyle: FontStyle.italic,
                                                 ),
                                               ),
                                             ],
@@ -5233,6 +5265,14 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         .toStringAsFixed(1)
                                   : '0.0';
 
+                              // ✅ LONG RANGE: Calculate stage bullets fired (tracking only)
+                              final stageBulletsFired = isLongRange
+                                  ? ((station['bulletsCount'] as num?)
+                                                ?.toInt() ??
+                                            0) *
+                                        trainees.length
+                                  : 0;
+
                               return InkWell(
                                 onTap: () {
                                   // For long range: pass maxPoints instead of bullets
@@ -5318,32 +5358,45 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                 ),
                                               ],
                                             ),
-                                            // אחוז פגיעות - HIDE FOR LONG RANGE
-                                            if (!isLongRange)
-                                              Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    '$stationPercentage%',
-                                                    style: const TextStyle(
-                                                      fontSize: 18,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.greenAccent,
-                                                    ),
+                                            // אחוז - SHOW FOR BOTH (from points for long, from hits for short)
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  '$stationPercentage%',
+                                                  style: const TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.greenAccent,
                                                   ),
-                                                  const Text(
-                                                    'אחוז פגיעות',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.white60,
-                                                    ),
+                                                ),
+                                                Text(
+                                                  isLongRange
+                                                      ? 'אחוז הצלחה'
+                                                      : 'אחוז פגיעות',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white60,
                                                   ),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
+                                            ),
                                           ],
                                         ),
+                                        // ✅ LONG RANGE: Show bullets fired for this stage
+                                        if (isLongRange &&
+                                            stageBulletsFired > 0) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'כדורים שנורו במקצה: $stageBulletsFired',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white60,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(height: 6),
                                         const Text(
                                           'לחץ לפרטי החניכים במקצה',
