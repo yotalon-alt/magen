@@ -7,6 +7,51 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser and golanSettlements
 import 'widgets/standard_back_button.dart';
 
+// ===== SINGLE SOURCE OF TRUTH: Long Range Detection =====
+/// Determines if a feedback is Long Range based on available fields.
+/// USE THIS EVERYWHERE: UI, LOAD, SAVE - ensures consistency.
+///
+/// Priority order:
+/// 1. feedbackType (most reliable - set at save time)
+/// 2. rangeSubType (UI label for display)
+/// 3. rangeType (internal type, may be in Hebrew)
+/// 4. folderKey (fallback for old data)
+bool isLongRangeFeedback({
+  String? feedbackType,
+  String? rangeSubType,
+  String? rangeType,
+  String? folderKey,
+}) {
+  // Check feedbackType first (most reliable)
+  if (feedbackType != null) {
+    if (feedbackType == 'range_long' || feedbackType == 'דווח רחוק') {
+      return true;
+    }
+    if (feedbackType == 'range_short' || feedbackType == 'דווח קצר') {
+      return false;
+    }
+  }
+
+  // Check rangeSubType (display label)
+  if (rangeSubType != null) {
+    if (rangeSubType == 'טווח רחוק') return true;
+    if (rangeSubType == 'טווח קצר') return false;
+  }
+
+  // Check rangeType (internal, may be Hebrew)
+  if (rangeType != null) {
+    if (rangeType == 'ארוכים' || rangeType == 'long') return true;
+    if (rangeType == 'קצרים' || rangeType == 'short') return false;
+  }
+
+  // Fallback: use folderKey (for old data)
+  if (folderKey == 'ranges_474_long') return true;
+  if (folderKey == 'ranges_474_short') return false;
+
+  // Default: assume short range if inconclusive
+  return false;
+}
+
 /// Model for Short Range stage in multi-stage list
 class ShortRangeStageModel {
   final String? selectedStage; // Selected from dropdown
@@ -319,6 +364,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint(
         '🆕 CONTROLLER CREATED: key=$key, initialValue="$initialValue"',
       );
+      // 🔥 WEB LONG RANGE DEBUG: Verify raw points preservation
+      if (kIsWeb && _rangeType == 'ארוכים' && initialValue.isNotEmpty) {
+        debugPrint(
+          '   🌐 LR_WEB_CONTROLLER_CREATE: RAW value="$initialValue" (must be points, not normalized)',
+        );
+      }
     } else {
       // ✅ EXISTING CONTROLLER: DO NOT UPDATE during build
       // This prevents feedback loop where build -> update controller -> rebuild -> update again
@@ -328,6 +379,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint(
         '♻️ CONTROLLER REUSED: key=$key, currentText="${_textControllers[key]!.text}", wouldBeInitialValue="$initialValue"',
       );
+      // 🔥 WEB LONG RANGE DEBUG: Detect potential normalization issue
+      if (kIsWeb && _rangeType == 'ארוכים') {
+        final currentText = _textControllers[key]!.text;
+        if (currentText != initialValue &&
+            currentText.isNotEmpty &&
+            initialValue.isNotEmpty) {
+          debugPrint(
+            '   ⚠️ LR_WEB_CONTROLLER_REUSE: MISMATCH detected! current="$currentText" vs initial="$initialValue"',
+          );
+          debugPrint(
+            '   This may indicate stale controller values after load.',
+          );
+        }
+      }
     }
     return _textControllers[key]!;
   }
@@ -1214,6 +1279,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // ⚠️ DEBUG: Log after serialization for Long Range
       if (_rangeType == 'ארוכים' && traineesData.isNotEmpty) {
         debugPrint('\n╔═══ LONG RANGE SAVE: AFTER SERIALIZATION ═══╗');
+        debugPrint('║ Platform: ${kIsWeb ? "WEB" : "MOBILE"}');
         debugPrint('║ Total serialized: ${traineesData.length}');
 
         // ✅ STRICT VERIFICATION: Check for division bug
@@ -1224,6 +1290,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           debugPrint('║ Trainee[$i]: "${t['name']}"');
           debugPrint('║   SERIALIZED hits: $hits');
           debugPrint('║   Total hits: ${t['totalHits']}');
+
+          // 🔥 WEB VERIFICATION: Log each value explicitly
+          if (kIsWeb) {
+            hits.forEach((key, val) {
+              debugPrint('║   🌐 WEB LR_RAW_BEFORE_SAVE: $key=$val');
+            });
+          }
 
           // Check each value for suspicious division
           hits.forEach((key, val) {
@@ -1353,6 +1426,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'finalizedAt': FieldValue.serverTimestamp(), // ✅ Track when finalized
           'exercise': 'תרגילי הפתעה',
           'folder': 'משוב תרגילי הפתעה', // ✅ Final folder (not temp)
+          // ✅ CRITICAL: Override folderKey/folderLabel to prevent range filter matching
+          'folderKey': 'surprise_drills', // NOT ranges_474 or shooting_ranges
+          'folderLabel': 'משוב תרגילי הפתעה',
+          'folderId': 'surprise_drills',
           'feedbackType': saveType,
           'rangeMode': widget.mode,
           'name': finalSettlement,
@@ -1445,8 +1522,56 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint(
           'FINALIZE_SAVE: No cleanup needed - same document updated in place',
         );
-
+        debugPrint('FINALIZE_SAVE: ✅ SURPRISE DRILL SAVE COMPLETE - RETURNING');
         debugPrint('===============================================\n');
+
+        // ========== IMMEDIATE READBACK VERIFICATION (SURPRISE) ==========
+        debugPrint(
+          '\n========== READBACK VERIFICATION START (SURPRISE) ==========',
+        );
+        debugPrint('READBACK: Verifying finalDocRef at ${docRef.path}');
+        debugPrint('READBACK: finalId=${docRef.id}');
+        try {
+          final snap = await docRef.get();
+          debugPrint('READBACK: exists=${snap.exists} (MUST be true)');
+          if (snap.exists) {
+            final savedData = snap.data() as Map<String, dynamic>?;
+            final savedModule = savedData?['module'] as String?;
+            final savedFolder = savedData?['folder'] as String?;
+            final savedType = savedData?['type'] as String?;
+            debugPrint(
+              'READBACK: module=$savedModule (MUST be surprise_drill)',
+            );
+            debugPrint(
+              'READBACK: folder=$savedFolder (MUST be משוב תרגילי הפתעה)',
+            );
+            debugPrint('READBACK: type=$savedType (MUST be surprise_exercise)');
+            debugPrint(
+              'READBACK: ✅ VERIFIED - Surprise drill saved to correct destination',
+            );
+          } else {
+            debugPrint('READBACK: ❌❌❌ CRITICAL ERROR - Document not found!');
+          }
+        } catch (readbackError) {
+          debugPrint(
+            'READBACK: ⚠️ ERROR - Verification failed: $readbackError',
+          );
+        }
+        debugPrint(
+          '========== READBACK VERIFICATION END (SURPRISE) ==========\n',
+        );
+
+        if (!mounted) return;
+
+        // Navigate back
+        Navigator.pop(context);
+
+        debugPrint('SAVE: Navigation complete (SURPRISE)');
+        debugPrint('========== SURPRISE DRILL SAVE END ==========\n');
+
+        // ✅ CRITICAL: RETURN HERE to prevent fallthrough to shooting ranges logic
+        setState(() => _isSaving = false);
+        return;
       } else {
         // SHOOTING RANGES: Save to dedicated collection
         collectionPath = 'feedbacks';
@@ -1543,6 +1668,77 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         }
         debugPrint('╚══════════════════════════════════════════════════╝\n');
 
+        // 🔥🔥🔥 WEB SAVE GUARD: Detect long range and verify payload 🔥🔥🔥
+        final isLongRange = isLongRangeFeedback(
+          feedbackType: saveType,
+          rangeSubType: _rangeType == 'ארוכים' ? 'טווח רחוק' : 'טווח קצר',
+          rangeType: _rangeType,
+          folderKey: folderKey,
+        );
+
+        if (kIsWeb) {
+          debugPrint('\n🌐🌐🌐 WEB_SAVE GUARD START 🌐🌐🌐');
+          debugPrint('🌐 WEB_SAVE isLongRange=$isLongRange');
+          debugPrint('🌐 WEB_SAVE feedbackType=$saveType');
+          debugPrint('🌐 WEB_SAVE rangeType=$_rangeType');
+          debugPrint('🌐 WEB_SAVE folderKey=$folderKey');
+          debugPrint(
+            '🌐 WEB_SAVE payload keys BEFORE write: ${rangeData.keys.toList()}',
+          );
+
+          // ✅ STRICT VERIFICATION: Check trainees data for LONG RANGE
+          if (isLongRange) {
+            debugPrint(
+              '🌐 WEB_SAVE LONG RANGE: Verifying points-only payload...',
+            );
+            final trainees = rangeData['trainees'] as List?;
+            if (trainees != null && trainees.isNotEmpty) {
+              for (int i = 0; i < trainees.length && i < 3; i++) {
+                final t = trainees[i] as Map<String, dynamic>;
+                final hits = t['hits'] as Map<String, dynamic>? ?? {};
+                debugPrint('🌐 WEB_SAVE LR Trainee[$i]: name="${t['name']}"');
+                debugPrint('🌐 WEB_SAVE LR   hits keys: ${hits.keys.toList()}');
+                debugPrint(
+                  '🌐 WEB_SAVE LR   hits values: ${hits.values.toList()}',
+                );
+
+                // ❌ DETECT NORMALIZATION BUG
+                hits.forEach((key, val) {
+                  if (val is int && val > 0 && val <= 10) {
+                    debugPrint(
+                      '🌐 ⚠️⚠️ WEB_SAVE LR WARNING: $key=$val looks normalized! Expected 0-100 points.',
+                    );
+                  }
+                });
+              }
+            }
+
+            // ✅ VERIFY: No percentage, bullets, normalizedScore fields
+            final forbiddenKeys = [
+              'percentage',
+              'bullets',
+              'normalizedScore',
+              'accuracy',
+            ];
+            final hasForbiddenKeys = rangeData.keys.any(
+              (k) => forbiddenKeys.contains(k),
+            );
+            if (hasForbiddenKeys) {
+              debugPrint(
+                '🌐 ❌❌ WEB_SAVE LR ERROR: Payload contains forbidden fields!',
+              );
+              debugPrint(
+                '🌐 Forbidden fields found: ${rangeData.keys.where((k) => forbiddenKeys.contains(k)).toList()}',
+              );
+            } else {
+              debugPrint(
+                '🌐 ✅ WEB_SAVE LR VERIFIED: No forbidden percentage/bullets fields',
+              );
+            }
+          }
+          debugPrint('🌐🌐🌐 WEB_SAVE GUARD END 🌐🌐🌐\n');
+        }
+
         debugPrint('\n========== FIRESTORE WRITE START ==========');
 
         // ✅ FIX: Use deterministic draft ID to UPDATE existing temp document
@@ -1638,6 +1834,59 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           if (savedDraftId != null) {
             debugPrint('READBACK: sourceDraftId=$savedDraftId (tracked)');
           }
+
+          // 🔥🔥🔥 WEB READBACK VERIFICATION: Check for normalization bug 🔥🔥🔥
+          if (kIsWeb && widget.mode == 'range') {
+            final readbackFeedbackType = savedData?['feedbackType'] as String?;
+            final readbackRangeSubType = savedData?['rangeSubType'] as String?;
+            final readbackRangeType = _rangeType; // Use current UI state
+            final readbackFolderKey = savedData?['folderKey'] as String?;
+
+            final isLongRangeReadback = isLongRangeFeedback(
+              feedbackType: readbackFeedbackType,
+              rangeSubType: readbackRangeSubType,
+              rangeType: readbackRangeType,
+              folderKey: readbackFolderKey,
+            );
+
+            debugPrint('\n🌐🌐🌐 WEB_READBACK VERIFICATION START 🌐🌐🌐');
+            debugPrint('🌐 WEB_READBACK isLongRange=$isLongRangeReadback');
+            debugPrint('🌐 WEB_READBACK feedbackType=$readbackFeedbackType');
+            debugPrint('🌐 WEB_READBACK rangeSubType=$readbackRangeSubType');
+
+            if (isLongRangeReadback && savedTrainees != null) {
+              debugPrint(
+                '🌐 WEB_READBACK LONG RANGE: Verifying saved points...',
+              );
+              for (int i = 0; i < savedTrainees.length && i < 3; i++) {
+                final t = savedTrainees[i] as Map<String, dynamic>;
+                final hits = t['hits'] as Map<String, dynamic>? ?? {};
+                debugPrint(
+                  '🌐 WEB_READBACK LR Trainee[$i]: name="${t['name']}"',
+                );
+                debugPrint('🌐 WEB_READBACK LR   SAVED hits: $hits');
+
+                // ✅ CRITICAL: Detect if values were normalized AFTER save
+                bool normalizedDetected = false;
+                hits.forEach((key, val) {
+                  if (val is int && val > 0 && val <= 10) {
+                    debugPrint(
+                      '🌐 ❌❌ WEB_READBACK LR BUG DETECTED: $key=$val (expected 0-100 points!)',
+                    );
+                    normalizedDetected = true;
+                  }
+                });
+
+                if (!normalizedDetected && hits.isNotEmpty) {
+                  debugPrint(
+                    '🌐 ✅ WEB_READBACK LR PASS: Values in valid 0-100 range',
+                  );
+                }
+              }
+            }
+            debugPrint('🌐🌐🌐 WEB_READBACK VERIFICATION END 🌐🌐🌐\n');
+          }
+
           debugPrint(
             'READBACK: ✅ VERIFIED - Final document persisted successfully',
           );
@@ -1871,6 +2120,24 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('DRAFT_SAVE: payload.stations.length=${stations.length}');
       debugPrint('DRAFT_SAVE: payload.folder=$folderName');
 
+      // 🔥 WEB LONG RANGE: Verify raw points BEFORE Firestore write
+      if (kIsWeb && _rangeType == 'ארוכים') {
+        debugPrint('\n🌐 ===== LR_WEB_BEFORE_SAVE VERIFICATION =====');
+        for (int i = 0; i < traineesPayload.length && i < 3; i++) {
+          final traineeData = traineesPayload[i];
+          final traineeName = traineeData['name'] ?? 'Unknown';
+          final values = traineeData['values'] ?? {};
+          debugPrint('   Trainee[$i]: "$traineeName"');
+          debugPrint('     RAW values map: $values');
+          values.forEach((stageIdx, points) {
+            debugPrint(
+              '       Stage[$stageIdx]: $points (MUST be raw points 0-100, NOT normalized)',
+            );
+          });
+        }
+        debugPrint('🌐 =========================================\n');
+      }
+
       // Write to Firestore (overwrite completely)
       final docRef = FirebaseFirestore.instance
           .collection('feedbacks')
@@ -2034,6 +2301,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           final rawRow = rawTrainees[i];
           if (rawRow is Map<String, dynamic>) {
             final row = TraineeRowModel.fromFirestore(rawRow);
+
+            // 🔥 WEB VERIFICATION: Log loaded values for Long Range
+            if (kIsWeb && _rangeType == 'ארוכים') {
+              debugPrint(
+                '🌐 WEB LR_RAW_AFTER_LOAD: trainee="${row.name}", values=${row.values}',
+              );
+            }
+
             loadedRows.add(row);
             debugPrint(
               'DRAFT_LOAD:   row[$i]: name="${row.name}" values=${row.values}',
@@ -2108,6 +2383,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'DRAFT_LOAD: Restored Short Range stage from station: $restoredShortRangeStage',
           );
         }
+      }
+
+      // 🔥 WEB LONG RANGE DEBUG: CRITICAL checkpoint - verify values BEFORE setState
+      if (kIsWeb && _rangeType == 'ארוכים' && loadedRows.isNotEmpty) {
+        debugPrint('\n╔═══ WEB LR: VALUES ENTERING setState ═══╗');
+        for (int i = 0; i < loadedRows.length && i < 3; i++) {
+          final row = loadedRows[i];
+          debugPrint('║ Row[$i]: "${row.name}"');
+          debugPrint('║   values map: ${row.values}');
+          row.values.forEach((stationIdx, value) {
+            debugPrint(
+              '║   ⚠️ station[$stationIdx] = $value ← THIS WILL ENTER STATE',
+            );
+            if (value > 0 && value <= 10 && (value * 10) <= 100) {
+              debugPrint(
+                '║   ❌ SUSPICIOUS: Looks like $value was divided by 10 (original might be ${value * 10})',
+              );
+            }
+          });
+        }
+        debugPrint('╚═══════════════════════════════════════╝\n');
       }
 
       // ✅ UPDATE STATE: Replace all data with loaded data
@@ -2255,6 +2551,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         // Replace stations with loaded data
         stations = loadedStations.isNotEmpty ? loadedStations : stations;
+
+        // 🔥 WEB FIX: Clear text controllers for long range to force recreation with fresh values
+        // Root cause: _getController reuses existing controllers without updating text
+        // After load, old controller.text still has pre-save values (e.g., "75")
+        // but if they were normalized during save/load cycle, we need fresh controllers
+        // This ensures controllers are recreated on next build with current traineeRows values
+        if (kIsWeb && _rangeType == 'ארוכים') {
+          debugPrint(
+            '🌐 WEB LONG RANGE: Clearing ${_textControllers.length} text controllers to prevent stale values',
+          );
+          // Dispose old controllers
+          for (final controller in _textControllers.values) {
+            controller.dispose();
+          }
+          _textControllers.clear();
+          debugPrint(
+            '🌐 WEB LONG RANGE: Controllers cleared, will be recreated on rebuild',
+          );
+        }
 
         debugPrint('DRAFT_LOAD: State updated');
         debugPrint('DRAFT_LOAD:   attendeesCount=$attendeesCount');
@@ -3223,7 +3538,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   final station = entry.value;
                                   return Container(
                                     width: stationColumnWidth,
-                                    height: 56,
+                                    // ✅ WEB FIX: Increase height for surprise drills to show "מקס׳: 10" without clipping
+                                    height: widget.mode == 'surprise' && kIsWeb
+                                        ? 68
+                                        : 56,
                                     padding: const EdgeInsets.all(4.0),
                                     decoration: BoxDecoration(
                                       color: station.isLevelTester
@@ -3262,6 +3580,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                         // ✅ SURPRISE DRILLS: Show "מקס׳: 10" for each principle
                                         if (widget.mode == 'surprise') ...[
+                                          const SizedBox(
+                                            height: 2,
+                                          ), // ✅ WEB FIX: Add spacing for better visibility
                                           const Text(
                                             'מקס׳: 10',
                                             style: TextStyle(
@@ -3592,6 +3913,64 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             final currentValue = row.getValue(
                                               stationIndex,
                                             );
+
+                                            // 🔥 WEB DEBUG: BEFORE controller creation - verify source value
+                                            if (kIsWeb &&
+                                                _rangeType == 'ארוכים' &&
+                                                currentValue != 0) {
+                                              debugPrint(
+                                                '\n🌐 WEB_BUILD: trainee="${row.name}" station=$stationIndex currentValue=$currentValue',
+                                              );
+                                              debugPrint(
+                                                '   Source: row.values[$stationIndex]=${row.values[stationIndex]}',
+                                              );
+                                              debugPrint(
+                                                '   Will create controller with initialValue="${currentValue == 0 ? '' : currentValue.toString()}"',
+                                              );
+                                              if (currentValue <= 10 &&
+                                                  (currentValue * 10) <= 100) {
+                                                debugPrint(
+                                                  '   ❌ SUSPICIOUS currentValue=$currentValue (looks divided by 10)',
+                                                );
+                                              } else {
+                                                debugPrint(
+                                                  '   ✅ currentValue=$currentValue looks correct (not divided)',
+                                                );
+                                              }
+                                            }
+
+                                            // 🔥 DEBUG: WEB LONG RANGE - trace exact value source
+                                            if (kIsWeb &&
+                                                _rangeType == 'ארוכים' &&
+                                                currentValue != 0) {
+                                              debugPrint(
+                                                '\n🔍 WEB_LR_BUILD: trainee="${row.name}" station=$stationIndex',
+                                              );
+                                              debugPrint(
+                                                '   row.getValue($stationIndex) = $currentValue',
+                                              );
+                                              debugPrint(
+                                                '   station.bulletsCount = ${station.bulletsCount}',
+                                              );
+                                              debugPrint(
+                                                '   station.name = "${station.name}"',
+                                              );
+                                              if (stationIndex <
+                                                  longRangeStagesList.length) {
+                                                final stage =
+                                                    longRangeStagesList[stationIndex];
+                                                debugPrint(
+                                                  '   stage.bulletsCount = ${stage.bulletsCount}',
+                                                );
+                                                debugPrint(
+                                                  '   stage.maxPoints = ${stage.maxPoints}',
+                                                );
+                                              }
+                                              debugPrint(
+                                                '   Expected controller text: "$currentValue"',
+                                              );
+                                            }
+
                                             final controllerKey =
                                                 'trainee_${traineeIdx}_station_$stationIndex';
                                             final focusKey =
@@ -3876,7 +4255,31 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                           .toString(),
                                                               );
 
-                                                          // 🐛 DEBUG: Verify controller text AFTER getting it
+                                                          // � WEB-ONLY FIX: Force controller text sync for Long Range
+                                                          // Root cause: On WEB, after save/load cycle, controller.text may contain stale values
+                                                          // Solution: Explicitly set controller.text to match model value on every build
+                                                          // This ensures WEB uses same raw-value rendering as mobile
+                                                          if (kIsWeb &&
+                                                              _rangeType ==
+                                                                  'ארוכים') {
+                                                            final expectedText =
+                                                                currentValue ==
+                                                                    0
+                                                                ? ''
+                                                                : currentValue
+                                                                      .toString();
+                                                            if (controller
+                                                                    .text !=
+                                                                expectedText) {
+                                                              debugPrint(
+                                                                '🌐 LR_WEB_SYNC: Correcting controller.text from "${controller.text}" to "$expectedText" (raw points)',
+                                                              );
+                                                              controller.text =
+                                                                  expectedText;
+                                                            }
+                                                          }
+
+                                                          // �🐛 DEBUG: Verify controller text AFTER getting it
                                                           if (_rangeType ==
                                                               'ארוכים') {
                                                             debugPrint(
@@ -3926,9 +4329,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
                                                               if (_rangeType ==
                                                                   'ארוכים') {
-                                                                debugPrint(
-                                                                  '\n📝 LONG RANGE onChanged: rawInput="$v"',
-                                                                );
+                                                                if (kIsWeb) {
+                                                                  debugPrint(
+                                                                    '\n🌐 LR_WEB_INPUT="$v" trainee="${row.name}" station=$stationIndex',
+                                                                  );
+                                                                } else {
+                                                                  debugPrint(
+                                                                    '\n📝 LONG RANGE onChanged: rawInput="$v" (MOBILE)',
+                                                                  );
+                                                                }
                                                               }
 
                                                               // ✅ LONG RANGE SCORE INPUT:
@@ -3942,9 +4351,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
                                                               if (_rangeType ==
                                                                   'ארוכים') {
-                                                                debugPrint(
-                                                                  '   parsedScore=$score',
-                                                                );
+                                                                if (kIsWeb) {
+                                                                  debugPrint(
+                                                                    '🌐 LR_WEB_PARSED=$score (RAW points, no conversion)',
+                                                                  );
+                                                                } else {
+                                                                  debugPrint(
+                                                                    '   parsedScore=$score [MOBILE]',
+                                                                  );
+                                                                }
                                                               }
 
                                                               // Validation based on mode
@@ -4029,12 +4444,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
                                                               if (_rangeType ==
                                                                   'ארוכים') {
-                                                                debugPrint(
-                                                                  '   ✅ STORED: row.values[$stationIndex]=$score',
-                                                                );
-                                                                debugPrint(
-                                                                  '   Verification: row.getValue($stationIndex)=${row.getValue(stationIndex)}',
-                                                                );
+                                                                if (kIsWeb) {
+                                                                  debugPrint(
+                                                                    '🌐 LR_WEB_MODEL_AFTER_SET=${row.getValue(stationIndex)} (verified RAW storage)',
+                                                                  );
+                                                                } else {
+                                                                  debugPrint(
+                                                                    '   ✅ STORED: row.values[$stationIndex]=$score',
+                                                                  );
+                                                                  debugPrint(
+                                                                    '   Verification: row.getValue($stationIndex)=${row.getValue(stationIndex)}',
+                                                                  );
+                                                                }
                                                               }
 
                                                               _scheduleAutoSave();
@@ -5001,11 +5422,26 @@ class TraineeRowModel {
         {};
     final timeValuesRaw = (data['timeValues'] as Map<String, dynamic>?) ?? {};
 
+    // 🔥 WEB LONG RANGE DEBUG: Log RAW Firestore data BEFORE parsing
+    if (kIsWeb) {
+      debugPrint(
+        '\n🌐 WEB_FROMFIRESTORE: trainee="$name" RAW valuesRaw=$valuesRaw',
+      );
+    }
+
     final values = <int, int>{};
     valuesRaw.forEach((key, val) {
       if (key.startsWith('station_') && !key.endsWith('_time')) {
         final stationIdx = int.tryParse(key.replaceFirst('station_', ''));
         final value = (val as num?)?.toInt() ?? 0;
+
+        // 🔥 WEB LONG RANGE DEBUG: Log each value parsing step
+        if (kIsWeb && value != 0) {
+          debugPrint(
+            '🌐 WEB_FROMFIRESTORE_PARSE: $key: raw=$val (type=${val.runtimeType}) → parsed=$value',
+          );
+        }
+
         if (stationIdx != null && value != 0) {
           values[stationIdx] = value;
         }
@@ -5025,6 +5461,13 @@ class TraineeRowModel {
         }
       }
     });
+
+    // 🔥 WEB LONG RANGE DEBUG: Log FINAL parsed values BEFORE return
+    if (kIsWeb && values.isNotEmpty) {
+      debugPrint(
+        '🌐 WEB_FROMFIRESTORE_RESULT: trainee="$name" FINAL values=$values',
+      );
+    }
 
     return TraineeRowModel(
       index: index,

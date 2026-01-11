@@ -1,191 +1,197 @@
-# Long Range Single Source of Truth Fix
+# LONG RANGE WEB SAVE FIX - Single Source of Truth
 
 ## Problem Statement
-Long Range feedback had TWO different values for max points:
-1. **Header display** (line 2904): `station.bulletsCount * 10` (inline calculation)
-2. **Model field** (line 2482): `stage.maxPoints` (user-entered value)
+**BUG**: Long range feedbacks on WEB get normalized (75→7, 100→10) AFTER save/reload cycle.
+**ROOT CAUSE**: Inconsistent long range detection + potential normalization during save path.
 
-These could diverge, causing inconsistency between what the header shows and what validations/totals use.
+## Solution Implementation
 
-## Root Cause
-The UI had a "נקודות מקסימום" input field where users entered points directly, but:
-- The `bulletsCount` field was never set (stayed at 0)
-- The header tried to display `bulletsCount * 10`, which was always 0
-- The relationship between bullets and points (bullets × 10 = points) was broken
+### 1. Single Source of Truth Function
+Created **ONE** global function used EVERYWHERE (UI, LOAD, SAVE):
 
-## Solution
-**Established `bulletsCount` as the single source of truth with computed `maxPoints` getter.**
-
-### Changes Made
-
-#### 1. LongRangeStageModel (lines 38-85)
-**Before:**
 ```dart
-class LongRangeStageModel {
-  String name;
-  int maxPoints;        // User-entered field
-  int achievedPoints;
-  bool isManual;
-  int bulletsCount;     // Never used
+bool isLongRangeFeedback({
+  String? feedbackType,
+  String? rangeSubType,
+  String? rangeType,
+  String? folderKey,
+})
+```
+
+**Detection Priority**:
+1. `feedbackType` (most reliable - set at save time)
+2. `rangeSubType` (UI display label)
+3. `rangeType` (internal type)
+4. `folderKey` (fallback for old data)
+
+**Location**: Top of `range_training_page.dart` (after imports, before classes)
+
+### 2. WEB SAVE Guards (BEFORE Firestore Write)
+
+Added comprehensive WEB-specific verification BEFORE the Firestore `set()` call:
+
+```dart
+// 🔥 WEB SAVE GUARD: Detect long range and verify payload
+final isLongRange = isLongRangeFeedback(
+  feedbackType: saveType,
+  rangeSubType: _rangeType == 'ארוכים' ? 'טווח רחוק' : 'טווח קצר',
+  rangeType: _rangeType,
+  folderKey: folderKey,
+);
+
+if (kIsWeb) {
+  // Log detection result
+  debugPrint('🌐 WEB_SAVE isLongRange=$isLongRange');
   
-  LongRangeStageModel({
-    required this.name,
-    this.maxPoints = 0,
-    ...
-  });
+  // Verify trainees payload
+  if (isLongRange) {
+    // Check each trainee's hits values
+    // Detect normalization (values 0-10 instead of 0-100)
+    
+    // Verify NO forbidden fields:
+    //   - percentage
+    //   - bullets  
+    //   - normalizedScore
+    //   - accuracy
+  }
 }
 ```
 
-**After:**
+**Console Output**:
+- `🌐 WEB_SAVE isLongRange=true/false`
+- `🌐 WEB_SAVE LR hits values: [75, 80, 90]` (should be 0-100)
+- `🌐 ⚠️⚠️ WEB_SAVE LR WARNING: station_0=7 looks normalized!` (BUG DETECTED)
+- `🌐 ✅ WEB_SAVE LR VERIFIED: No forbidden fields`
+
+### 3. WEB READBACK Verification (AFTER Firestore Write)
+
+Added verification AFTER save to confirm data persisted correctly:
+
 ```dart
-class LongRangeStageModel {
-  String name;
-  int get maxPoints => bulletsCount * 10;  // Computed getter
-  int achievedPoints;
-  bool isManual;
-  int bulletsCount;  // Source of truth
+if (kIsWeb && widget.mode == 'range') {
+  final isLongRangeReadback = isLongRangeFeedback(
+    feedbackType: savedData?['feedbackType'],
+    rangeSubType: savedData?['rangeSubType'],
+    rangeType: _rangeType,
+    folderKey: savedData?['folderKey'],
+  );
   
-  LongRangeStageModel({
-    required this.name,
-    this.bulletsCount = 0,  // No maxPoints parameter
-    ...
-  });
+  if (isLongRangeReadback) {
+    // Verify saved 'hits' values are in 0-100 range
+    // Detect if normalization occurred AFTER write
+  }
 }
 ```
 
-**Key improvements:**
-- `maxPoints` is now a **computed getter**, not a stored field
-- Formula: `maxPoints = bulletsCount × 10` (always synchronized)
-- Constructor simplified (no maxPoints parameter)
-- Backward compatibility in `fromJson`: derives `bulletsCount` from old `maxPoints` data
+**Console Output**:
+- `🌐 WEB_READBACK isLongRange=true`
+- `🌐 WEB_READBACK LR SAVED hits: {station_0: 75, station_1: 80}`
+- `🌐 ❌❌ WEB_READBACK LR BUG DETECTED: station_0=7` (if bug persists)
+- `🌐 ✅ WEB_READBACK LR PASS: Values in valid 0-100 range` (SUCCESS)
 
-#### 2. UI Input Field (lines 2455-2484)
-**Before:**
-```dart
-TextField(
-  controller: TextEditingController(
-    text: stage.maxPoints > 0 ? stage.maxPoints.toString() : '',
-  ),
-  decoration: const InputDecoration(
-    labelText: 'נקודות מקסימום',  // Max points
-    hintText: 'הזן מספר נקודות',
-  ),
-  onChanged: (value) {
-    setState(() {
-      stage.maxPoints = int.tryParse(value) ?? 0;  // Direct assignment
-    });
-  },
-),
+## Testing Protocol (WEB ONLY)
+
+### Test Case 1: Long Range Save/Reload Cycle
+1. Open **WEB** version: `flutter run -d chrome`
+2. Create **LONG RANGE** feedback (מטווחים 474 or מטווחי ירי)
+3. Add trainee with points: 75, 80, 100
+4. Click **שמור משוב** (FINAL SAVE)
+5. Check console for WEB_SAVE logs
+6. Exit feedback page
+7. Reopen the SAME feedback
+8. **EXPECTED**: Points still show 75, 80, 100 (NOT 7, 8, 10)
+
+### Test Case 2: Short Range (Control Group)
+1. Create **SHORT RANGE** feedback
+2. Add hits: 30/40, 25/30
+3. Save, exit, reopen
+4. **EXPECTED**: Hits unchanged (30, 25)
+
+## Console Log Checkpoints
+
+### ✅ BEFORE SAVE (WEB_SAVE GUARD)
+```
+🌐🌐🌐 WEB_SAVE GUARD START 🌐🌐🌐
+🌐 WEB_SAVE isLongRange=true
+🌐 WEB_SAVE feedbackType=range_long
+🌐 WEB_SAVE rangeType=ארוכים
+🌐 WEB_SAVE folderKey=ranges_474
+🌐 WEB_SAVE payload keys BEFORE write: [trainees, stations, ...]
+🌐 WEB_SAVE LONG RANGE: Verifying points-only payload...
+🌐 WEB_SAVE LR Trainee[0]: name="חניך 1"
+🌐 WEB_SAVE LR   hits values: [75, 80]
+🌐 ✅ WEB_SAVE LR VERIFIED: No forbidden percentage/bullets fields
+🌐🌐🌐 WEB_SAVE GUARD END 🌐🌐🌐
 ```
 
-**After:**
-```dart
-TextField(
-  controller: TextEditingController(
-    text: stage.bulletsCount > 0 ? stage.bulletsCount.toString() : '',
-  ),
-  decoration: const InputDecoration(
-    labelText: 'מספר כדורים',  // Number of bullets
-    hintText: 'הזן מספר כדורים (נקודות = כדורים × 10)',
-  ),
-  onChanged: (value) {
-    setState(() {
-      stage.bulletsCount = int.tryParse(value) ?? 0;
-      // maxPoints is automatically computed from bulletsCount
-    });
-  },
-),
+### ✅ AFTER SAVE (WEB_READBACK VERIFICATION)
+```
+🌐🌐🌐 WEB_READBACK VERIFICATION START 🌐🌐🌐
+🌐 WEB_READBACK isLongRange=true
+🌐 WEB_READBACK feedbackType=range_long
+🌐 WEB_READBACK LONG RANGE: Verifying saved points...
+🌐 WEB_READBACK LR Trainee[0]: name="חניך 1"
+🌐 WEB_READBACK LR   SAVED hits: {station_0: 75, station_1: 80}
+🌐 ✅ WEB_READBACK LR PASS: Values in valid 0-100 range
+🌐🌐🌐 WEB_READBACK VERIFICATION END 🌐🌐🌐
 ```
 
-**Key improvements:**
-- Users now enter **bullets** (physical concept), not points (abstract)
-- Hint text explains the relationship: `points = bullets × 10`
-- `maxPoints` updates automatically via the computed getter
-
-## Verification Points
-
-### ✅ Single Source of Truth
-- **Input**: `stage.bulletsCount` (user enters bullets count)
-- **Display**: `stage.maxPoints` (computed as `bulletsCount * 10`)
-- **Validation** (lines 3305, 3531): Uses `stage.maxPoints` (now computed)
-- **Totals** (line 812): Uses `stage.maxPoints` (now computed)
-- **Headers** (lines 2904, 3857): Display `station.bulletsCount * 10` (same formula as getter)
-
-### ✅ Consistency Guarantees
-1. Header shows: `bulletsCount * 10`
-2. Input validates against: `maxPoints = bulletsCount * 10`
-3. Total calculation sums: `maxPoints = bulletsCount * 10`
-4. **All three use the same source (bulletsCount) and formula**
-
-### ✅ Backward Compatibility
-`fromJson` handles old data:
-```dart
-final resolvedBulletsCount = bulletsCount > 0
-    ? bulletsCount  // Use existing bullets count
-    : (directMaxPoints != null && directMaxPoints > 0
-        ? (directMaxPoints / 10).round()  // Derive from old maxPoints
-        : 0);
+### ❌ BUG DETECTED (Example)
+```
+🌐 ⚠️⚠️ WEB_SAVE LR WARNING: station_0=7 looks normalized!
+🌐 ❌❌ WEB_READBACK LR BUG DETECTED: station_0=7 (expected 0-100 points!)
 ```
 
-## Testing Checklist
+## Verification Criteria
 
-### Unit Tests
-- [ ] Create Long Range stage with `bulletsCount = 5`
-- [ ] Verify `stage.maxPoints == 50` (computed getter)
-- [ ] Change `bulletsCount` to 10
-- [ ] Verify `stage.maxPoints == 100` (auto-updated)
+### ✅ SUCCESS Indicators
+1. Console shows `WEB_SAVE isLongRange=true` for long range
+2. Payload values are 0-100 range BEFORE write
+3. Readback values are 0-100 range AFTER write
+4. Reopening feedback shows SAME points (no normalization)
 
-### UI Tests
-1. **Create new Long Range feedback**
-   - [ ] Add stage "רמות"
-   - [ ] Enter "20" in "מספר כדורים" field
-   - [ ] Verify header shows "200" below stage name
-   - [ ] Verify table header shows "200"
+### ❌ FAILURE Indicators
+1. Console shows values 0-10 in WEB_SAVE logs
+2. Console shows normalization warnings: `⚠️⚠️ WEB_SAVE LR WARNING`
+3. Readback shows values 0-10 instead of 0-100
+4. Reopening feedback shows normalized values (75→7)
 
-2. **Input validation**
-   - [ ] Try entering points > maxPoints in table cell
-   - [ ] Verify error message shows correct maxPoints value
-   - [ ] Change bullets count
-   - [ ] Verify maxPoints updates in error message
+## Diagnostic Flow
 
-3. **Total calculation**
-   - [ ] Add trainee with points in stage
-   - [ ] Verify percentage = (points / maxPoints) * 100
-   - [ ] Change bullets count
-   - [ ] Verify percentage recalculates correctly
+If bug persists:
 
-4. **Backward compatibility**
-   - [ ] Load old feedback with `maxPoints` but no `bulletsCount`
-   - [ ] Verify `bulletsCount` derived correctly (maxPoints / 10)
-   - [ ] Verify display and calculations work
-
-### Edge Cases
-- [ ] `bulletsCount = 0` → `maxPoints = 0` (no division by zero)
-- [ ] `bulletsCount = 1` → `maxPoints = 10`
-- [ ] `bulletsCount = 999` → `maxPoints = 9990`
+1. **Check WEB_SAVE logs**: If values are ALREADY 0-10 BEFORE save
+   → Bug is in serialization (lines 1190-1260)
+   
+2. **Check WEB_READBACK logs**: If values are 0-100 BEFORE save but 0-10 AFTER readback
+   → Bug is in Firestore write/read path (Firestore rules?)
+   
+3. **Check trainees data**: Print `rangeData['trainees']` before `finalDocRef.set(rangeData)`
+   → Verify exact payload being written
 
 ## Files Modified
-- `lib/range_training_page.dart`:
-  - Lines 38-85: `LongRangeStageModel` class
-  - Lines 2455-2484: UI input field (bullets instead of max points)
 
-## Related Files (No Changes Needed)
-- `lib/feedback_export_service.dart`: Uses `stage.maxPoints` (still works with getter)
-- Table headers (lines 2904, 3857): Already calculate `bulletsCount * 10`
-- Validation (lines 3305, 3531): Already use `stage.maxPoints`
-- Totals (line 812): Already sum `stage.maxPoints`
+1. **range_training_page.dart**:
+   - Added `isLongRangeFeedback()` function (lines 10-55)
+   - Added WEB SAVE guards before Firestore write (~line 1675)
+   - Added WEB READBACK verification after Firestore read (~line 1850)
 
-## Benefits
-1. **Consistency**: Header, validation, and totals always show the same maxPoints
-2. **Clarity**: Users think in bullets (physical), not abstract points
-3. **Maintainability**: Single calculation formula (`× 10`) in one place
-4. **Safety**: Impossible for maxPoints to be out of sync with bulletsCount
-5. **Backward compatibility**: Old data migrates seamlessly
+## Next Steps
 
-## Migration Notes
-Existing feedbacks in Firestore with:
-- `maxPoints` but no `bulletsCount`: Will derive `bulletsCount = maxPoints / 10`
-- Both fields: Will use `bulletsCount` as source of truth
-- Neither field: Defaults to `bulletsCount = 0, maxPoints = 0`
+1. Run WEB build: `flutter run -d chrome`
+2. Test long range save/reload cycle
+3. Check console for 🌐 WEB_SAVE/WEB_READBACK logs
+4. Report findings:
+   - If logs show 0-10 values BEFORE save → serialization bug
+   - If logs show 0-100 BEFORE but 0-10 AFTER → Firestore bug
+   - If logs show 0-100 throughout → UI/load bug (separate issue)
 
-No manual data migration needed!
+## Expected Outcome
+
+Long range feedbacks should survive the full cycle on WEB:
+- Edit screen: Enter 75 points → Display 75
+- Save: Write {station_0: 75} to Firestore
+- Readback: Read {station_0: 75} from Firestore  
+- Reload: Load 75 → Display 75
+
+**NO NORMALIZATION AT ANY STEP.**

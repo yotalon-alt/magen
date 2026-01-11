@@ -4950,6 +4950,16 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           );
                         }
 
+                        // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
+                        final feedbackType =
+                            (data['feedbackType'] as String?) ?? '';
+                        final rangeSubType =
+                            (data['rangeSubType'] as String?) ?? '';
+                        final isLongRange =
+                            feedbackType == 'range_long' ||
+                            feedbackType == 'דווח רחוק' ||
+                            rangeSubType == 'טווח רחוק';
+
                         // חישוב סך הכל פגיעות וכדורים למטווח 474
                         int totalHits = 0;
 
@@ -4992,40 +5002,75 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       ),
                                     ),
                                     const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceAround,
-                                      children: [
-                                        Column(
-                                          children: [
-                                            const Text('סך פגיעות/כדורים'),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '$totalHits/$totalBullets',
-                                              style: const TextStyle(
-                                                fontSize: 24,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.orangeAccent,
+                                    // ✅ LONG RANGE: Show ONLY points, NO percentage
+                                    isLongRange
+                                        ? Column(
+                                            children: [
+                                              Text(
+                                                'סך נקודות',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  color: Colors.white70,
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                        Column(
-                                          children: [
-                                            const Text('אחוז פגיעה כללי'),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '$percentage%',
-                                              style: const TextStyle(
-                                                fontSize: 32,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.greenAccent,
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                '$totalHits / $totalBullets',
+                                                style: const TextStyle(
+                                                  fontSize: 32,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.orangeAccent,
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
+                                              const SizedBox(height: 4),
+                                              const Text(
+                                                'נקודות',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.white60,
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceAround,
+                                            children: [
+                                              Column(
+                                                children: [
+                                                  const Text(
+                                                    'סך פגיעות/כדורים',
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '$totalHits/$totalBullets',
+                                                    style: const TextStyle(
+                                                      fontSize: 24,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              Column(
+                                                children: [
+                                                  const Text('אחוז פגיעה כללי'),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '$percentage%',
+                                                    style: const TextStyle(
+                                                      fontSize: 32,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.greenAccent,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
                                   ],
                                 ),
                               ),
@@ -5120,9 +5165,11 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                     fontSize: 16,
                                                   ),
                                                 ),
-                                                const Text(
-                                                  'סך כל כדורים',
-                                                  style: TextStyle(
+                                                Text(
+                                                  isLongRange
+                                                      ? 'סך נקודות מקס'
+                                                      : 'סך כל כדורים',
+                                                  style: const TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.white60,
                                                   ),
@@ -5142,37 +5189,41 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                     fontSize: 16,
                                                   ),
                                                 ),
-                                                const Text(
-                                                  'סך כל פגיעות',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // אחוז פגיעות
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
                                                 Text(
-                                                  '$stationPercentage%',
+                                                  isLongRange
+                                                      ? 'סך נקודות'
+                                                      : 'סך כל פגיעות',
                                                   style: const TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.greenAccent,
-                                                  ),
-                                                ),
-                                                const Text(
-                                                  'אחוז פגיעות',
-                                                  style: TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.white60,
                                                   ),
                                                 ),
                                               ],
                                             ),
+                                            // אחוז פגיעות - HIDE FOR LONG RANGE
+                                            if (!isLongRange)
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    '$stationPercentage%',
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.greenAccent,
+                                                    ),
+                                                  ),
+                                                  const Text(
+                                                    'אחוז פגיעות',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                           ],
                                         ),
                                         const SizedBox(height: 6),
@@ -5230,28 +5281,51 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           return const SizedBox.shrink();
                         }
 
-                        // חישוב סך הכל פגיעות וכדורים
-                        int totalHits = 0;
+                        // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
+                        final feedbackType =
+                            (data['feedbackType'] as String?) ?? '';
+                        final rangeSubType =
+                            (data['rangeSubType'] as String?) ?? '';
+                        final isLongRange =
+                            feedbackType == 'range_long' ||
+                            feedbackType == 'דווח רחוק' ||
+                            rangeSubType == 'טווח רחוק';
 
-                        // סך כל הפגיעות - סכום כל פגיעות החניכים
-                        for (final trainee in trainees) {
-                          totalHits +=
-                              (trainee['totalHits'] as num?)?.toInt() ?? 0;
-                        }
+                        // ✅ CONDITIONAL LOGIC: Points for long range, hits for short range
+                        int totalValue = 0;
+                        int totalMax = 0;
 
-                        // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
-                        int totalBulletsPerTrainee = 0;
-                        for (final station in stations) {
-                          totalBulletsPerTrainee +=
-                              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                        if (isLongRange) {
+                          // LONG RANGE: Use points (raw values as stored)
+                          for (final trainee in trainees) {
+                            totalValue +=
+                                (trainee['totalHits'] as num?)?.toInt() ??
+                                0; // Raw points stored in totalHits
+                          }
+                          // Sum maxPoints from stations
+                          for (final station in stations) {
+                            final stationMaxPoints =
+                                (station['maxPoints'] as num?)?.toInt() ?? 0;
+                            totalMax += stationMaxPoints * trainees.length;
+                          }
+                        } else {
+                          // SHORT RANGE: Use hits/bullets (existing logic)
+                          for (final trainee in trainees) {
+                            totalValue +=
+                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                          }
+                          // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
+                          int totalBulletsPerTrainee = 0;
+                          for (final station in stations) {
+                            totalBulletsPerTrainee +=
+                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                          }
+                          totalMax = trainees.length * totalBulletsPerTrainee;
                         }
-                        final totalBullets =
-                            trainees.length * totalBulletsPerTrainee;
 
                         // חישוב אחוז כללי
-                        final percentage = totalBullets > 0
-                            ? ((totalHits / totalBullets) * 100)
-                                  .toStringAsFixed(1)
+                        final percentage = totalMax > 0
+                            ? ((totalValue / totalMax) * 100).toStringAsFixed(1)
                             : '0.0';
 
                         return Column(
@@ -5272,40 +5346,75 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       ),
                                     ),
                                     const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceAround,
-                                      children: [
-                                        Column(
-                                          children: [
-                                            const Text('סך פגיעות/כדורים'),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '$totalHits/$totalBullets',
-                                              style: const TextStyle(
-                                                fontSize: 24,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.orangeAccent,
+                                    // ✅ LONG RANGE: Show ONLY points, NO percentage
+                                    isLongRange
+                                        ? Column(
+                                            children: [
+                                              const Text(
+                                                'סך נקודות',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  color: Colors.white70,
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                        Column(
-                                          children: [
-                                            const Text('אחוז פגיעה כללי'),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '$percentage%',
-                                              style: const TextStyle(
-                                                fontSize: 32,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.greenAccent,
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                '$totalValue / $totalMax',
+                                                style: const TextStyle(
+                                                  fontSize: 32,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.orangeAccent,
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
+                                              const SizedBox(height: 4),
+                                              const Text(
+                                                'נקודות',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.white60,
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceAround,
+                                            children: [
+                                              Column(
+                                                children: [
+                                                  const Text(
+                                                    'סך פגיעות/כדורים',
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '$totalValue/$totalMax',
+                                                    style: const TextStyle(
+                                                      fontSize: 24,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              Column(
+                                                children: [
+                                                  const Text('אחוז פגיעה כללי'),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '$percentage%',
+                                                    style: const TextStyle(
+                                                      fontSize: 32,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.greenAccent,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
                                   ],
                                 ),
                               ),
@@ -5327,40 +5436,72 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               final station = entry.value;
                               final stationName =
                                   station['name'] ?? 'מקצה ${index + 1}';
-                              final stationBulletsPerTrainee =
-                                  (station['bulletsCount'] as num?)?.toInt() ??
-                                  0;
 
-                              // חישוב סך פגיעות למקצה
-                              int stationHits = 0;
-                              for (final trainee in trainees) {
-                                final hits =
-                                    trainee['hits'] as Map<String, dynamic>?;
-                                if (hits != null) {
-                                  stationHits +=
-                                      (hits['station_$index'] as num?)
-                                          ?.toInt() ??
-                                      0;
+                              // ✅ CONDITIONAL: Points for long range, hits for short range
+                              int stationValue = 0;
+                              int stationMax = 0;
+
+                              if (isLongRange) {
+                                // LONG RANGE: Use points (raw values)
+                                for (final trainee in trainees) {
+                                  final hits =
+                                      trainee['hits'] as Map<String, dynamic>?;
+                                  if (hits != null) {
+                                    stationValue +=
+                                        (hits['station_$index'] as num?)
+                                            ?.toInt() ??
+                                        0; // Raw points stored in hits map
+                                  }
                                 }
+                                // Use maxPoints from station
+                                final maxPoints =
+                                    (station['maxPoints'] as num?)?.toInt() ??
+                                    0;
+                                stationMax = trainees.length * maxPoints;
+                              } else {
+                                // SHORT RANGE: Use hits/bullets
+                                final stationBulletsPerTrainee =
+                                    (station['bulletsCount'] as num?)
+                                        ?.toInt() ??
+                                    0;
+
+                                for (final trainee in trainees) {
+                                  final hits =
+                                      trainee['hits'] as Map<String, dynamic>?;
+                                  if (hits != null) {
+                                    stationValue +=
+                                        (hits['station_$index'] as num?)
+                                            ?.toInt() ??
+                                        0;
+                                  }
+                                }
+
+                                // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
+                                stationMax =
+                                    trainees.length * stationBulletsPerTrainee;
                               }
 
-                              // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
-                              final totalStationBullets =
-                                  trainees.length * stationBulletsPerTrainee;
-
-                              // חישוב אחוז פגיעות למקצה
-                              final stationPercentage = totalStationBullets > 0
-                                  ? ((stationHits / totalStationBullets) * 100)
+                              // חישוב אחוז
+                              final stationPercentage = stationMax > 0
+                                  ? ((stationValue / stationMax) * 100)
                                         .toStringAsFixed(1)
                                   : '0.0';
 
                               return InkWell(
                                 onTap: () {
+                                  // For long range: pass maxPoints instead of bullets
+                                  final modalMaxValue = isLongRange
+                                      ? ((station['maxPoints'] as num?)
+                                                ?.toInt() ??
+                                            0)
+                                      : (trainees.isNotEmpty
+                                            ? (stationMax ~/ trainees.length)
+                                            : 0);
                                   _showStationDetailsModal(
                                     context,
                                     index,
                                     stationName.toString(),
-                                    stationBulletsPerTrainee,
+                                    modalMaxValue,
                                     trainees,
                                   );
                                 },
@@ -5387,72 +5528,78 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.spaceEvenly,
                                           children: [
-                                            // סך כל כדורים
+                                            // סך כל כדורים/נקודות מקסימליות
                                             Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.center,
                                               children: [
                                                 Text(
-                                                  '$totalStationBullets',
+                                                  '$stationMax',
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.white70,
                                                     fontSize: 16,
                                                   ),
                                                 ),
-                                                const Text(
-                                                  'סך כל כדורים',
-                                                  style: TextStyle(
+                                                Text(
+                                                  isLongRange
+                                                      ? 'סך נקודות מקס'
+                                                      : 'סך כל כדורים',
+                                                  style: const TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.white60,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            // סך כל פגיעות
+                                            // סך כל פגיעות/נקודות
                                             Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.center,
                                               children: [
                                                 Text(
-                                                  '$stationHits',
+                                                  '$stationValue',
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.orangeAccent,
                                                     fontSize: 16,
                                                   ),
                                                 ),
-                                                const Text(
-                                                  'סך כל פגיעות',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // אחוז פגיעות
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
                                                 Text(
-                                                  '$stationPercentage%',
+                                                  isLongRange
+                                                      ? 'סך נקודות'
+                                                      : 'סך כל פגיעות',
                                                   style: const TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.greenAccent,
-                                                  ),
-                                                ),
-                                                const Text(
-                                                  'אחוז פגיעות',
-                                                  style: TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.white60,
                                                   ),
                                                 ),
                                               ],
                                             ),
+                                            // אחוז פגיעות/נקודות - HIDE FOR LONG RANGE
+                                            if (!isLongRange)
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    '$stationPercentage%',
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.greenAccent,
+                                                    ),
+                                                  ),
+                                                  const Text(
+                                                    'אחוז פגיעות',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                           ],
                                         ),
                                         const SizedBox(height: 6),
