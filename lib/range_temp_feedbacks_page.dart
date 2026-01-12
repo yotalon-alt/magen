@@ -39,25 +39,25 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
 
       // ========== QUERY SHAPE FOR FIRESTORE INDEX ==========
       // ADMIN QUERY:
-      //   - where('isDraft', '==', true)
       //   - where('module', '==', 'shooting_ranges')
+      //   - where('isTemporary', '==', true)
       //   - orderBy('createdAt', 'DESCENDING')
       //
       // INSTRUCTOR QUERY:
-      //   - where('isDraft', '==', true)
       //   - where('module', '==', 'shooting_ranges')
+      //   - where('isTemporary', '==', true)
       //   - where('instructorId', '==', uid)
       //   - orderBy('createdAt', 'DESCENDING')
       //
       // Required indexes in firestore.indexes.json:
-      //   1. isDraft ASC + module ASC + createdAt DESC (for admin)
-      //   2. isDraft ASC + module ASC + instructorId ASC + createdAt DESC (for instructors)
+      //   1. module ASC + isTemporary ASC + createdAt DESC (for admin)
+      //   2. module ASC + isTemporary ASC + instructorId ASC + createdAt DESC (for instructors)
       // =====================================================
 
       Query query = FirebaseFirestore.instance
           .collection('feedbacks')
-          .where('isDraft', isEqualTo: true)
-          .where('module', isEqualTo: 'shooting_ranges');
+          .where('module', isEqualTo: 'shooting_ranges')
+          .where('isTemporary', isEqualTo: true);
 
       // Non-admins only see their own temp feedbacks
       if (!isAdmin) {
@@ -93,8 +93,8 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
         debugPrint('Query Details:');
         debugPrint('  Collection: feedbacks');
         debugPrint('  Filters:');
-        debugPrint('    - isDraft == true');
         debugPrint('    - module == "shooting_ranges"');
+        debugPrint('    - isTemporary == true');
         final isAdmin = currentUser?.role == 'Admin';
         if (!isAdmin) {
           debugPrint('    - instructorId == "${currentUser?.uid}"');
@@ -103,7 +103,7 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
         debugPrint('');
         debugPrint('Required Index:');
         debugPrint(
-          '  Fields: isDraft (ASC) + module (ASC) + ${isAdmin ? "" : "instructorId (ASC) + "}createdAt (DESC)',
+          '  Fields: module (ASC) + isTemporary (ASC) + ${isAdmin ? "" : "instructorId (ASC) + "}createdAt (DESC)',
         );
         debugPrint('');
         debugPrint('To fix: Run "firebase deploy --only firestore:indexes"');

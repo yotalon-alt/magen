@@ -54,8 +54,8 @@ class _SurpriseDrillsTempFeedbacksPageState
       debugPrint('   Is Admin: $isAdmin');
       debugPrint('   Query:');
       debugPrint('     collection: feedbacks');
-      debugPrint('     where: folder == "תרגילי הפתעה - משוב זמני"');
-      debugPrint('     where: status == "temporary"');
+      debugPrint('     where: module == "surprise_drill"');
+      debugPrint('     where: isTemporary == true');
       if (!isAdmin) {
         debugPrint('     where: instructorId == "$uid"');
       }
@@ -64,8 +64,8 @@ class _SurpriseDrillsTempFeedbacksPageState
 
       Query query = FirebaseFirestore.instance
           .collection('feedbacks')
-          .where('folder', isEqualTo: 'תרגילי הפתעה - משוב זמני')
-          .where('status', isEqualTo: 'temporary');
+          .where('module', isEqualTo: 'surprise_drill')
+          .where('isTemporary', isEqualTo: true);
 
       if (!isAdmin) {
         query = query.where('instructorId', isEqualTo: uid);
@@ -101,8 +101,8 @@ class _SurpriseDrillsTempFeedbacksPageState
         debugPrint('   Required index:');
         debugPrint('     Collection: feedbacks');
         debugPrint('     Fields:');
-        debugPrint('       1. folder (Ascending)');
-        debugPrint('       2. status (Ascending)');
+        debugPrint('       1. module (Ascending)');
+        debugPrint('       2. isTemporary (Ascending)');
         if (currentUser?.role != 'Admin') {
           debugPrint('       3. instructorId (Ascending)');
         }

@@ -1499,45 +1499,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           debugPrint('   RAW row.values (from model): ${row.values}');
         }
 
-        // Build hits map from values, only include stages that were explicitly touched
-        // ✅ FINAL SAVE FILTERING: Exclude untouched stages from statistics
-        // 0 is VALID and included if explicitly entered (touched=true)
+        // Build hits map from values - include ALL stages
+        // ✅ FIX: Save ALL stage data without filtering (including 0 values)
+        // Filtering should ONLY apply to stats/export, NOT to saved data
         final Map<String, int> hitsMap = {};
         row.values.forEach((stationIdx, value) {
-          // ✅ Check if this stage should be included in final stats
-          final includeStage = row.shouldIncludeStageInFinalStats(stationIdx);
-
-          if (includeStage && value > 0) {
-            // ✅ LONG RANGE PROTECTION: Store exact points (NO division)
-            // Long Range: value is POINTS (0-100), NOT bullets
-            // Short Range: value is HITS (0-bullets)
-            // Both store AS-IS without normalization
-            hitsMap['station_$stationIdx'] = value;
-
-            // ⚠️ DEBUG ASSERTION: Detect if value was incorrectly normalized
-            if (_rangeType == 'ארוכים') {
-              // Check if value looks like it was divided by 10
-              // (e.g., original 75 became 7, or 100 became 10)
-              if (value > 0 && value <= 10 && (value * 10) <= 100) {
-                debugPrint(
-                  '⚠️⚠️ WARNING: LONG RANGE value=$value looks suspiciously small! '
-                  'Possible division by 10 bug. Expected range: 0-100 points.',
-                );
-              }
-            }
-          }
+          // Include ALL stages in saved data (no filtering)
+          // This ensures Details screen sees complete stage breakdown
+          hitsMap['station_$stationIdx'] = value;
         });
 
-        // Build time values map from timeValues (for בוחן רמה), only include touched stages
-        // ✅ FINAL SAVE FILTERING: Exclude untouched stages from statistics
+        // Build time values map from timeValues (for בוחן רמה) - include ALL stages
         final Map<String, int> timeValuesMap = {};
         row.timeValues.forEach((stationIdx, value) {
-          // ✅ Check if this stage should be included in final stats
-          final includeStage = row.shouldIncludeStageInFinalStats(stationIdx);
-
-          if (includeStage && value > 0) {
-            timeValuesMap['station_${stationIdx}_time'] = value;
-          }
+          timeValuesMap['station_${stationIdx}_time'] = value;
         });
 
         // ✅ FIX: Use correct function based on range type for טווח רחוק bug fix
@@ -1704,15 +1679,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             : (settlementName.isNotEmpty
                   ? settlementName
                   : selectedSettlement ?? '');
+        // 🔍 DEBUG: Log final save flags before write (Surprise Drill)
+        debugPrint(
+          'FINAL_SAVE_FLAGS_SURPRISE: isTemporary=false finalizedAt=serverTimestamp() status=final',
+        );
+
         final Map<String, dynamic> surpriseData = {
           ...baseData,
           // Required fields for Surprise Drills
           'module': 'surprise_drill',
           'type': 'surprise_exercise',
-          'isTemporary': false, // ✅ Mark as final (not temp)
-          'isDraft': false, // ✅ Mark as final (not draft)
-          'status': 'final', // ✅ Override baseData status
-          'finalizedAt': FieldValue.serverTimestamp(), // ✅ Track when finalized
+          'isTemporary': false, // ✅ FINAL SAVE: Mark as final (not temp)
+          'isDraft': false, // ✅ FINAL SAVE: Mark as final (not draft)
+          'status': 'final', // ✅ FINAL SAVE: Override baseData status
+          'finalizedAt':
+              FieldValue.serverTimestamp(), // ✅ FINAL SAVE: Track when finalized
           'exercise': 'תרגילי הפתעה',
           'folder': 'משוב תרגילי הפתעה', // ✅ Final folder (not temp)
           // ✅ CRITICAL: Override folderKey/folderLabel to prevent range filter matching
@@ -1749,34 +1730,46 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         debugPrint('\n========== FIRESTORE WRITE START ==========');
 
-        // ✅ FIX: Use deterministic draft ID to UPDATE existing temp document
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        final String moduleType = 'surprise_drill';
-        final String draftId =
-            '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
-
-        debugPrint('WRITE: Using draft ID for final save: $draftId');
-        debugPrint(
-          'WRITE: Will UPDATE existing temp document (not create new)',
-        );
+        final collRef = FirebaseFirestore.instance.collection(collectionPath);
 
         try {
-          // ✅ CRITICAL FIX: UPDATE the existing temp document to convert it to final
-          final finalDocRef = FirebaseFirestore.instance
-              .collection(collectionPath)
-              .doc(draftId); // Use SAME ID as temp save
+          // ✅ FIX: ALWAYS create NEW document for FINAL SAVE (never reuse draftId)
+          // Only update if explicitly editing an existing FINAL feedback
+          DocumentReference finalDocRef;
 
-          debugPrint('WRITE: finalId=$draftId (SAME as temp draft)');
-          debugPrint('WRITE: finalPath=${finalDocRef.path}');
+          // Check if we're editing an existing FINAL (non-draft) feedback
+          final String? existingFinalId =
+              (widget.feedbackId != null && widget.feedbackId!.isNotEmpty)
+              ? widget.feedbackId
+              : null;
+
+          if (existingFinalId != null) {
+            // EDIT mode: update existing final feedback
+            finalDocRef = collRef.doc(existingFinalId);
+            debugPrint(
+              'WRITE: EDIT MODE - Updating feedback id=$existingFinalId',
+            );
+            await finalDocRef.set(surpriseData);
+          } else {
+            // CREATE mode: generate new auto-ID
+            finalDocRef = collRef.doc(); // Firestore auto-ID
+            final docId = finalDocRef.id;
+            debugPrint('WRITE: CREATE MODE - New auto-ID: $docId');
+            await finalDocRef.set(surpriseData);
+            debugPrint('🆔 NEW FEEDBACK CREATED: docId=$docId');
+          }
+
+          docRef = finalDocRef; // Store for readback
           debugPrint(
-            'WRITE: This will UPDATE the temp document to final status',
+            'WRITE: ✅ Final document saved at path=${finalDocRef.path}',
+          );
+          debugPrint('🆔 SAVED DOCUMENT ID: ${finalDocRef.id}');
+
+          // 🔍 DEBUG: Verify final save flags after write (Surprise Drill)
+          debugPrint(
+            'FINAL_SAVE_VERIFY_SURPRISE: docId=${finalDocRef.id} written with isTemporary=false finalizedAt=serverTimestamp() status=final',
           );
 
-          debugPrint('WRITE: Awaiting set on finalDocRef...');
-          await finalDocRef.set(surpriseData); // Overwrite temp with final
-          docRef = finalDocRef; // Store for readback
-
-          debugPrint('WRITE: ✅ Final document created=${finalDocRef.path}');
           debugPrint('========== FIRESTORE WRITE END ==========\n');
 
           // ✅ SUCCESS SNACKBAR
@@ -1876,15 +1869,24 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           throw Exception('Invalid folder selection for save: $rangeFolder');
         }
 
+        // 🔍 DEBUG: Log final save flags before write (Range)
+        final rangeTypeDebug = _rangeType == 'קצרים'
+            ? 'range_short'
+            : 'range_long';
+        debugPrint(
+          'FINAL_SAVE_FLAGS_RANGE: type=$rangeTypeDebug isTemporary=false finalizedAt=serverTimestamp() status=final',
+        );
+
         final Map<String, dynamic> rangeData = {
           ...baseData,
           // Required fields for Shooting Ranges
           'module': 'shooting_ranges',
           'type': 'range_feedback',
-          'isTemporary': false, // ✅ Mark as final (not temp)
-          'isDraft': false, // ✅ Mark as final (not draft)
-          'status': 'final', // ✅ Override baseData status
-          'finalizedAt': FieldValue.serverTimestamp(), // ✅ Track when finalized
+          'isTemporary': false, // ✅ FINAL SAVE: Mark as final (not temp)
+          'isDraft': false, // ✅ FINAL SAVE: Mark as final (not draft)
+          'status': 'final', // ✅ FINAL SAVE: Override baseData status
+          'finalizedAt':
+              FieldValue.serverTimestamp(), // ✅ FINAL SAVE: Track when finalized
           'exercise': 'מטווחים',
           'folder': targetFolder, // ✅ Final folder (not temp)
           'folderCategory':
@@ -2047,41 +2049,52 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         debugPrint('\n========== FIRESTORE WRITE START ==========');
 
-        // ✅ FIX: Use deterministic draft ID to UPDATE existing temp document
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        final String moduleType = 'shooting_ranges';
-        final String draftId =
-            '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
-
-        debugPrint('WRITE: Using draft ID for final save: $draftId');
-        debugPrint(
-          'WRITE: Will UPDATE existing temp document (not create new)',
-        );
+        final collRef = FirebaseFirestore.instance.collection(collectionPath);
 
         try {
-          // ✅ CRITICAL FIX: UPDATE the existing temp document to convert it to final
-          final finalDocRef = FirebaseFirestore.instance
-              .collection(collectionPath)
-              .doc(draftId); // Use SAME ID as temp save
+          // ✅ FIX: ALWAYS create NEW document for FINAL SAVE (never reuse draftId)
+          // Only update if explicitly editing an existing FINAL feedback
+          DocumentReference finalDocRef;
 
-          debugPrint('WRITE: finalId=$draftId (SAME as temp draft)');
-          debugPrint('WRITE: finalPath=${finalDocRef.path}');
-          debugPrint(
-            'WRITE: This will UPDATE the temp document to final status',
-          );
+          // Check if we're editing an existing FINAL (non-draft) feedback
+          final String? existingFinalId =
+              (widget.feedbackId != null && widget.feedbackId!.isNotEmpty)
+              ? widget.feedbackId
+              : null;
 
-          debugPrint('WRITE: Awaiting set on finalDocRef...');
-          await finalDocRef.set(rangeData); // Overwrite temp with final
+          if (existingFinalId != null) {
+            // EDIT mode: update existing final feedback
+            finalDocRef = collRef.doc(existingFinalId);
+            debugPrint(
+              'WRITE: EDIT MODE - Updating feedback id=$existingFinalId',
+            );
+            await finalDocRef.set(rangeData);
+          } else {
+            // CREATE mode: generate new auto-ID
+            finalDocRef = collRef.doc(); // Firestore auto-ID
+            final docId = finalDocRef.id;
+            debugPrint('WRITE: CREATE MODE - New auto-ID: $docId');
+            await finalDocRef.set(rangeData);
+            debugPrint('🆔 NEW FEEDBACK CREATED: docId=$docId');
+          }
+
           docRef = finalDocRef; // Store for readback
+          debugPrint(
+            'WRITE: ✅ Final document saved at path=${finalDocRef.path}',
+          );
+          debugPrint('🆔 SAVED DOCUMENT ID: ${finalDocRef.id}');
 
-          debugPrint('WRITE: ✅ Final document created=${finalDocRef.path}');
+          // 🔍 DEBUG: Verify final save flags after write (Range)
+          debugPrint(
+            'FINAL_SAVE_VERIFY_RANGE: type=$rangeTypeDebug docId=${finalDocRef.id} written with isTemporary=false finalizedAt=serverTimestamp() status=final',
+          );
 
           // ✅ DEBUG: Log saved document path for טווח רחוק bug verification
           if (_rangeType == 'ארוכים') {
             debugPrint(
-              '🔍 טווח רחוק SAVED: collection=feedbacks, docId=$draftId',
+              '🔍 טווח רחוק SAVED: collection=feedbacks, docId=${finalDocRef.id}',
             );
-            debugPrint('   Path: feedbacks/$draftId');
+            debugPrint('   Path: ${finalDocRef.path}');
             debugPrint('   TraineesCount: ${traineesData.length}');
             debugPrint('   StationsCount: ${stationsData.length}');
             for (int i = 0; i < traineesData.length && i < 3; i++) {
@@ -2261,17 +2274,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   Future<void> _saveTemporarily() async {
-    // ✅ ATOMIC DRAFT SAVE: Single document with full traineeRows data
+    // ✅ ATOMIC DRAFT SAVE: PATCH ONLY CHANGED FIELDS (merge) for Short/Long Range
     // Updates same draftId, never creates duplicates
-    // Comprehensive debug logging for verification
-    // ✅ NO REBUILD: Doesn't call setState during background auto-save
+    // NO REBUILD: Doesn't call setState during background auto-save
 
     if (_isSaving) {
       debugPrint('⚠️ DRAFT_SAVE: Already saving, skipping...');
       return; // Prevent concurrent saves
     }
 
-    // ✅ Track saving state WITHOUT rebuilding (prevents focus loss)
     _isSaving = true;
 
     try {
@@ -2298,7 +2309,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('DRAFT_SAVE: uid=$uid');
       debugPrint('DRAFT_SAVE: draftId=$draftId');
 
-      // ✅ Serialize traineeRows to Firestore format
+      // Serialize traineeRows to Firestore format
       final List<Map<String, dynamic>> traineesPayload = [];
       debugPrint(
         'DRAFT_SAVE: Serializing ${traineeRows.length} trainee rows...',
@@ -2306,22 +2317,43 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       for (int i = 0; i < traineeRows.length; i++) {
         final row = traineeRows[i];
         final rowData = row.toFirestore();
+
+        // Backward-compatibility: details/stage screens expect 'hits' and
+        // 'totalHits' fields (legacy format). Ensure temp save writes them
+        // so details/stage screens see the same data as the editor.
+        final Map<String, dynamic> valuesMap = Map<String, dynamic>.from(
+          rowData['values'] as Map? ?? {},
+        );
+
+        final Map<String, int> hitsMap = {};
+        int total = 0;
+        valuesMap.forEach((k, v) {
+          try {
+            final intVal = (v as num).toInt();
+            hitsMap[k.toString()] = intVal;
+            total += intVal;
+          } catch (_) {
+            // ignore parse errors and treat as 0
+          }
+        });
+
+        // legacy field names used by details/stage screens
+        rowData['hits'] = hitsMap;
+        rowData['totalHits'] = total;
+
         traineesPayload.add(rowData);
         debugPrint(
-          'DRAFT_SAVE:   row[$i]: name="${row.name}" values=${row.values}',
+          'DRAFT_SAVE:   row[$i]: name="${row.name}" values=${row.values} totalHits=$total',
         );
       }
 
-      // Build complete payload
+      // Build complete payload (for new fields)
       final String folderName = widget.mode == 'surprise'
           ? 'תרגילי הפתעה - משוב זמני'
           : 'מטווחים - משוב זמני';
 
-      // Draft: unify folderKey/label - EXACT matching to prevent ambiguity
       String draftFolderKey;
       String draftFolderLabel;
-      // ✅ FIX: Use exact matching instead of .contains() to avoid false positives
-      // (e.g., 'מטווחי ירי' contains 'מטווח' substring, causing wrong classification)
       if (rangeFolder == 'מטווחים 474' || rangeFolder == '474 Ranges') {
         draftFolderKey = 'ranges_474';
         draftFolderLabel = 'מטווחים 474';
@@ -2330,12 +2362,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         draftFolderKey = 'shooting_ranges';
         draftFolderLabel = 'מטווחי ירי';
       } else {
-        // Fallback: default to shooting_ranges if unrecognized
         draftFolderKey = 'shooting_ranges';
         draftFolderLabel = 'מטווחי ירי';
       }
 
-      // Resolve instructor's Hebrew full name from Firestore
       String resolvedInstructorName = instructorName;
       if (uid.isNotEmpty) {
         resolvedInstructorName = await resolveUserHebrewName(uid);
@@ -2344,12 +2374,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // Prepare stations data for temporary save
       List<Map<String, dynamic>> stationsData;
       if (_rangeType == 'קצרים') {
-        // Short Range: Save dynamic multi-stage list
         stationsData = shortRangeStagesList.map((stage) {
           final stageName = stage.isManual
               ? stage.manualName.trim()
               : stage.selectedStage ?? '';
-
           return {
             'name': stageName,
             'bulletsCount': stage.bulletsCount,
@@ -2360,23 +2388,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'selectedRubrics': ['זמן', 'פגיעות'],
           };
         }).toList();
-
-        // Fallback to existing stations if list is empty (for backward compatibility)
         if (stationsData.isEmpty && stations.isNotEmpty) {
           stationsData = stations.map((s) => s.toJson()).toList();
         }
       } else if (_rangeType == 'ארוכים') {
-        // Long Range: Save multi-stage list with user-entered bullets
         stationsData = longRangeStagesList.asMap().entries.map((entry) {
           final index = entry.key;
           final stage = entry.value;
-
-          // Calculate achieved points from trainee data for this stage
           int achievedPoints = 0;
           for (final row in traineeRows) {
             achievedPoints += row.values[index] ?? 0;
           }
-
           return {
             'name': stage.name,
             'bulletsCount': stage.bulletsCount,
@@ -2389,23 +2411,24 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'selectedRubrics': ['זמן', 'פגיעות'],
           };
         }).toList();
-
-        // Fallback to existing stations if list is empty
         if (stationsData.isEmpty && stations.isNotEmpty) {
           stationsData = stations.map((s) => s.toJson()).toList();
         }
       } else {
-        // Surprise: Use existing stations list
         stationsData = stations.map((s) => s.toJson()).toList();
       }
 
-      final Map<String, dynamic> payload = {
-        'status': 'temporary', // ✅ Required for temp list filtering
-        'isDraft': true, // ✅ Required for temp list filtering (backward compat)
+      // PATCH LOGIC: Only update changed fields for Short/Long Range
+      final docRef = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(draftId);
+      Map<String, dynamic> patch = {
+        'status': 'temporary',
+        'isDraft': true,
         'module': moduleType,
-        'isTemporary': true,
-        'folder':
-            folderName, // 'מטווחים - משוב זמני' or 'תרגילי הפתעה - משוב זמני'
+        'isTemporary': true, // ✅ TEMP SAVE: Mark as temporary
+        'finalizedAt': null, // ✅ TEMP SAVE: Not finalized yet
+        'folder': folderName,
         'folderKey': draftFolderKey,
         'folderLabel': draftFolderLabel,
         'feedbackType': (_rangeType == 'קצרים'
@@ -2417,31 +2440,37 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'rangeType': _rangeType,
-        'rangeSubType': rangeSubType, // ✅ Add display label field
+        'rangeSubType': rangeSubType,
         'settlement': selectedSettlement ?? '',
         'settlementName': settlementName,
         'rangeFolder': rangeFolder ?? '',
         'attendeesCount': attendeesCount,
-        'stations': stationsData,
-        'trainees': traineesPayload,
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
-        // ✅ Short Range stage selection data (legacy compatibility)
         'selectedShortRangeStage': selectedShortRangeStage,
         'manualStageName': manualStageName,
-        // Long Range multi-stage now handled in stationsData
       };
 
+      // 🔍 DEBUG: Log temp save flags before write
       debugPrint(
-        'DRAFT_SAVE: uiFolderValue=${rangeFolder ?? ''} draftFolderKey=$draftFolderKey draftFolderLabel=$draftFolderLabel',
+        'TEMP_SAVE_FLAGS: docId=$draftId isTemporary=true finalizedAt=null status=temporary',
       );
-      debugPrint('DRAFT_SAVE: payload keys=${payload.keys.toList()}');
-      debugPrint('DRAFT_SAVE: payload.attendeesCount=$attendeesCount');
-      debugPrint(
-        'DRAFT_SAVE: payload.trainees.length=${traineesPayload.length}',
-      );
-      debugPrint('DRAFT_SAVE: payload.stations.length=${stations.length}');
-      debugPrint('DRAFT_SAVE: payload.folder=$folderName');
+
+      // ✅ FIX: TEMP SAVE - NEVER overwrite stations/trainees with empty data
+      // Only write these fields if they contain actual data
+      // This prevents wiping out existing stage data during auto-save
+      if (stationsData.isNotEmpty) {
+        patch['stations'] = stationsData;
+      }
+      if (traineesPayload.isNotEmpty) {
+        patch['trainees'] = traineesPayload;
+      }
+
+      debugPrint('DRAFT_SAVE: PATCH keys=${patch.keys.toList()}');
+      debugPrint('DRAFT_SAVE: PATCH.attendeesCount=$attendeesCount');
+      debugPrint('DRAFT_SAVE: PATCH.trainees.length=${traineesPayload.length}');
+      debugPrint('DRAFT_SAVE: PATCH.stations.length=${stationsData.length}');
+      debugPrint('DRAFT_SAVE: PATCH.folder=$folderName');
 
       // 🔥 WEB LONG RANGE: Verify raw points BEFORE Firestore write
       if (kIsWeb && _rangeType == 'ארוכים') {
@@ -2461,30 +2490,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('🌐 =========================================\n');
       }
 
-      // Write to Firestore (overwrite completely)
-      final docRef = FirebaseFirestore.instance
-          .collection('feedbacks')
-          .doc(draftId);
-      debugPrint('DRAFT_SAVE: Writing to ${docRef.path}');
+      // Use Firestore merge to patch only changed fields
+      await docRef.set(patch, SetOptions(merge: true));
+      debugPrint('✅ DRAFT_SAVE: Patch (merge) complete');
 
-      await docRef.set(payload, SetOptions(merge: false));
-      debugPrint('✅ DRAFT_SAVE: Write complete');
+      // 🔍 DEBUG: Verify temp save flags after write
+      debugPrint(
+        'TEMP_SAVE_VERIFY: docId=${docRef.id} written with isTemporary=true finalizedAt=null',
+      );
 
       // ✅ READ-BACK VERIFICATION
       debugPrint('DRAFT_SAVE: Read-back verification...');
       final verifySnap = await docRef.get();
-
       if (!verifySnap.exists) {
-        debugPrint('❌ DRAFT_SAVE: Document NOT FOUND after write!');
+        debugPrint('❌ DRAFT_SAVE: Document NOT FOUND after patch!');
         throw Exception('Draft document not persisted');
       }
-
       final verifyData = verifySnap.data();
       if (verifyData == null) {
         debugPrint('❌ DRAFT_SAVE: Document data is NULL!');
         throw Exception('Draft data is null');
       }
-
       final verifyTrainees = verifyData['trainees'] as List?;
       debugPrint(
         'DRAFT_SAVE: Verified trainees.length=${verifyTrainees?.length ?? 0}',
@@ -2493,8 +2519,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('❌ DRAFT_SAVE: Trainees array is empty!');
         throw Exception('Trainees not saved');
       }
-
-      // Check first trainee has data
       if (verifyTrainees.isNotEmpty) {
         final firstTrainee = verifyTrainees[0] as Map?;
         final firstName = firstTrainee?['name'];
@@ -2507,11 +2531,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('✅ DRAFT_SAVE: Verification PASSED');
       debugPrint('DRAFT_SAVE: Draft saved at ${docRef.path}');
       debugPrint('DRAFT_SAVE: traineeRows.length=${traineeRows.length}');
-      debugPrint('========== ✅ DRAFT_SAVE END ==========\n');
+      debugPrint('========== ✅ DRAFT_SAVE END ==========');
 
       if (!mounted) return;
-
-      // Show subtle success indicator (don't spam user)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('✅ שמירה אוטומטית'),
@@ -2526,7 +2548,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('==========================================\n');
 
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ שגיאה בשמירה: $e'),
@@ -2535,7 +2556,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ),
       );
     } finally {
-      // ✅ NO REBUILD: Reset flag WITHOUT setState to prevent focus loss
       _isSaving = false;
     }
   }

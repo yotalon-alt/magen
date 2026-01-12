@@ -59,11 +59,11 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "isDraft",
+          "fieldPath": "module",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "module",
+          "fieldPath": "isTemporary",
           "order": "ASCENDING"
         },
         {
@@ -77,11 +77,11 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "isDraft",
+          "fieldPath": "module",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "module",
+          "fieldPath": "isTemporary",
           "order": "ASCENDING"
         },
         {
