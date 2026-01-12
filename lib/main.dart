@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -54,7 +54,10 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
   {'title': 'מיונים – כללי', 'isHidden': true}, // ✅ SOFT DELETE: Hidden from UI
   {'title': 'מיונים לקורס מדריכים', 'isHidden': false},
   {'title': 'משובים – כללי', 'isHidden': false},
-  {'title': 'עבודה במבנה', 'isHidden': false},
+  {
+    'title': 'עבודה במבנה',
+    'isHidden': true,
+  }, // ✅ SOFT DELETE: Unused folder removed from UI
   {'title': 'משוב תרגילי הפתעה', 'isHidden': false},
 ];
 
@@ -1480,6 +1483,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const RangeStatisticsPage(),
                 settings: settings,
               );
+            case '/surprise_drills_statistics':
+              return MaterialPageRoute(
+                builder: (_) => const SurpriseDrillsStatisticsPage(),
+                settings: settings,
+              );
             default:
               return MaterialPageRoute(
                 builder: (_) => StatisticsPage(key: _statisticsKey),
@@ -2415,11 +2423,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
       // ✅ CRITICAL: Validate folder routing for specific feedback types
       final targetExercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
-      final allowedFolders = [
-        'מחלקות ההגנה – חטיבה 474',
-        'משובים – כללי',
-        'עבודה במבנה',
-      ];
+      final allowedFolders = ['מחלקות ההגנה – חטיבה 474', 'משובים – כללי'];
 
       if (targetExercises.contains(selectedExercise)) {
         if (!allowedFolders.contains(selectedFolder)) {
@@ -2457,10 +2461,6 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
           case 'משובים – כללי':
             folderKey = 'general_feedback';
             folderLabel = 'משובים כללי';
-            break;
-          case 'עבודה במבנה':
-            folderKey = 'structure_work';
-            folderLabel = 'עבודה במבנה';
             break;
           default:
             // Should never reach here due to validation above
@@ -2583,14 +2583,12 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                     allowedFolders = [
                       'מחלקות ההגנה – חטיבה 474',
                       'משובים – כללי',
-                      'עבודה במבנה',
                     ];
                   } else {
-                    // For other exercises, keep the original 3 folders
+                    // For other exercises, keep the original 2 folders
                     allowedFolders = [
                       'מחלקות ההגנה – חטיבה 474',
                       'משובים – כללי',
-                      'עבודה במבנה',
                     ];
                   }
 
@@ -2647,8 +2645,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   onChanged: (v) => setState(() => settlement = v ?? ''),
                 ),
                 const SizedBox(height: 12),
-              ] else if (selectedFolder == 'משובים – כללי' ||
-                  selectedFolder == 'עבודה במבנה') ...[
+              ] else if (selectedFolder == 'משובים – כללי') ...[
                 // Other folders: Manual text field with autocomplete
                 const Text(
                   'יישוב',
@@ -3217,8 +3214,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     }
   }
 
-  /// Export selected 474 ranges feedbacks
-  Future<void> _exportSelected474Ranges() async {
+  /// Export selected feedbacks (generic for all folders)
+  Future<void> _exportSelectedFeedbacks() async {
     setState(() => _isExporting = true);
 
     try {
@@ -3251,11 +3248,76 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         throw Exception('לא נמצאו נתוני משוב תקינים');
       }
 
-      // Export using shared service
-      await FeedbackExportService.export474RangesFeedbacks(
-        feedbacksData: validData,
-        fileNamePrefix: '474_ranges_selected',
-      );
+      // Determine export method based on folder type
+      if (_selectedFolder == 'מטווחים 474' || _selectedFolder == '474 Ranges') {
+        // Export 474 ranges
+        await FeedbackExportService.export474RangesFeedbacks(
+          feedbacksData: validData,
+          fileNamePrefix: '474_ranges_selected',
+        );
+      } else if (_selectedFolder == 'מטווחי ירי') {
+        // Export shooting ranges
+        await FeedbackExportService.export474RangesFeedbacks(
+          feedbacksData: validData,
+          fileNamePrefix: 'shooting_ranges_selected',
+        );
+      } else if (_selectedFolder == 'משוב תרגילי הפתעה') {
+        // Export surprise drills
+        await FeedbackExportService.exportSurpriseDrillsToXlsx(
+          feedbacksData: validData,
+          fileNamePrefix: 'surprise_drills_selected',
+        );
+      } else {
+        // Export general feedbacks (משובים כללי, מחלקות ההגנה)
+        // Convert feedbacksData to FeedbackModel list
+        final feedbackModels = validData
+            .map(
+              (data) => FeedbackModel.fromMap(data, id: data['id'] as String?),
+            )
+            .whereType<FeedbackModel>()
+            .toList();
+
+        final keys = [
+          'id',
+          'role',
+          'name',
+          'exercise',
+          'scores',
+          'notes',
+          'criteriaList',
+          'instructorName',
+          'instructorRole',
+          'commandText',
+          'commandStatus',
+          'folder',
+          'scenario',
+          'settlement',
+          'attendeesCount',
+        ];
+        final headers = [
+          'ID',
+          'תפקיד',
+          'שם',
+          'תרגיל',
+          'ציונים',
+          'הערות',
+          'קריטריונים',
+          'מדריך',
+          'תפקיד מדריך',
+          'טקסט פקודה',
+          'סטטוס פקודה',
+          'תיקייה',
+          'תרחיש',
+          'יישוב',
+          'מספר נוכחים',
+        ];
+        await FeedbackExportService.exportWithSchema(
+          keys: keys,
+          headers: headers,
+          feedbacks: feedbackModels,
+          fileNamePrefix: '${_selectedFolder}_selected',
+        );
+      }
 
       if (!mounted) return;
       messenger.showSnackBar(
@@ -3749,9 +3811,13 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
             tooltip: 'חזרה לתיקיות',
           ),
           actions: [
-            // Selection mode toggle for 474 ranges folder (Admin only)
+            // Selection mode toggle for all export-enabled folders (Admin only)
             if ((_selectedFolder == 'מטווחים 474' ||
-                    _selectedFolder == '474 Ranges') &&
+                    _selectedFolder == '474 Ranges' ||
+                    _selectedFolder == 'מטווחי ירי' ||
+                    _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
+                    _selectedFolder == 'משובים – כללי' ||
+                    _selectedFolder == 'משוב תרגילי הפתעה') &&
                 isAdmin &&
                 finalFilteredFeedbacks.isNotEmpty)
               IconButton(
@@ -3765,65 +3831,6 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   });
                 },
                 tooltip: _selectionMode ? 'בטל בחירה' : 'בחר לייצוא',
-              ),
-            // Export button for Surprise Drills folder (Admin only)
-            if (_selectedFolder == 'משוב תרגילי הפתעה' &&
-                isAdmin &&
-                finalFilteredFeedbacks.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.download),
-                onPressed: () async {
-                  // Capture ScaffoldMessenger before async gap
-                  final messenger = ScaffoldMessenger.of(context);
-
-                  try {
-                    // Convert FeedbackModel list to Map list for export
-                    final feedbacksData = await Future.wait(
-                      finalFilteredFeedbacks.map((f) async {
-                        if (f.id != null && f.id!.isNotEmpty) {
-                          final doc = await FirebaseFirestore.instance
-                              .collection('feedbacks')
-                              .doc(f.id)
-                              .get();
-                          if (doc.exists) {
-                            return doc.data() ?? <String, dynamic>{};
-                          }
-                        }
-                        return <String, dynamic>{};
-                      }),
-                    );
-
-                    // Filter out empty maps
-                    final validData = feedbacksData
-                        .where((data) => data.isNotEmpty)
-                        .toList();
-
-                    if (validData.isEmpty) {
-                      if (!mounted) return;
-                      messenger.showSnackBar(
-                        const SnackBar(content: Text('אין נתונים לייצוא')),
-                      );
-                      return;
-                    }
-
-                    await FeedbackExportService.exportSurpriseDrillsToXlsx(
-                      feedbacksData: validData,
-                      fileNamePrefix: 'surprise_drills',
-                    );
-
-                    if (!mounted) return;
-                    final message = kIsWeb
-                        ? 'הקובץ הורד בהצלחה'
-                        : 'הקובץ נשמר בהורדות';
-                    messenger.showSnackBar(SnackBar(content: Text(message)));
-                  } catch (e) {
-                    if (!mounted) return;
-                    messenger.showSnackBar(
-                      SnackBar(content: Text('שגיאה בייצוא: $e')),
-                    );
-                  }
-                },
-                tooltip: 'ייצוא תרגילי הפתעה',
               ),
             IconButton(
               icon: _isRefreshing
@@ -3867,10 +3874,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               )
             : Column(
                 children: [
-                  // Selection mode action bar for 474 ranges
+                  // Selection mode action bar for all export-enabled folders
                   if (_selectionMode &&
                       (_selectedFolder == 'מטווחים 474' ||
-                          _selectedFolder == '474 Ranges'))
+                          _selectedFolder == '474 Ranges' ||
+                          _selectedFolder == 'מטווחי ירי' ||
+                          _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
+                          _selectedFolder == 'משובים – כללי' ||
+                          _selectedFolder == 'משוב תרגילי הפתעה'))
                     Container(
                       color: Colors.blueGrey.shade700,
                       padding: const EdgeInsets.symmetric(
@@ -3891,7 +3902,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             ElevatedButton.icon(
                               onPressed: _isExporting
                                   ? null
-                                  : _exportSelected474Ranges,
+                                  : _exportSelectedFeedbacks,
                               icon: _isExporting
                                   ? const SizedBox(
                                       width: 16,
@@ -4156,17 +4167,22 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               currentUser?.role == 'Admin' ||
                               f.instructorName == currentUser?.name;
 
-                          // Check if 474 ranges folder for selection mode
-                          final is474Ranges =
+                          // Check if folder supports selection mode
+                          final supportsSelectionMode =
                               _selectedFolder == 'מטווחים 474' ||
-                              _selectedFolder == '474 Ranges';
+                              _selectedFolder == '474 Ranges' ||
+                              _selectedFolder == 'מטווחי ירי' ||
+                              _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
+                              _selectedFolder == 'משובים – כללי' ||
+                              _selectedFolder == 'משוב תרגילי הפתעה';
 
                           return FeedbackListTileCard(
                             title: title,
                             metadataLines: metadataLines,
                             blueTagLabel: blueTagLabel,
                             canDelete: canDelete && !_selectionMode,
-                            selectionMode: _selectionMode && is474Ranges,
+                            selectionMode:
+                                _selectionMode && supportsSelectionMode,
                             isSelected: _selectedFeedbackIds.contains(f.id),
                             onSelectionToggle: f.id != null && f.id!.isNotEmpty
                                 ? () {
@@ -4180,7 +4196,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                   }
                                 : null,
                             onOpen: () {
-                              if (_selectionMode && is474Ranges) {
+                              if (_selectionMode && supportsSelectionMode) {
                                 // In selection mode, clicking toggles selection
                                 if (f.id != null && f.id!.isNotEmpty) {
                                   setState(() {
@@ -6254,7 +6270,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     ),
                     elevation: 8,
                   ),
-                  child: const Text('כל המשובים'),
+                  child: const Text('סטטיסטיקת משובים'),
                 ),
               ),
               const SizedBox(height: 32),
@@ -6279,7 +6295,34 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     ),
                     elevation: 8,
                   ),
-                  child: const Text('משובי מטווחים'),
+                  child: const Text('סטטיסטיקה מטווחים'),
+                ),
+              ),
+              const SizedBox(height: 32),
+              // Button for Surprise Drills Statistics
+              SizedBox(
+                width: double.infinity,
+                height: 80,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(
+                      context,
+                    ).pushNamed('/surprise_drills_statistics');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueGrey.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    textStyle: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: const Text('סטטיסטיקה תרגילי הפתעה'),
                 ),
               ),
             ],
@@ -6325,7 +6368,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
   String selectedInstructor = 'כל המדריכים';
   String selectedExercise = 'כל התרגילים';
   String selectedSettlement = 'כל היישובים'; // חדש!
-  String selectedFolder = 'כל התיקיות'; // חדש!
+  String selectedFolder = 'הכל'; // Default for משובים section
   String personFilter = '';
   DateTime? dateFrom;
   DateTime? dateTo;
@@ -6356,7 +6399,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
           f.settlement != selectedSettlement) {
         return false;
       }
-      if (selectedFolder != 'כל התיקיות' && f.folder != selectedFolder) {
+      // Enforce משובים scope: only allow these two folders
+      const allowedFolders = ['משובים – כללי', 'מחלקות ההגנה – חטיבה 474'];
+      if (!allowedFolders.contains(f.folder)) {
+        return false;
+      }
+      // Apply specific folder filter if not 'הכל'
+      if (selectedFolder != 'הכל' && f.folder != selectedFolder) {
         return false;
       }
       if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
@@ -6457,8 +6506,98 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('סטטיסטיקת כל המשובים'),
+          title: const Text('סטטיסטיקת משובים'),
           leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: 'ייצוא',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => StatisticsExportDialog(
+                    tabName: 'סטטיסטיקת משובים',
+                    availableSections: const [
+                      'ממוצע לפי קריטריון',
+                      'ממוצע לפי תפקיד',
+                      'ממוצע לפי מדריך',
+                      'מגמה לאורך זמן',
+                    ],
+                    onExport: (selectedSections) async {
+                      final sectionsData =
+                          <String, List<Map<String, dynamic>>>{};
+
+                      if (selectedSections.contains('ממוצע לפי קריטריון')) {
+                        final data = <Map<String, dynamic>>[];
+                        for (final entry in topicValues.entries) {
+                          final vals = entry.value;
+                          if (vals.isNotEmpty) {
+                            data.add({
+                              'קריטריון': topicMap[entry.key] ?? entry.key,
+                              'ממוצע': avgOf(vals).toStringAsFixed(1),
+                              'מספר הערכות': vals.length,
+                            });
+                          }
+                        }
+                        sectionsData['ממוצע לפי קריטריון'] = data;
+                      }
+
+                      if (selectedSections.contains('ממוצע לפי תפקיד')) {
+                        final data = <Map<String, dynamic>>[];
+                        for (final entry in roleValues.entries) {
+                          final avg = avgOf(entry.value);
+                          data.add({
+                            'תפקיד': entry.key,
+                            'ממוצע': avg.toStringAsFixed(1),
+                            'מספר הערכות': entry.value.length,
+                          });
+                        }
+                        sectionsData['ממוצע לפי תפקיד'] = data;
+                      }
+
+                      if (selectedSections.contains('ממוצע לפי מדריך')) {
+                        final data = <Map<String, dynamic>>[];
+                        for (final entry in instrValues.entries) {
+                          final avg = avgOf(entry.value);
+                          data.add({
+                            'מדריך': entry.key,
+                            'ממוצע': avg.toStringAsFixed(1),
+                            'מספר הערכות': entry.value.length,
+                          });
+                        }
+                        sectionsData['ממוצע לפי מדריך'] = data;
+                      }
+
+                      if (selectedSections.contains('מגמה לאורך זמן')) {
+                        final Map<String, List<int>> byDate = {};
+                        for (final f in filtered) {
+                          final d =
+                              '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
+                          byDate.putIfAbsent(d, () => []);
+                          for (final v in f.scores.values) {
+                            if (v != 0) byDate[d]!.add(v);
+                          }
+                        }
+                        final data = <Map<String, dynamic>>[];
+                        final entries = byDate.entries.toList()
+                          ..sort((a, b) => a.key.compareTo(b.key));
+                        for (final entry in entries) {
+                          data.add({
+                            'תאריך': entry.key,
+                            'ממוצע': avgOf(entry.value).toStringAsFixed(1),
+                            'מספר הערכות': entry.value.length,
+                          });
+                        }
+                        sectionsData['מגמה לאורך זמן'] = data;
+                      }
+
+                      return sectionsData;
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -6637,20 +6776,28 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                             ),
                           ),
 
-                          // Folder filter (for all users)
+                          // Folder filter (restricted to משובים scope)
                           SizedBox(
                             width: 240,
                             child: Builder(
                               builder: (ctx) {
-                                final folders = <String>{'כל התיקיות'}
-                                  ..addAll(feedbackFolders);
-                                final items = folders.toSet().toList();
+                                // Restricted folder list for משובים section
+                                final folders = <String>[
+                                  'הכל',
+                                  'משובים – כללי',
+                                  'מחלקות ההגנה – חטיבה 474',
+                                ];
+                                final items = folders;
                                 final value = items.contains(selectedFolder)
                                     ? selectedFolder
                                     : null;
                                 return DropdownButtonFormField<String>(
-                                  initialValue: value,
+                                  initialValue: value ?? 'הכל',
                                   isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'תיקייה',
+                                    isDense: true,
+                                  ),
                                   items: items
                                       .map(
                                         (i) => DropdownMenuItem(
@@ -6660,59 +6807,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                       )
                                       .toList(),
                                   onChanged: (v) => setState(() {
-                                    selectedFolder = v ?? 'כל התיקיות';
-                                    // איפוס יישוב אם התיקייה השתנתה מ"מחלקות ההגנה – חטיבה 474"
-                                    if (selectedFolder !=
-                                        'מחלקות ההגנה – חטיבה 474') {
-                                      selectedSettlement = 'כל היישובים';
-                                    }
+                                    selectedFolder = v ?? 'הכל';
+                                    // Do NOT auto-reset settlement - user controls it via settlement filter
                                   }),
                                 );
                               },
                             ),
                           ),
-
-                          // Settlement filter (only when folder is "מחלקות ההגנה – חטיבה 474")
-                          if (selectedFolder == 'מחלקות ההגנה – חטיבה 474')
-                            SizedBox(
-                              width: 240,
-                              child: Builder(
-                                builder: (ctx) {
-                                  final settlements = <String>{'כל היישובים'}
-                                    ..addAll(golanSettlements);
-                                  final items = settlements.toSet().toList();
-                                  final value =
-                                      items.contains(selectedSettlement)
-                                      ? selectedSettlement
-                                      : null;
-                                  return DropdownButtonFormField<String>(
-                                    initialValue: value,
-                                    isExpanded: true,
-                                    decoration: const InputDecoration(
-                                      labelText: 'יישוב',
-                                      isDense: true,
-                                    ),
-                                    style: const TextStyle(
-                                      color: Colors.black87,
-                                      fontSize: 16,
-                                    ),
-                                    dropdownColor: Colors.white,
-                                    items: items
-                                        .map(
-                                          (i) => DropdownMenuItem(
-                                            value: i,
-                                            child: Text(i),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (v) => setState(
-                                      () => selectedSettlement =
-                                          v ?? 'כל היישובים',
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
 
                           // Date range
                           Row(
@@ -7012,6 +7113,8 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   String selectedInstructor = 'כל המדריכים';
   String selectedSettlement = 'כל היישובים';
   String selectedStation = 'כל המקצים';
+  String selectedFolder = 'הכל'; // Range folder filter
+  String selectedRangeType = 'הכל'; // Range type filter
   String personFilter = '';
   String searchText = '';
   DateTime? dateFrom;
@@ -7055,8 +7158,38 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
     return feedbackStorage.where((f) {
-      // Always filter for range feedbacks only
-      if (f.folder != 'מטווחי ירי') return false;
+      // Enforce range scope: only allow מטווחי ירי and מטווחים 474
+      const allowedFolders = ['מטווחי ירי', 'מטווחים 474'];
+      if (!allowedFolders.contains(f.folder)) return false;
+
+      // Apply specific folder filter if not 'הכל'
+      if (selectedFolder != 'הכל' && f.folder != selectedFolder) {
+        return false;
+      }
+
+      // Apply range type filter
+      if (selectedRangeType != 'הכל') {
+        final feedbackType = f.type;
+        final rangeSubType = f.rangeSubType;
+        final isLongRange =
+            feedbackType == 'range_long' ||
+            feedbackType == 'דווח רחוק' ||
+            rangeSubType == 'טווח רחוק';
+        final isShortRange =
+            !isLongRange &&
+            (feedbackType == 'range_short' ||
+                feedbackType == 'דווח קצר' ||
+                rangeSubType == 'טווח קצר' ||
+                f.folder == 'מטווחי ירי' ||
+                f.folder == 'מטווחים 474');
+
+        if (selectedRangeType == 'טווח קצר' && !isShortRange) {
+          return false;
+        }
+        if (selectedRangeType == 'טווח רחוק' && !isLongRange) {
+          return false;
+        }
+      }
 
       // instructor permission: non-admins (instructors) only see feedback they submitted
       if (!isAdmin) {
@@ -7203,8 +7336,138 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('סטטיסטיקת משובי מטווחים'),
+          title: const Text('סטטיסטיקה מטווחים'),
           leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: 'ייצוא',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => StatisticsExportDialog(
+                    tabName: 'סטטיסטיקה מטווחים',
+                    availableSections: const [
+                      'ממוצע לפי יישוב',
+                      'ממוצע לפי מקצה',
+                      'מגמה לאורך זמן',
+                    ],
+                    onExport: (selectedSections) async {
+                      final sectionsData =
+                          <String, List<Map<String, dynamic>>>{};
+
+                      if (selectedSections.contains('ממוצע לפי יישוב')) {
+                        final data = <Map<String, dynamic>>[];
+                        for (final entry in totalHitsPerSettlement.entries) {
+                          final totalHits = entry.value;
+                          final totalBullets =
+                              totalBulletsPerSettlement[entry.key] ?? 0;
+                          final percentage = totalBullets > 0
+                              ? ((totalHits / totalBullets) * 100)
+                                    .toStringAsFixed(1)
+                              : '0.0';
+                          data.add({
+                            'יישוב': entry.key,
+                            'פגיעות': totalHits,
+                            'כדורים': totalBullets,
+                            'אחוז': '$percentage%',
+                          });
+                        }
+                        sectionsData['ממוצע לפי יישוב'] = data;
+                      }
+
+                      if (selectedSections.contains('ממוצע לפי מקצה')) {
+                        final Map<String, int> totalHitsPerStation = {};
+                        final Map<String, int> totalBulletsPerStation = {};
+                        for (final f in filtered) {
+                          if (rangeData.containsKey(f.id)) {
+                            final data = rangeData[f.id];
+                            final stations =
+                                (data?['stations'] as List?)
+                                    ?.cast<Map<String, dynamic>>() ??
+                                [];
+                            final trainees =
+                                (data?['trainees'] as List?)
+                                    ?.cast<Map<String, dynamic>>() ??
+                                [];
+                            for (var i = 0; i < stations.length; i++) {
+                              final station = stations[i];
+                              final stationName =
+                                  station['name'] ?? 'מקצה ${i + 1}';
+                              final bulletsPerTrainee =
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+                              final totalBulletsForStation =
+                                  trainees.length * bulletsPerTrainee;
+                              totalBulletsPerStation[stationName] =
+                                  (totalBulletsPerStation[stationName] ?? 0) +
+                                  totalBulletsForStation;
+
+                              int stationHits = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null) {
+                                  stationHits +=
+                                      (hits['station_$i'] as num?)?.toInt() ??
+                                      0;
+                                }
+                              }
+                              totalHitsPerStation[stationName] =
+                                  (totalHitsPerStation[stationName] ?? 0) +
+                                  stationHits;
+                            }
+                          }
+                        }
+                        final data = <Map<String, dynamic>>[];
+                        for (final entry in totalHitsPerStation.entries) {
+                          final totalHits = entry.value;
+                          final totalBullets =
+                              totalBulletsPerStation[entry.key] ?? 0;
+                          final percentage = totalBullets > 0
+                              ? ((totalHits / totalBullets) * 100)
+                                    .toStringAsFixed(1)
+                              : '0.0';
+                          data.add({
+                            'מקצה': entry.key,
+                            'פגיעות': totalHits,
+                            'כדורים': totalBullets,
+                            'אחוז': '$percentage%',
+                          });
+                        }
+                        sectionsData['ממוצע לפי מקצה'] = data;
+                      }
+
+                      if (selectedSections.contains('מגמה לאורך זמן')) {
+                        final Map<String, List<int>> byDate = {};
+                        for (final f in filtered) {
+                          final d =
+                              '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
+                          byDate.putIfAbsent(d, () => []);
+                          for (final v in f.scores.values) {
+                            if (v != 0) byDate[d]!.add(v);
+                          }
+                        }
+                        final data = <Map<String, dynamic>>[];
+                        final entries = byDate.entries.toList()
+                          ..sort((a, b) => a.key.compareTo(b.key));
+                        for (final entry in entries) {
+                          data.add({
+                            'תאריך': entry.key,
+                            'ממוצע': avgOf(entry.value).toStringAsFixed(1),
+                            'מספר הערכות': entry.value.length,
+                          });
+                        }
+                        sectionsData['מגמה לאורך זמן'] = data;
+                      }
+
+                      return sectionsData;
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -7230,6 +7493,80 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
+                          // Folder filter (restricted to range folders)
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final folders = <String>[
+                                  'הכל',
+                                  'מטווחי ירי',
+                                  'מטווחים 474',
+                                ];
+                                final items = folders;
+                                final value = items.contains(selectedFolder)
+                                    ? selectedFolder
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value ?? 'הכל',
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'תיקייה',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(() {
+                                    selectedFolder = v ?? 'הכל';
+                                  }),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Range type filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final rangeTypes = <String>[
+                                  'הכל',
+                                  'טווח קצר',
+                                  'טווח רחוק',
+                                ];
+                                final items = rangeTypes;
+                                final value = items.contains(selectedRangeType)
+                                    ? selectedRangeType
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value ?? 'הכל',
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'סוג מטווח',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(() {
+                                    selectedRangeType = v ?? 'הכל';
+                                  }),
+                                );
+                              },
+                            ),
+                          ),
+
                           // Person filter (free text)
                           SizedBox(
                             width: 200,
@@ -7424,10 +7761,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
               ),
 
               const SizedBox(height: 12),
-              Text(
-                'סה"כ משובי מטווחים: $total',
-                style: const TextStyle(fontSize: 14),
-              ),
+              Text('סה"כ משובים: $total', style: const TextStyle(fontSize: 14)),
 
               const SizedBox(height: 12),
               const Text(
@@ -7699,6 +8033,816 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   }
 }
 
+class SurpriseDrillsStatisticsPage extends StatefulWidget {
+  const SurpriseDrillsStatisticsPage({super.key});
+
+  @override
+  State<SurpriseDrillsStatisticsPage> createState() =>
+      _SurpriseDrillsStatisticsPageState();
+}
+
+class _SurpriseDrillsStatisticsPageState
+    extends State<SurpriseDrillsStatisticsPage> {
+  String selectedInstructor = 'כל המדריכים';
+  String selectedSettlement = 'כל היישובים';
+  String selectedPrinciple = 'כל העקרונות';
+  String selectedFolder = 'הכל';
+  DateTime? dateFrom;
+  DateTime? dateTo;
+
+  // Surprise drills data cache
+  Map<String, Map<String, dynamic>> surpriseDrillsData = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSurpriseDrillsData();
+  }
+
+  Future<void> _loadSurpriseDrillsData() async {
+    try {
+      final filtered = getFiltered();
+      for (final f in filtered) {
+        if (f.id != null && f.id!.isNotEmpty) {
+          final doc = await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(f.id)
+              .get();
+          if (doc.exists) {
+            final data = doc.data();
+            if (data != null) {
+              surpriseDrillsData[f.id!] = data;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading surprise drills data: $e');
+    } finally {
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  List<FeedbackModel> getFiltered() {
+    final isAdmin = currentUser?.role == 'Admin';
+    return feedbackStorage.where((f) {
+      // Only surprise drills feedbacks
+      if (f.folder != 'משוב תרגילי הפתעה' && f.module != 'surprise_drill') {
+        return false;
+      }
+
+      // Exclude temporary drafts
+      if (f.isTemporary == true) return false;
+
+      // Instructor permission
+      if (!isAdmin) {
+        if (currentUser == null) return false;
+        if (currentUser?.role == 'Instructor' &&
+            f.instructorName != (currentUser?.name ?? '')) {
+          return false;
+        }
+      }
+
+      if (selectedInstructor != 'כל המדריכים' &&
+          f.instructorName != selectedInstructor) {
+        return false;
+      }
+      if (selectedSettlement != 'כל היישובים' &&
+          f.settlement != selectedSettlement) {
+        return false;
+      }
+      if (selectedFolder != 'הכל' && f.folder != selectedFolder) {
+        return false;
+      }
+      if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
+      if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
+
+      return true;
+    }).toList();
+  }
+
+  Future<void> pickFrom(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateFrom ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateFrom = r);
+  }
+
+  Future<void> pickTo(BuildContext ctx) async {
+    final now = DateTime.now();
+    final r = await showDatePicker(
+      context: ctx,
+      initialDate: dateTo ?? now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      locale: const Locale('he'),
+    );
+    if (r != null) setState(() => dateTo = r);
+  }
+
+  double avgOf(List<int> vals) {
+    if (vals.isEmpty) return 0.0;
+    final sum = vals.reduce((a, b) => a + b);
+    return sum / vals.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = getFiltered();
+    final total = filtered.length;
+    final isAdmin = currentUser?.role == 'Admin';
+
+    // Build principle aggregates across all settlements
+    final Map<String, List<int>> principleValuesGlobal = {};
+    final Map<String, int> principleCountsGlobal = {};
+
+    // Build settlement aggregates with principles per settlement
+    final Map<String, Map<String, List<int>>> settlementPrincipleValues = {};
+    final Map<String, Map<String, int>> settlementPrincipleCounts = {};
+
+    for (final f in filtered) {
+      if (!surpriseDrillsData.containsKey(f.id)) continue;
+      final data = surpriseDrillsData[f.id];
+      final stations =
+          (data?['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final trainees =
+          (data?['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      for (var i = 0; i < stations.length; i++) {
+        final station = stations[i];
+        final principleName = station['name'] ?? 'עיקרון ${i + 1}';
+
+        // Apply principle filter if selected
+        if (selectedPrinciple != 'כל העקרונות' &&
+            principleName != selectedPrinciple) {
+          continue;
+        }
+
+        for (final trainee in trainees) {
+          final hits = trainee['hits'] as Map<String, dynamic>?;
+          if (hits != null) {
+            final score = (hits['station_$i'] as num?)?.toInt() ?? 0;
+            if (score > 0) {
+              // Global principle stats
+              principleValuesGlobal.putIfAbsent(principleName, () => []);
+              principleValuesGlobal[principleName]!.add(score);
+              principleCountsGlobal[principleName] =
+                  (principleCountsGlobal[principleName] ?? 0) + 1;
+
+              // Per-settlement principle stats
+              final settlement = f.settlement;
+              if (settlement.isNotEmpty) {
+                settlementPrincipleValues.putIfAbsent(settlement, () => {});
+                settlementPrincipleCounts.putIfAbsent(settlement, () => {});
+
+                settlementPrincipleValues[settlement]!.putIfAbsent(
+                  principleName,
+                  () => [],
+                );
+                settlementPrincipleValues[settlement]![principleName]!.add(
+                  score,
+                );
+
+                settlementPrincipleCounts[settlement]![principleName] =
+                    (settlementPrincipleCounts[settlement]![principleName] ??
+                        0) +
+                    1;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Build lists for dropdowns
+    final instructors = <String>{'כל המדריכים'}
+      ..addAll(
+        feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
+      );
+
+    final settlements = <String>{'כל היישובים'}
+      ..addAll(
+        feedbackStorage.map((f) => f.settlement).where((s) => s.isNotEmpty),
+      );
+
+    // Build principle list from all surprise drills data
+    final Set<String> principleNames = {};
+    for (final data in surpriseDrillsData.values) {
+      final stations =
+          (data['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      for (var i = 0; i < stations.length; i++) {
+        final station = stations[i];
+        final name = station['name'] ?? 'עיקרון ${i + 1}';
+        principleNames.add(name);
+      }
+    }
+    final principles = ['כל העקרונות'] + principleNames.toList();
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('סטטיסטיקה תרגילי הפתעה'),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: 'ייצוא',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => StatisticsExportDialog(
+                    tabName: 'סטטיסטיקה תרגילי הפתעה',
+                    availableSections: const [
+                      'ממוצע לפי עיקרון (כללי)',
+                      'ממוצע לפי יישוב',
+                    ],
+                    onExport: (selectedSections) async {
+                      final sectionsData =
+                          <String, List<Map<String, dynamic>>>{};
+
+                      if (selectedSections.contains(
+                        'ממוצע לפי עיקרון (כללי)',
+                      )) {
+                        final data = <Map<String, dynamic>>[];
+                        for (final entry in principleValuesGlobal.entries) {
+                          final values = entry.value;
+                          final avg = avgOf(values);
+                          final count = principleCountsGlobal[entry.key] ?? 0;
+                          data.add({
+                            'עיקרון': entry.key,
+                            'ממוצע': avg.toStringAsFixed(1),
+                            'מספר הערכות': count,
+                          });
+                        }
+                        sectionsData['ממוצע לפי עיקרון (כללי)'] = data;
+                      }
+
+                      if (selectedSections.contains('ממוצע לפי יישוב')) {
+                        final data = <Map<String, dynamic>>[];
+                        for (final settlementEntry
+                            in settlementPrincipleValues.entries) {
+                          final settlement = settlementEntry.key;
+                          final principlesMap = settlementEntry.value;
+
+                          // Overall settlement average
+                          final List<int> allSettlementValues = [];
+                          for (final values in principlesMap.values) {
+                            allSettlementValues.addAll(values);
+                          }
+                          final settlementAvg = avgOf(allSettlementValues);
+
+                          // Add settlement row
+                          data.add({
+                            'יישוב': settlement,
+                            'עיקרון': 'ממוצע כללי',
+                            'ממוצע': settlementAvg.toStringAsFixed(1),
+                            'מספר הערכות': allSettlementValues.length,
+                          });
+
+                          // Add principle rows for this settlement
+                          for (final principleEntry in principlesMap.entries) {
+                            final principleName = principleEntry.key;
+                            final values = principleEntry.value;
+                            final avg = avgOf(values);
+                            final count =
+                                settlementPrincipleCounts[settlement]![principleName] ??
+                                0;
+                            data.add({
+                              'יישוב': settlement,
+                              'עיקרון': principleName,
+                              'ממוצע': avg.toStringAsFixed(1),
+                              'מספר הערכות': count,
+                            });
+                          }
+                        }
+                        sectionsData['ממוצע לפי יישוב'] = data;
+                      }
+
+                      return sectionsData;
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView(
+            children: [
+              // Filters
+              Card(
+                color: Colors.blueGrey.shade800,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'סינון',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          // Instructor filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = instructors.toSet().toList();
+                                final value = items.contains(selectedInstructor)
+                                    ? selectedInstructor
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'מדריך ממשב',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: isAdmin
+                                      ? (v) => setState(
+                                          () => selectedInstructor =
+                                              v ?? 'כל המדריכים',
+                                        )
+                                      : null,
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Settlement filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = settlements.toSet().toList();
+                                final value = items.contains(selectedSettlement)
+                                    ? selectedSettlement
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'יישוב',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () =>
+                                        selectedSettlement = v ?? 'כל היישובים',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Principle filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final items = principles;
+                                final value = items.contains(selectedPrinciple)
+                                    ? selectedPrinciple
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'עיקרון',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () =>
+                                        selectedPrinciple = v ?? 'כל העקרונות',
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Folder filter
+                          SizedBox(
+                            width: 240,
+                            child: Builder(
+                              builder: (ctx) {
+                                final folders = <String>[
+                                  'הכל',
+                                  'משוב תרגילי הפתעה',
+                                ];
+                                final items = folders;
+                                final value = items.contains(selectedFolder)
+                                    ? selectedFolder
+                                    : null;
+                                return DropdownButtonFormField<String>(
+                                  initialValue: value ?? 'הכל',
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'תיקייה',
+                                    isDense: true,
+                                  ),
+                                  items: items
+                                      .map(
+                                        (i) => DropdownMenuItem(
+                                          value: i,
+                                          child: Text(i),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(() {
+                                    selectedFolder = v ?? 'הכל';
+                                  }),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Date range
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () => pickFrom(context),
+                                child: Text(
+                                  dateFrom == null
+                                      ? 'מתאריך'
+                                      : '${dateFrom!.toLocal()}'.split(' ')[0],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () => pickTo(context),
+                                child: Text(
+                                  dateTo == null
+                                      ? 'עד תאריך'
+                                      : '${dateTo!.toLocal()}'.split(' ')[0],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+              Text('סה"כ משובים: $total', style: const TextStyle(fontSize: 14)),
+
+              const SizedBox(height: 12),
+              const Text(
+                'ממוצע לפי עיקרון (כללי)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...principleValuesGlobal.entries.map((e) {
+                final principleName = e.key;
+                final values = e.value;
+                final avg = avgOf(values);
+                final count = principleCountsGlobal[principleName] ?? 0;
+                final pct = (avg / 5.0).clamp(0.0, 1.0);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        principleName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: FractionallySizedBox(
+                                widthFactor: pct,
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.orangeAccent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${avg.toStringAsFixed(1)} ($count)',
+                            style: const TextStyle(
+                              color: Colors.orangeAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'ממוצע לפי יישוב',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...settlementPrincipleValues.entries.map((settlementEntry) {
+                final settlement = settlementEntry.key;
+                final principlesMap = settlementEntry.value;
+
+                // Calculate overall settlement average
+                final List<int> allSettlementValues = [];
+                for (final values in principlesMap.values) {
+                  allSettlementValues.addAll(values);
+                }
+                final settlementAvg = avgOf(allSettlementValues);
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 24.0),
+                  child: Card(
+                    color: Colors.blueGrey.shade700,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Settlement header with overall average
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  settlement,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orangeAccent,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                'ממוצע כללי: ${settlementAvg.toStringAsFixed(1)}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.greenAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // Principles within this settlement
+                          ...principlesMap.entries.map((principleEntry) {
+                            final principleName = principleEntry.key;
+                            final values = principleEntry.value;
+                            final avg = avgOf(values);
+                            final count =
+                                settlementPrincipleCounts[settlement]![principleName] ??
+                                0;
+                            final pct = (avg / 5.0).clamp(0.0, 1.0);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    principleName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Container(
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white24,
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
+                                          ),
+                                          child: FractionallySizedBox(
+                                            widthFactor: pct,
+                                            alignment: Alignment.centerRight,
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: Colors.lightBlueAccent,
+                                                borderRadius:
+                                                    BorderRadius.circular(5),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        '${avg.toStringAsFixed(1)} ($count)',
+                                        style: const TextStyle(
+                                          color: Colors.lightBlueAccent,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Reusable dialog for selecting statistics sections to export
+class StatisticsExportDialog extends StatefulWidget {
+  final String tabName;
+  final List<String> availableSections;
+  final Future<Map<String, List<Map<String, dynamic>>>> Function(
+    List<String> selectedSections,
+  )
+  onExport;
+
+  const StatisticsExportDialog({
+    super.key,
+    required this.tabName,
+    required this.availableSections,
+    required this.onExport,
+  });
+
+  @override
+  State<StatisticsExportDialog> createState() => _StatisticsExportDialogState();
+}
+
+class _StatisticsExportDialogState extends State<StatisticsExportDialog> {
+  late Map<String, bool> selectedSections;
+  bool isExporting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Default: all sections selected
+    selectedSections = {
+      for (final section in widget.availableSections) section: true,
+    };
+  }
+
+  Future<void> _performExport() async {
+    final selected = selectedSections.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אנא בחר לפחות מדור אחד לייצוא')),
+      );
+      return;
+    }
+
+    setState(() => isExporting = true);
+
+    try {
+      final sectionsData = await widget.onExport(selected);
+      await FeedbackExportService.exportStatisticsToGoogleSheets(
+        tabName: widget.tabName,
+        sections: sectionsData,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ יוצא בהצלחה!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isExporting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: Text('ייצוא ${widget.tabName}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('בחר מדורים לייצוא:'),
+            const SizedBox(height: 16),
+            ...widget.availableSections.map(
+              (section) => CheckboxListTile(
+                title: Text(section),
+                value: selectedSections[section] ?? false,
+                onChanged: isExporting
+                    ? null
+                    : (value) {
+                        setState(() {
+                          selectedSections[section] = value ?? false;
+                        });
+                      },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: isExporting ? null : () => Navigator.of(context).pop(),
+            child: const Text('ביטול'),
+          ),
+          ElevatedButton(
+            onPressed: isExporting ? null : _performExport,
+            child: isExporting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('ייצוא'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class MaterialsPage extends StatelessWidget {
   const MaterialsPage({super.key});
 
@@ -7825,7 +8969,7 @@ class DetailsPlaceholderPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: Text(title)),
+        appBar: AppBar(title: Text(title), leading: const StandardBackButton()),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -7860,49 +9004,202 @@ class MaagalPatuachPage extends StatelessWidget {
           title: const Text('מעגל פתוח'),
           leading: const StandardBackButton(),
         ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(18.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: const [
-                Text(
-                  'מעגל פתוח',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Main title
+              const Text(
+                'מעגל פתוח – המענה המבצעי',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orangeAccent,
                 ),
-                SizedBox(height: 32),
-                // Vertical flow with arrows
-                Text(
-                  'מגע',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              // Section: חתירה למגע וסריקות
+              const Text(
+                'חתירה למגע וסריקות',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'מעגל פתוח מתבסס על יוזמה, תנועה והתקדמות לעבר האיום, תוך ביצוע סריקות רציפות ושליטה במרחב.',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+
+              // Section: הצפת היישוב בכוחות
+              const Text(
+                'הצפת היישוב בכוחות',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'הזרמת כוחות למרחב האירוע במטרה ליצור נוכחות, לחץ מבצעי ויכולת תגובה מהירה למספר תרחישים במקביל.',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+
+              // Section: למה זה עובד?
+              const Text(
+                'למה זה עובד?',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'אפקטיביות מבצעית –',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'באופן זה הפיגוע "נחנק" כבר בשלב מוקדם,\nבאמצעות מהירות יחסית ו־היפוך קערה לטובת הכוח הפועל.',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+
+              // Section: שלושה שלבים במעגל פתוח
+              const Text(
+                'שלושה שלבים במעגל פתוח',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orangeAccent,
                 ),
-                SizedBox(height: 8),
-                Icon(Icons.arrow_downward, size: 32),
-                SizedBox(height: 8),
-                Text(
-                  'סריקות',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+
+              // Stage 1: מגע
+              Card(
+                color: Colors.blueGrey.shade700,
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        '1. מגע',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orangeAccent,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'יצירת מגע ראשוני עם האיום, עצירתו או קיבועו.',
+                        style: TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                    ],
+                  ),
                 ),
-                SizedBox(height: 8),
-                Icon(Icons.arrow_downward, size: 32),
-                SizedBox(height: 8),
-                Text(
-                  'זיכוי',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+
+              // Stage 2: סריקות
+              Card(
+                color: Colors.blueGrey.shade700,
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        '2. סריקות',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orangeAccent,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'סריקות יזומות במרחב – שלילת איומים נוספים, איתור מחבלים נוספים או אמלח.',
+                        style: TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                    ],
+                  ),
                 ),
-                SizedBox(height: 24),
-                Text(
-                  'נלחמים לפי עקרונות לחימה',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+
+              // Stage 3: זיכוי
+              Card(
+                color: Colors.blueGrey.shade700,
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        '3. זיכוי',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orangeAccent,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'ניקוי המרחב מאיומים, מעבר לשליטה וביטחון יחסי.',
+                        style: TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 32),
+
+              // Section: הערת מדריך
+              Card(
+                color: Colors.orangeAccent.withValues(alpha: 0.2),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.lightbulb_outline,
+                            color: Colors.orangeAccent,
+                            size: 24,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'הערת מדריך',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orangeAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'מעגל פתוח אינו "המתנה לאירוע", אלא פעולה אקטיבית שמטרתה לקצר זמן פגיעה ולהעביר יוזמה לכוח.',
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),
@@ -8053,70 +9350,218 @@ class MaagalPoruzPage extends StatelessWidget {
           title: const Text('מעגל פרוץ'),
           leading: const StandardBackButton(),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(16.0),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 8),
-              // Highlighted centered quote
+              // Highlighted header banner
               Card(
-                color: Colors.grey.shade100,
-                elevation: 2,
+                color: Colors.orangeAccent,
+                elevation: 6,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 18.0,
-                    horizontal: 14.0,
+                    vertical: 20.0,
+                    horizontal: 16.0,
                   ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '"מי שרואה אותי – הורג אותי.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'ומי שלא רואה אותי – מת ממני."',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                          ),
-                        ),
-                      ],
+                  child: Text(
+                    'מי שרואה אותי – הורג אותי | מי שלא רואה אותי – מת ממני',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      height: 1.4,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
-              // Exact list below the quote
+              const SizedBox(height: 32),
+
+              // Main title
               const Text(
-                '- עבודה על פי תו״ל חי״ר',
-                style: TextStyle(fontSize: 16),
+                'מעגל פרוץ – המענה המבצעי',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orangeAccent,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+
+              // Core principles
+              Card(
+                color: Colors.blueGrey.shade700,
+                elevation: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        '1. עומק ועתודה',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        '2. היערכות להגנה והתקפת נגד',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Section: עומק ועתודה
+              const Text(
+                'עומק – היערכות במספר קווי הגנה',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+
+              const Text(
+                'עתודה – לתגבור או להתקפת נגד',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                '- דילוגים ממקום למקום',
-                style: TextStyle(fontSize: 16),
+                'הקצאת כוח עתודה',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+
+              // Section: בידוד המרחב
+              const Text(
+                'בידוד המרחב –',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text('- מעבר בין מחסות', style: TextStyle(fontSize: 16)),
-              const SizedBox(height: 8),
-              const Text('- עבודה איטית', style: TextStyle(fontSize: 16)),
+              const Text(
+                'ייצוב קו הגנה בתוך היישוב אשר יבודד בין השטח שנכבש ובין שאר היישוב.',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+
+              // Section: התקפת נגד
+              const Text(
+                'התקפת נגד – על פי יחסי העוצמה',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                color: Colors.blueGrey.shade800,
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'השבת המצב לקדמותו –',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'שחרור שטח שנכבש, הדיפת האויב או השמדתו, הצלת התושבים באזור זה.',
+                        style: TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'פשיטות ומארבים –',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'פעולות מקומיות לפגיעה באויב או להצלת תושבים',
+                        style: TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Section: דגשים שונים ללחימה
+              const Text(
+                'מעגל פרוץ – דגשים שונים ללחימה',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orangeAccent,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+
+              // Numbered list of combat points
+              _buildCombatPoint('1', 'כוננות מחסנית מלאה'),
+              _buildCombatPoint('2', 'מיגון מלא'),
+              _buildCombatPoint('3', 'כלכלת חימוש'),
+              _buildCombatPoint('4', 'אבטחה – לחימה בחוליות וממחסות ועמדות'),
+              _buildCombatPoint('5', 'לחימה שקטה'),
+              _buildCombatPoint('6', 'דיווחים מדויקים'),
+              _buildCombatPoint('7', 'מודעות לאמל"ח מגוון ולמידת האיום'),
+              _buildCombatPoint('8', 'אש לחיפוי'),
+              _buildCombatPoint('9', 'תנועה בתחבולה'),
+              _buildCombatPoint('10', 'תרגולות לפי תמונת המצב'),
+
+              const SizedBox(height: 20),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  static Widget _buildCombatPoint(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.orangeAccent,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(text, style: TextStyle(fontSize: 16, height: 1.4)),
+            ),
+          ),
+        ],
       ),
     );
   }

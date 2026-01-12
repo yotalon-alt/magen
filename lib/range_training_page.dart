@@ -1463,10 +1463,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           debugPrint('   RAW row.values (from model): ${row.values}');
         }
 
-        // Build hits map from values, only include non-zero
+        // Build hits map from values, only include stages that were explicitly touched
+        // ✅ FINAL SAVE FILTERING: Exclude untouched stages from statistics
+        // 0 is VALID and included if explicitly entered (touched=true)
         final Map<String, int> hitsMap = {};
         row.values.forEach((stationIdx, value) {
-          if (value > 0) {
+          // ✅ Check if this stage should be included in final stats
+          final includeStage = row.shouldIncludeStageInFinalStats(stationIdx);
+
+          if (includeStage && value > 0) {
             // ✅ LONG RANGE PROTECTION: Store exact points (NO division)
             // Long Range: value is POINTS (0-100), NOT bullets
             // Short Range: value is HITS (0-bullets)
@@ -1487,10 +1492,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           }
         });
 
-        // Build time values map from timeValues (for בוחן רמה), only include non-zero
+        // Build time values map from timeValues (for בוחן רמה), only include touched stages
+        // ✅ FINAL SAVE FILTERING: Exclude untouched stages from statistics
         final Map<String, int> timeValuesMap = {};
         row.timeValues.forEach((stationIdx, value) {
-          if (value > 0) {
+          // ✅ Check if this stage should be included in final stats
+          final includeStage = row.shouldIncludeStageInFinalStats(stationIdx);
+
+          if (includeStage && value > 0) {
             timeValuesMap['station_${stationIdx}_time'] = value;
           }
         });
@@ -3459,72 +3468,89 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
                           // Max score input (direct entry, no multiplication)
                           const SizedBox(height: 12),
-                          TextField(
-                            controller:
-                                TextEditingController(
-                                    text: stage.maxPoints > 0
-                                        ? stage.maxPoints.toString()
-                                        : '',
-                                  )
-                                  ..selection = TextSelection.collapsed(
-                                    offset:
-                                        (stage.maxPoints > 0
-                                                ? stage.maxPoints.toString()
-                                                : '')
-                                            .length,
+                          // Side-by-side layout for max score and bullets (RTL: right to left)
+                          Row(
+                            children: [
+                              // Right side (50%): Max Score
+                              Expanded(
+                                flex: 1,
+                                child: TextField(
+                                  controller:
+                                      TextEditingController(
+                                          text: stage.maxPoints > 0
+                                              ? stage.maxPoints.toString()
+                                              : '',
+                                        )
+                                        ..selection = TextSelection.collapsed(
+                                          offset:
+                                              (stage.maxPoints > 0
+                                                      ? stage.maxPoints
+                                                            .toString()
+                                                      : '')
+                                                  .length,
+                                        ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'ציון מקסימלי',
+                                    border: OutlineInputBorder(),
+                                    hintText: 'ציון מקס',
+                                    helperText: 'ציון מקסימלי במקצה',
                                   ),
-                            decoration: const InputDecoration(
-                              labelText: 'ציון מקסימלי',
-                              border: OutlineInputBorder(),
-                              hintText: 'הזן ציון מקסימלי (לדוגמה: 100 או 50)',
-                              helperText: 'הציון המקסימלי שניתן להשיג במקצה זה',
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                stage.maxPoints = int.tryParse(value) ?? 0;
-                              });
-                              _scheduleAutoSave();
-                            },
-                          ),
-
-                          // Bullet tracking field (for display only)
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller:
-                                TextEditingController(
-                                    text: stage.bulletsCount > 0
-                                        ? stage.bulletsCount.toString()
-                                        : '',
-                                  )
-                                  ..selection = TextSelection.collapsed(
-                                    offset:
-                                        (stage.bulletsCount > 0
-                                                ? stage.bulletsCount.toString()
-                                                : '')
-                                            .length,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      stage.maxPoints =
+                                          int.tryParse(value) ?? 0;
+                                    });
+                                    _scheduleAutoSave();
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Left side (50%): Bullet tracking
+                              Expanded(
+                                flex: 1,
+                                child: TextField(
+                                  controller:
+                                      TextEditingController(
+                                          text: stage.bulletsCount > 0
+                                              ? stage.bulletsCount.toString()
+                                              : '',
+                                        )
+                                        ..selection = TextSelection.collapsed(
+                                          offset:
+                                              (stage.bulletsCount > 0
+                                                      ? stage.bulletsCount
+                                                            .toString()
+                                                      : '')
+                                                  .length,
+                                        ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'כדורים (מעקב)',
+                                    border: OutlineInputBorder(),
+                                    hintText: 'מספר כדורים',
+                                    helperText: 'למעקב בלבד',
+                                    suffixIcon: Icon(
+                                      Icons.info_outline,
+                                      size: 20,
+                                    ),
                                   ),
-                            decoration: const InputDecoration(
-                              labelText: 'מספר כדורים (למעקב בלבד)',
-                              border: OutlineInputBorder(),
-                              hintText: 'הזן מספר כדורים',
-                              helperText:
-                                  'שדה זה למעקב בלבד, לא משפיע על הציון',
-                              suffixIcon: Icon(Icons.info_outline, size: 20),
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      stage.bulletsCount =
+                                          int.tryParse(value) ?? 0;
+                                    });
+                                    _scheduleAutoSave();
+                                  },
+                                ),
+                              ),
                             ],
-                            onChanged: (value) {
-                              setState(() {
-                                stage.bulletsCount = int.tryParse(value) ?? 0;
-                              });
-                              _scheduleAutoSave();
-                            },
                           ),
                         ],
                       ),
@@ -5792,20 +5818,32 @@ class TraineeRowModel {
   final Map<int, int> values; // stationIndex -> value (hits or score)
   final Map<int, int>
   timeValues; // stationIndex -> time in seconds (for בוחן רמה only)
+  // Track which fields have been explicitly touched/entered (null/untouched vs 0/entered)
+  final Map<int, bool>
+  valuesTouched; // stationIndex -> true if explicitly entered
+  final Map<int, bool>
+  timeValuesTouched; // stationIndex -> true if explicitly entered
 
   TraineeRowModel({
     required this.index,
     required this.name,
     Map<int, int>? values,
     Map<int, int>? timeValues,
+    Map<int, bool>? valuesTouched,
+    Map<int, bool>? timeValuesTouched,
   }) : values = values ?? {},
-       timeValues = timeValues ?? {};
+       timeValues = timeValues ?? {},
+       valuesTouched = valuesTouched ?? {},
+       timeValuesTouched = timeValuesTouched ?? {};
 
   // Get value for a specific station/principle
   int getValue(int stationIndex) => values[stationIndex] ?? 0;
 
   // Set value for a specific station/principle
   void setValue(int stationIndex, int value) {
+    // Mark as touched when user explicitly changes the field
+    valuesTouched[stationIndex] = true;
+
     if (value == 0) {
       values.remove(stationIndex);
     } else {
@@ -5813,7 +5851,7 @@ class TraineeRowModel {
     }
     // 🐛 DEBUG: Log what was stored (no filtering - always log for verification)
     debugPrint(
-      '💾 setValue: stationIndex=$stationIndex, value=$value, stored=${values[stationIndex]}',
+      '💾 setValue: stationIndex=$stationIndex, value=$value, touched=true, stored=${values[stationIndex]}',
     );
   }
 
@@ -5822,6 +5860,9 @@ class TraineeRowModel {
 
   // Set time value for a specific station (for בוחן רמה)
   void setTimeValue(int stationIndex, int value) {
+    // Mark as touched when user explicitly changes the field
+    timeValuesTouched[stationIndex] = true;
+
     if (value == 0) {
       timeValues.remove(stationIndex);
     } else {
@@ -5834,6 +5875,17 @@ class TraineeRowModel {
       name.trim().isNotEmpty ||
       values.values.any((v) => v != 0) ||
       timeValues.values.any((v) => v != 0);
+
+  // Check if a specific stage should be included in FINAL statistics
+  // (must have at least one field touched AND not null)
+  // 0 is VALID if explicitly entered (touched=true)
+  bool shouldIncludeStageInFinalStats(int stationIndex) {
+    final valueTouched = valuesTouched[stationIndex] ?? false;
+    final timeTouched = timeValuesTouched[stationIndex] ?? false;
+
+    // Include if ANY field was touched (even if value is 0)
+    return valueTouched || timeTouched;
+  }
 
   // Serialize to Firestore format
   Map<String, dynamic> toFirestore() {

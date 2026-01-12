@@ -1219,6 +1219,14 @@ class FeedbackExportService {
         throw Exception('אין נתוני מקצים או חניכים לייצוא');
       }
 
+      // ✅ Detect if this is long range feedback
+      final feedbackType = feedbackData['feedbackType']?.toString();
+      final rangeSubType = feedbackData['rangeSubType']?.toString();
+      final isLongRange =
+          feedbackType == 'range_long' ||
+          feedbackType == 'דווח רחוק' ||
+          rangeSubType == 'טווח רחוק';
+
       final excel = Excel.createExcel();
       final sheet = excel['השוואת מטווחים'];
       sheet.isRTL = true; // Global Hebrew fix: RTL mode
@@ -1468,6 +1476,63 @@ class FeedbackExportService {
       );
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+      // ✅ LONG RANGE ONLY: Add "סה״כ כדורים שנורו" row below summary
+      if (isLongRange) {
+        final bulletsRowIndex = summaryRowIndex + 1;
+
+        // Calculate total bullets fired
+        int totalBulletsFired = 0;
+        for (final station in stations) {
+          final bulletsTracking =
+              (station['bulletsCount'] as num?)?.toInt() ?? 0;
+          totalBulletsFired += bulletsTracking * trainees.length;
+        }
+
+        // First column: "סה״כ כדורים שנורו"
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: bulletsRowIndex),
+        );
+        cell.value = TextCellValue('סה״כ כדורים שנורו');
+        cell.cellStyle = CellStyle(
+          horizontalAlign: HorizontalAlign.Right,
+          bold: true,
+        );
+
+        // Leave columns B through stations.length empty
+        for (var colIdx = 1; colIdx < totalHitsColumnIndex; colIdx++) {
+          cell = sheet.cell(
+            CellIndex.indexByColumnRow(
+              columnIndex: colIdx,
+              rowIndex: bulletsRowIndex,
+            ),
+          );
+          cell.value = TextCellValue('');
+        }
+
+        // סה״כ פגיעות חניך column: total bullets
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: totalHitsColumnIndex,
+            rowIndex: bulletsRowIndex,
+          ),
+        );
+        cell.value = IntCellValue(totalBulletsFired);
+        cell.cellStyle = CellStyle(
+          horizontalAlign: HorizontalAlign.Right,
+          bold: true,
+        );
+
+        // ממוצע חניך column: leave blank
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: avgColumnIndex,
+            rowIndex: bulletsRowIndex,
+          ),
+        );
+        cell.value = TextCellValue('');
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+      }
 
       // Encode and export
       final fileBytes = excel.encode();
@@ -2994,6 +3059,101 @@ class FeedbackExportService {
       debugPrint('🔵🔵🔵 474 RANGES EXPORT COMPLETE 🔵🔵🔵\n');
     } catch (e, stackTrace) {
       debugPrint('❌ 474 Ranges export error: $e');
+      debugPrint('   Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// ייצוא סטטיסטיקות לקובץ XLSX/Google Sheets
+  /// Generic export for statistics data with multiple sections
+  static Future<void> exportStatisticsToGoogleSheets({
+    required String tabName,
+    required Map<String, List<Map<String, dynamic>>> sections,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fileName =
+          '$tabName – ${DateFormat('yyyy-MM-dd HH:mm').format(now)}.xlsx';
+
+      debugPrint('📊 Exporting statistics: $fileName');
+      debugPrint('   Sections: ${sections.keys.join(', ')}');
+
+      final excel = Excel.createExcel();
+      excel.delete('Sheet1'); // Remove default sheet
+
+      // Create a sheet for each section
+      for (final entry in sections.entries) {
+        final sectionName = entry.key;
+        final sectionData = entry.value;
+
+        if (sectionData.isEmpty) continue;
+
+        final sheet = excel[sectionName];
+        sheet.isRTL = true;
+
+        // Extract headers from first row
+        final headers = sectionData.first.keys.toList();
+        sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
+
+        // Add data rows
+        for (final row in sectionData) {
+          final cells = <CellValue>[];
+          for (final header in headers) {
+            final value = row[header];
+            if (value == null) {
+              cells.add(TextCellValue(''));
+            } else if (value is int) {
+              cells.add(IntCellValue(value));
+            } else if (value is double) {
+              cells.add(DoubleCellValue(value));
+            } else {
+              cells.add(TextCellValue(value.toString()));
+            }
+          }
+          sheet.appendRow(cells);
+        }
+      }
+
+      // Export file
+      final fileBytes = excel.encode();
+      if (fileBytes == null) {
+        throw Exception('שגיאה ביצירת קובץ XLSX');
+      }
+
+      if (kIsWeb) {
+        // Web: Download to browser
+        final blob = html.Blob([
+          fileBytes,
+        ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        // Mobile: Save to Downloads
+        Directory? directory;
+        if (Platform.isAndroid) {
+          directory = await getDownloadsDirectory();
+        } else if (Platform.isIOS) {
+          directory = await getApplicationDocumentsDirectory();
+        } else {
+          throw Exception('פלטפורמה לא נתמכת');
+        }
+
+        if (directory == null) {
+          throw Exception('לא ניתן לקבל תיקיית שמירה');
+        }
+
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        debugPrint('✅ Statistics export completed: $filePath');
+      }
+
+      debugPrint('📊 Statistics export complete: $fileName');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Statistics export error: $e');
       debugPrint('   Stack trace: $stackTrace');
       rethrow;
     }
