@@ -4899,6 +4899,26 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
                         );
 
+                        // ✅ DEBUG: Log fetched document path for טווח רחוק bug verification
+                        final debugFeedbackType = feedback.type;
+                        final debugRangeSubType = feedback.rangeSubType;
+                        final debugIsLongRange =
+                            debugFeedbackType == 'range_long' ||
+                            debugFeedbackType == 'דווח רחוק' ||
+                            debugRangeSubType == 'טווח רחוק';
+                        if (debugIsLongRange) {
+                          debugPrint(
+                            '🔍 טווח רחוק FETCHED: collection=feedbacks, docId=${feedback.id}',
+                          );
+                          debugPrint('   Path: feedbacks/${feedback.id}');
+                          debugPrint(
+                            '   Document exists: ${snapshot.data?.exists}',
+                          );
+                          debugPrint(
+                            '   feedbackType: $debugFeedbackType, rangeSubType: $debugRangeSubType',
+                          );
+                        }
+
                         if (!snapshot.hasData || !snapshot.data!.exists) {
                           debugPrint('   ❌ No snapshot data or doc not exists');
                           return const SizedBox.shrink();

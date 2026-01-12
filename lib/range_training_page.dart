@@ -1098,6 +1098,42 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return totalMaxPoints;
   }
 
+  /// Get total max points for Long Range edit table (UI-only)
+  /// Formula: SUM(stage.maxPoints) - NOT multiplied by trainees
+  /// Example: 3 stages (100,100,150) → 100 + 100 + 150 = 350
+  /// This is for edit table display only, NOT for final summary calculations
+  int _getTotalMaxPointsLongRangeEditTable() {
+    if (_rangeType != 'ארוכים') return 0;
+    if (longRangeStagesList.isEmpty) return 0;
+
+    // Sum all stage maxPoints (no trainee multiplication)
+    int sumOfStageMaxPoints = 0;
+    for (var stage in longRangeStagesList) {
+      sumOfStageMaxPoints += stage.maxPoints;
+    }
+
+    return sumOfStageMaxPoints;
+  }
+
+  /// Edit-table-only: Calculate percent for a stage row (Long Range)
+  /// percent = (rowEarnedPoints / stage.maxPoints) * 100
+  /// rowEarnedPoints = sum of all trainee points for this stage
+  double calcEditStagePercent(int stageIdx) {
+    if (_rangeType != 'ארוכים' ||
+        stageIdx < 0 ||
+        stageIdx >= longRangeStagesList.length) {
+      return 0.0;
+    }
+    final maxPoints = longRangeStagesList[stageIdx].maxPoints;
+    if (maxPoints == 0) return 0.0;
+    int earned = 0;
+    for (final row in traineeRows) {
+      final v = row.values[stageIdx] ?? 0;
+      if (v > 0) earned += v;
+    }
+    return (earned / maxPoints) * 100.0;
+  }
+
   /// REMOVED: _getTraineeTotalBulletsLongRange
   /// Long range uses POINTS ONLY - bullets are for tracking/display only, not calculations
 
@@ -1504,11 +1540,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           }
         });
 
+        // ✅ FIX: Use correct function based on range type for טווח רחוק bug fix
+        // For long range (ארוכים), use _getTraineeTotalPointsLongRange() which correctly sums points
+        // For short range (קצרים), use _getTraineeTotalHits() which sums hits
+        final int totalValue = _rangeType == 'ארוכים'
+            ? _getTraineeTotalPointsLongRange(i)
+            : _getTraineeTotalHits(i);
+
         traineesData.add({
           'name': row.name.trim(),
           'hits': hitsMap,
           'timeValues': timeValuesMap,
-          'totalHits': _getTraineeTotalHits(i),
+          'totalHits': totalValue, // Now contains correct points for long range
           'number': i + 1,
         });
       }
@@ -2032,6 +2075,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           docRef = finalDocRef; // Store for readback
 
           debugPrint('WRITE: ✅ Final document created=${finalDocRef.path}');
+
+          // ✅ DEBUG: Log saved document path for טווח רחוק bug verification
+          if (_rangeType == 'ארוכים') {
+            debugPrint(
+              '🔍 טווח רחוק SAVED: collection=feedbacks, docId=$draftId',
+            );
+            debugPrint('   Path: feedbacks/$draftId');
+            debugPrint('   TraineesCount: ${traineesData.length}');
+            debugPrint('   StationsCount: ${stationsData.length}');
+            for (int i = 0; i < traineesData.length && i < 3; i++) {
+              final trainee = traineesData[i];
+              debugPrint(
+                '   Trainee[$i]: ${trainee['name']} -> totalHits=${trainee['totalHits']}',
+              );
+            }
+          }
+
           debugPrint('========== FIRESTORE WRITE END ==========\n');
 
           // ✅ SUCCESS SNACKBAR
@@ -4956,7 +5016,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                               child: Align(
                                                 alignment: Alignment.center,
                                                 child: Text(
-                                                  '${_getTraineeTotalPointsLongRange(traineeIdx)}/${_getTotalMaxPointsLongRange()}',
+                                                  '${_getTraineeTotalPointsLongRange(traineeIdx)}/${_getTotalMaxPointsLongRangeEditTable()}',
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.blue,
@@ -5704,7 +5764,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     SizedBox(
                                       width: 100,
                                       child: Text(
-                                        '${_getTraineeTotalPointsLongRange(traineeIndex)}/${_getTotalMaxPointsLongRange()}',
+                                        '${_getTraineeTotalPointsLongRange(traineeIndex)}/${_getTotalMaxPointsLongRangeEditTable()}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: Colors.blue,
