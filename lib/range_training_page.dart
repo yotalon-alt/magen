@@ -3944,6 +3944,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       child: ClipRect(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          physics:
+              const NeverScrollableScrollPhysics(), // ✅ FIX: Disable outer scroll to prevent conflict
           // ✅ V2 FIX 6: Removed outer ConstrainedBox - conflicts with inner SizedBox width
           child: SizedBox(
             width: totalRequiredWidth,
