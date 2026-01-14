@@ -54,6 +54,17 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
       //   2. module ASC + isTemporary ASC + instructorId ASC + createdAt DESC (for instructors)
       // =====================================================
 
+      // 🔍 DIAGNOSTIC: TEMP_LIST_QUERY - Log exact query filters
+      debugPrint('\n========== TEMP_LIST_QUERY DIAGNOSTIC ==========');
+      debugPrint('TEMP_LIST_QUERY: collection=feedbacks');
+      debugPrint('TEMP_LIST_QUERY: where module == shooting_ranges');
+      debugPrint('TEMP_LIST_QUERY: where isTemporary == true');
+      if (!isAdmin) {
+        debugPrint('TEMP_LIST_QUERY: where instructorId == $uid');
+      }
+      debugPrint('TEMP_LIST_QUERY: orderBy createdAt DESC');
+      debugPrint('=================================================\n');
+
       Query query = FirebaseFirestore.instance
           .collection('feedbacks')
           .where('module', isEqualTo: 'shooting_ranges')

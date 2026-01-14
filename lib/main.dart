@@ -3705,6 +3705,16 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         '================================================================\n',
       );
     } else if (_selectedFolder == 'מטווחי ירי') {
+      // 🔍 DIAGNOSTIC: NORMAL_LIST_FILTER - Log filter logic
+      debugPrint('\n========== NORMAL_LIST_FILTER DIAGNOSTIC ==========');
+      debugPrint('NORMAL_LIST_FILTER: folder=מטווחי ירי');
+      debugPrint('NORMAL_LIST_FILTER: Filter logic:');
+      debugPrint('  1. Exclude where isTemporary == true');
+      debugPrint('  2. Include where folderKey == shooting_ranges');
+      debugPrint('  3. OR where module == shooting_ranges');
+      debugPrint('  4. OR where folder == מטווחי ירי');
+      debugPrint('====================================================\n');
+
       // SHOOTING RANGES: Prefer canonical folderKey, fallback to legacy fields
       filteredFeedbacks = feedbackStorage.where((f) {
         if (f.isTemporary == true) return false;
@@ -3740,14 +3750,17 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         '================================================================\n',
       );
     } else if (_selectedFolder == '474 Ranges') {
-      // 474 RANGES: Use canonical folderKey when available, otherwise try legacy fields
+      // ✅ FIX: 474 RANGES MUST EXCLUDE temporary docs
+      // Query logic: module==shooting_ranges AND folderKey==ranges_474 AND isTemporary==false
       filteredFeedbacks = feedbackStorage.where((f) {
+        // ❌ CRITICAL: Exclude ALL temporary/draft feedbacks
         if (f.isTemporary == true) return false;
 
+        // ✅ Prefer canonical folderKey (most reliable)
         if (f.folderKey.isNotEmpty) return f.folderKey == 'ranges_474';
 
-        if (f.module.isNotEmpty) {
-          // module==shooting_ranges may include ranges, but ensure folder label matches legacy 474
+        // ✅ Fallback: module + folder label match (legacy compatibility)
+        if (f.module.isNotEmpty && f.module == 'shooting_ranges') {
           final lowFolder = f.folder.toLowerCase();
           if (lowFolder.contains('474') ||
               lowFolder.contains('474 ranges') ||
@@ -3756,7 +3769,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           }
         }
 
-        // Legacy fallback: folder label match
+        // ✅ Legacy fallback: folder label match only (very old docs)
         return f.folder == _selectedFolder || f.folder == 'מטווחים 474';
       }).toList();
       debugPrint('\n========== 474 RANGES FILTER ==========');
