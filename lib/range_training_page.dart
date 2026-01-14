@@ -280,10 +280,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       longRangeStagesList = [];
     }
 
-    // track editing id and load existing temporary if provided
-    _editingFeedbackId = widget.feedbackId;
-    if (_editingFeedbackId != null) {
+    // ✅ FIX: FORCE RESET _editingFeedbackId to prevent ID carryover between sessions
+    // CRITICAL: Always start clean, then load existing feedback only if explicitly provided
+    _editingFeedbackId = null; // ✅ FORCE RESET - always start clean
+
+    // Only set editing ID if we're explicitly editing an existing feedback
+    if (widget.feedbackId != null && widget.feedbackId!.isNotEmpty) {
+      _editingFeedbackId = widget.feedbackId;
+      debugPrint('INIT: Loading existing temp feedback: $_editingFeedbackId');
       _loadExistingTemporaryFeedback(_editingFeedbackId!);
+    } else {
+      debugPrint('INIT: Starting new feedback (clean slate)');
     }
     // ✅ Initialize autosave timer (will be scheduled on data changes)
     // ✅ Initialize persistent scroll controllers for table sync
@@ -2314,10 +2321,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'DRAFT_SAVE: Using existing draftId=$draftId (editing mode)',
         );
       } else {
-        // New draft - create deterministic ID based on current user
-        draftId = '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}';
+        // New draft - create UNIQUE ID with timestamp to prevent overwrites
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        draftId =
+            '${uid}_${moduleType}_${_rangeType.replaceAll(' ', '_')}_$timestamp';
         _editingFeedbackId = draftId;
-        debugPrint('DRAFT_SAVE: Created new draftId=$draftId (new mode)');
+        debugPrint(
+          'DRAFT_SAVE: Created new unique draftId=$draftId (new mode)',
+        );
       }
 
       debugPrint('DRAFT_SAVE: uid=$uid');
@@ -3929,519 +3940,463 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       );
     }
 
-    const double stageCellWidth = 95.0;
-    const double nameColWidth = 150.0;
-    final double summaryColsWidth = 95.0 * 3; // 3 summary columns
-    final double minStagesWidth =
-        displayStations.length * stageCellWidth + summaryColsWidth;
-    final double totalRequiredWidth = nameColWidth + minStagesWidth;
+    // ✅ NEW: Use same architecture as short range for stability
+    // Calculate total width for stations + summary columns
+    final double totalStationsWidth =
+        (displayStations.length * stationColumnWidth) +
+        285; // 3 summary columns × 95
 
-    debugPrint('   totalRequiredWidth=$totalRequiredWidth');
-    debugPrint('   ✅ About to return SizedBox with height=320');
+    debugPrint('   totalStationsWidth=$totalStationsWidth');
+    debugPrint('   ✅ Building with short-range-style architecture');
 
+    // ✅ STABLE ARCHITECTURE: Copy short range structure exactly
     return SizedBox(
       height: 320,
-      child: ClipRect(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics:
-              const NeverScrollableScrollPhysics(), // ✅ FIX: Disable outer scroll to prevent conflict
-          // ✅ V2 FIX 6: Removed outer ConstrainedBox - conflicts with inner SizedBox width
-          child: SizedBox(
-            width: totalRequiredWidth,
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade400, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Row(
-                children: [
-                  // LEFT: Fixed name column (header + cells)
-                  SizedBox(
-                    width: nameColWidth,
-                    child: Column(
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade400, width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            // A) TOP STICKY HEADER ROW (does not scroll vertically)
+            Row(
+              children: [
+                // Fixed "שם חניך" header
+                Container(
+                  width: nameColumnWidth,
+                  height: 56,
+                  padding: const EdgeInsets.all(8.0),
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.shade50,
+                    border: Border(
+                      right: BorderSide(color: Colors.grey.shade300),
+                      bottom: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'שם חניך',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+                // Horizontally scrollable station headers (synced with body)
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _headerHorizontal,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                       children: [
-                        // Name column header
-                        Container(
-                          height: 56,
-                          padding: const EdgeInsets.all(8.0),
-                          decoration: BoxDecoration(
-                            color: Colors.blueGrey.shade50,
-                            border: Border(
-                              right: BorderSide(color: Colors.grey.shade300),
-                              bottom: BorderSide(color: Colors.grey.shade300),
-                            ),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'שם חניך',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
+                        ...displayStations.asMap().entries.map((entry) {
+                          final stationIndex = entry.key;
+                          final station = entry.value;
+                          return SizedBox(
+                            width: 95,
+                            child: Container(
+                              height: 56,
+                              padding: const EdgeInsets.all(4.0),
+                              decoration: BoxDecoration(
+                                color: station.isLevelTester
+                                    ? Colors.orange.shade50
+                                    : Colors.blueGrey.shade50,
+                                border: Border(
+                                  left: BorderSide(color: Colors.grey.shade300),
+                                  bottom: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                ),
                               ),
-                              textAlign: TextAlign.center,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    station.name.isEmpty
+                                        ? 'שלב ${stationIndex + 1}'
+                                        : station.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      color: station.isLevelTester
+                                          ? Colors.orange.shade900
+                                          : Colors.black87,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if ((station.maxPoints ?? 0) > 0) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'מקס: ${_rangeType == 'ארוכים' && stationIndex < longRangeStagesList.length ? longRangeStagesList[stationIndex].maxPoints : station.bulletsCount}',
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        color: station.isLevelTester
+                                            ? Colors.orange.shade700
+                                            : Colors.black54,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_rangeType == 'ארוכים' && stationIndex < longRangeStagesList.length ? longRangeStagesList[stationIndex].maxPoints : station.bulletsCount}',
+                                    style: const TextStyle(
+                                      fontSize: 8,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        // Summary headers
+                        SizedBox(
+                          width: 95,
+                          child: Container(
+                            height: 56,
+                            padding: const EdgeInsets.all(4.0),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              border: Border(
+                                left: BorderSide(color: Colors.grey.shade300),
+                                bottom: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'סהכ נקודות',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                  color: Colors.blue,
+                                ),
+                                textAlign: TextAlign.center,
+                                softWrap: false,
+                              ),
                             ),
                           ),
                         ),
-                        // Name column cells
-                        Expanded(
-                          child: SizedBox(
-                            width: nameColWidth,
-                            child: ListView.builder(
-                              // ✅ SYNC FIX: Use class-level _namesVertical controller for synchronized scrolling
-                              controller: _namesVertical,
-                              physics: const ClampingScrollPhysics(),
-                              itemCount: traineeRows.length,
-                              itemExtent: rowHeight,
-                              itemBuilder: (context, idx) {
-                                final row = traineeRows[idx];
-                                final controllerKey = 'trainee_$idx';
-                                final focusKey = 'trainee_$idx';
-                                return SizedBox(
-                                  height: rowHeight,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4.0,
-                                      vertical: 2.0,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      border: Border(
-                                        bottom: BorderSide(
-                                          color: Colors.grey.shade200,
-                                        ),
-                                      ),
-                                    ),
-                                    child: TextField(
-                                      controller: _getController(
-                                        controllerKey,
-                                        row.name,
-                                      ),
-                                      focusNode: _getFocusNode(focusKey),
-                                      decoration: const InputDecoration(
-                                        hintText: 'שם',
-                                        isDense: true,
-                                        border: OutlineInputBorder(),
-                                        contentPadding: EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 8,
-                                        ),
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 12),
-                                      maxLines: 1,
-                                      onChanged: (v) {
-                                        row.name = v;
-                                        _scheduleAutoSave();
-                                      },
-                                      onSubmitted: (v) {
-                                        row.name = v;
-                                        _saveImmediately();
-                                      },
-                                    ),
-                                  ),
-                                );
-                              },
+                        SizedBox(
+                          width: 95,
+                          child: Container(
+                            height: 56,
+                            padding: const EdgeInsets.all(4.0),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              border: Border(
+                                left: BorderSide(color: Colors.grey.shade300),
+                                bottom: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'ממוצע',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                  color: Colors.green,
+                                ),
+                                textAlign: TextAlign.center,
+                                softWrap: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 95,
+                          child: Container(
+                            height: 56,
+                            padding: const EdgeInsets.all(4.0),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              border: Border(
+                                bottom: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'סהכ כדורים',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                  color: Colors.orange,
+                                ),
+                                textAlign: TextAlign.center,
+                                softWrap: false,
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  // RIGHT: Scrollable stages area (header + score rows together)
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      // ✅ V2 FIX: Removed ConstrainedBox - conflicts with parent SizedBox width
-                      child: Column(
-                        children: [
-                          // Stages header row
-                          SizedBox(
-                            height: 56,
-                            child: Row(
-                              children: [
-                                ...displayStations.asMap().entries.map((entry) {
-                                  final stationIndex = entry.key;
-                                  final station = entry.value;
-                                  return SizedBox(
-                                    width: stageCellWidth,
-                                    child: Container(
-                                      height: 56,
-                                      padding: const EdgeInsets.all(4.0),
-                                      decoration: BoxDecoration(
-                                        color: station.isLevelTester
-                                            ? Colors.orange.shade50
-                                            : Colors.blueGrey.shade50,
-                                        border: Border(
-                                          left: BorderSide(
-                                            color: Colors.grey.shade300,
-                                          ),
-                                          bottom: BorderSide(
-                                            color: Colors.grey.shade300,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            station.name.isEmpty
-                                                ? 'שלב ${stationIndex + 1}'
-                                                : station.name,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 11,
-                                              color: station.isLevelTester
-                                                  ? Colors.orange.shade900
-                                                  : Colors.black87,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            softWrap: false,
-                                          ),
-                                          if (stationIndex <
-                                                  longRangeStagesList.length &&
-                                              longRangeStagesList[stationIndex]
-                                                      .maxPoints >
-                                                  0) ...[
-                                            Text(
-                                              'מקס׳: ${longRangeStagesList[stationIndex].maxPoints}',
-                                              style: const TextStyle(
-                                                fontSize: 9,
-                                                color: Colors.black54,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                                // Summary columns headers
-                                SizedBox(
-                                  width: 95,
-                                  child: Container(
-                                    height: 56,
-                                    padding: const EdgeInsets.all(4.0),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade50,
-                                      border: Border(
-                                        left: BorderSide(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                        bottom: BorderSide(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Center(
-                                      child: Text(
-                                        'סהכ נקודות',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 10,
-                                          color: Colors.blue,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        softWrap: false,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 95,
-                                  child: Container(
-                                    height: 56,
-                                    padding: const EdgeInsets.all(4.0),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.shade50,
-                                      border: Border(
-                                        left: BorderSide(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                        bottom: BorderSide(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Center(
-                                      child: Text(
-                                        'ממוצע',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 10,
-                                          color: Colors.green,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        softWrap: false,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 95,
-                                  child: Container(
-                                    height: 56,
-                                    padding: const EdgeInsets.all(4.0),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.shade50,
-                                      border: Border(
-                                        bottom: BorderSide(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Center(
-                                      child: Text(
-                                        'סהכ כדורים',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 10,
-                                          color: Colors.orange,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        softWrap: false,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                ),
+              ],
+            ),
+            // B) SCROLLABLE CONTENT AREA (can scroll vertically)
+            Expanded(
+              child: Row(
+                children: [
+                  // LEFT STICKY NAME COLUMN (scrolls only vertically)
+                  SizedBox(
+                    width: nameColumnWidth,
+                    child: ListView.builder(
+                      controller: _namesVertical,
+                      physics: const ClampingScrollPhysics(),
+                      itemCount: traineeRows.length,
+                      itemExtent: rowHeight,
+                      itemBuilder: (context, idx) {
+                        final row = traineeRows[idx];
+                        final controllerKey = 'trainee_$idx';
+                        final focusKey = 'trainee_$idx';
+                        return SizedBox(
+                          height: rowHeight,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4.0,
+                              vertical: 2.0,
                             ),
-                          ),
-                          // Stages score rows
-                          Expanded(
-                            child: SizedBox(
-                              width: minStagesWidth,
-                              child: ListView.builder(
-                                // ✅ SYNC FIX: Use class-level _resultsVertical controller for synchronized scrolling
-                                controller: _resultsVertical,
-                                physics: const ClampingScrollPhysics(),
-                                itemCount: traineeRows.length,
-                                itemExtent: rowHeight,
-                                itemBuilder: (context, traineeIdx) {
-                                  final row = traineeRows[traineeIdx];
-                                  return SizedBox(
-                                    height: rowHeight,
-                                    child: Row(
-                                      children: [
-                                        // Stage score cells
-                                        ...displayStations.asMap().entries.map((
-                                          entry,
-                                        ) {
-                                          final stationIndex = entry.key;
-                                          final station = entry.value;
-                                          final controllerKey =
-                                              'station_${traineeIdx}_$stationIndex';
-                                          final focusKey =
-                                              'station_${traineeIdx}_$stationIndex';
-                                          final currentScore = row.getValue(
-                                            stationIndex,
-                                          );
-                                          return SizedBox(
-                                            width: stageCellWidth,
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 4.0,
-                                                    vertical: 2.0,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: station.isLevelTester
-                                                    ? Colors.orange.shade50
-                                                    : null,
-                                                border: Border(
-                                                  left: BorderSide(
-                                                    color: Colors.grey.shade200,
-                                                  ),
-                                                  bottom: BorderSide(
-                                                    color: Colors.grey.shade200,
-                                                  ),
-                                                ),
-                                              ),
-                                              child: TextField(
-                                                controller: _getController(
-                                                  controllerKey,
-                                                  currentScore.toString(),
-                                                ),
-                                                focusNode: _getFocusNode(
-                                                  focusKey,
-                                                ),
-                                                decoration:
-                                                    const InputDecoration(
-                                                      hintText: '0',
-                                                      isDense: true,
-                                                      border:
-                                                          OutlineInputBorder(),
-                                                      contentPadding:
-                                                          EdgeInsets.symmetric(
-                                                            horizontal: 4,
-                                                            vertical: 8,
-                                                          ),
-                                                    ),
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                ),
-                                                keyboardType:
-                                                    TextInputType.number,
-                                                maxLines: 1,
-                                                onChanged: (v) {
-                                                  final parsed =
-                                                      int.tryParse(v) ?? 0;
-                                                  row.setValue(
-                                                    stationIndex,
-                                                    parsed,
-                                                  );
-                                                  _scheduleAutoSave();
-                                                },
-                                                onSubmitted: (v) {
-                                                  final parsed =
-                                                      int.tryParse(v) ?? 0;
-                                                  row.setValue(
-                                                    stationIndex,
-                                                    parsed,
-                                                  );
-                                                  _saveImmediately();
-                                                },
-                                              ),
-                                            ),
-                                          );
-                                        }),
-                                        // Summary columns (calculated)
-                                        SizedBox(
-                                          width: 95,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(4.0),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.shade50,
-                                              border: Border(
-                                                left: BorderSide(
-                                                  color: Colors.grey.shade200,
-                                                ),
-                                                bottom: BorderSide(
-                                                  color: Colors.grey.shade200,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                (row.values.values.isEmpty
-                                                        ? 0
-                                                        : row.values.values
-                                                              .reduce(
-                                                                (a, b) => a + b,
-                                                              ))
-                                                    .toString(),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.blue,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 95,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(4.0),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green.shade50,
-                                              border: Border(
-                                                left: BorderSide(
-                                                  color: Colors.grey.shade200,
-                                                ),
-                                                bottom: BorderSide(
-                                                  color: Colors.grey.shade200,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                (() {
-                                                  final filledScores = row
-                                                      .values
-                                                      .values
-                                                      .where((s) => s > 0)
-                                                      .toList();
-                                                  if (filledScores.isEmpty) {
-                                                    return '-';
-                                                  }
-                                                  final sum = filledScores
-                                                      .reduce((a, b) => a + b);
-                                                  final avg =
-                                                      sum / filledScores.length;
-                                                  return avg == avg.toInt()
-                                                      ? avg.toInt().toString()
-                                                      : avg.toStringAsFixed(1);
-                                                })(),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.green,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 95,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(4.0),
-                                            decoration: BoxDecoration(
-                                              color: Colors.orange.shade50,
-                                              border: Border(
-                                                bottom: BorderSide(
-                                                  color: Colors.grey.shade200,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                (() {
-                                                  int total = 0;
-                                                  for (
-                                                    int i = 0;
-                                                    i < displayStations.length;
-                                                    i++
-                                                  ) {
-                                                    if (i <
-                                                        longRangeStagesList
-                                                            .length) {
-                                                      total +=
-                                                          longRangeStagesList[i]
-                                                              .bulletsCount;
-                                                    }
-                                                  }
-                                                  return total.toString();
-                                                })(),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.orange,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
+                            decoration: BoxDecoration(
+                              border: Border(
+                                right: BorderSide(color: Colors.grey.shade300),
+                                bottom: BorderSide(color: Colors.grey.shade200),
                               ),
                             ),
+                            child: TextField(
+                              controller: _getController(
+                                controllerKey,
+                                row.name,
+                              ),
+                              focusNode: _getFocusNode(focusKey),
+                              decoration: const InputDecoration(
+                                hintText: 'שם',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                              ),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 12),
+                              maxLines: 1,
+                              onChanged: (v) {
+                                row.name = v;
+                                _scheduleAutoSave();
+                              },
+                              onSubmitted: (v) {
+                                row.name = v;
+                                _saveImmediately();
+                              },
+                            ),
                           ),
-                        ],
+                        );
+                      },
+                    ),
+                  ),
+                  // RIGHT SCROLLABLE AREA (scrolls both ways, synced)
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _headerHorizontal,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: totalStationsWidth,
+                        child: ListView.builder(
+                          controller: _resultsVertical,
+                          physics: const ClampingScrollPhysics(),
+                          itemCount: traineeRows.length,
+                          itemExtent: rowHeight,
+                          itemBuilder: (context, rowIndex) {
+                            final row = traineeRows[rowIndex];
+                            return SizedBox(
+                              height: rowHeight,
+                              child: Row(
+                                children: [
+                                  ...displayStations.asMap().entries.map((
+                                    entry,
+                                  ) {
+                                    final stationIndex = entry.key;
+                                    final currentScore = row.getValue(
+                                      stationIndex,
+                                    );
+                                    final controllerKey =
+                                        'row_${rowIndex}_station_$stationIndex';
+                                    final focusKey =
+                                        'row_${rowIndex}_station_$stationIndex';
+                                    return SizedBox(
+                                      width: stationColumnWidth,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4.0),
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            left: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                          ),
+                                        ),
+                                        child: TextField(
+                                          controller: _getController(
+                                            controllerKey,
+                                            currentScore.toString(),
+                                          ),
+                                          focusNode: _getFocusNode(focusKey),
+                                          decoration: const InputDecoration(
+                                            hintText: '0',
+                                            isDense: true,
+                                            border: OutlineInputBorder(),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 6,
+                                                ),
+                                          ),
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontSize: 12),
+                                          maxLines: 1,
+                                          keyboardType: TextInputType.number,
+                                          onChanged: (v) {
+                                            final parsed = int.tryParse(v) ?? 0;
+                                            row.setValue(stationIndex, parsed);
+                                            _scheduleAutoSave();
+                                          },
+                                          onSubmitted: (v) {
+                                            final parsed = int.tryParse(v) ?? 0;
+                                            row.setValue(stationIndex, parsed);
+                                            _saveImmediately();
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  // Summary columns
+                                  SizedBox(
+                                    width: 95,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade50,
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                          bottom: BorderSide(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '${row.values.values.isEmpty ? 0 : row.values.values.reduce((a, b) => a + b)}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 95,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                          bottom: BorderSide(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          (() {
+                                            final filledScores = row
+                                                .values
+                                                .values
+                                                .where((v) => v > 0)
+                                                .toList();
+                                            if (filledScores.isEmpty) {
+                                              return '0';
+                                            }
+                                            final avg =
+                                                filledScores.reduce(
+                                                  (a, b) => a + b,
+                                                ) /
+                                                filledScores.length;
+                                            return avg.toStringAsFixed(1);
+                                          })(),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 95,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade50,
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          (() {
+                                            int total = 0;
+                                            for (final station
+                                                in displayStations) {
+                                              total += station.bulletsCount;
+                                            }
+                                            return total.toString();
+                                          })(),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
