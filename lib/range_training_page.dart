@@ -4766,11 +4766,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   textAlign: TextAlign.center,
                                                 ),
                                               ]
-                                              // בוחן רמה: Show "מס' כדורים" label (for stage definition field)
+                                              // בוחן רמה: Show bullet count number
                                               else if (widget.mode == 'range' &&
                                                   station.isLevelTester) ...[
                                                 Text(
-                                                  'מס\' כדורים',
+                                                  '${station.bulletsCount}',
                                                   style: TextStyle(
                                                     fontSize: 9,
                                                     color:
