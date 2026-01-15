@@ -4571,22 +4571,42 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               ),
               const SizedBox(height: 8),
             ],
-            // Conditional display: "טווח:" for shooting ranges, "תפקיד:" for others
-            (feedback.folderKey == 'shooting_ranges' ||
-                    feedback.folderKey == 'ranges_474' ||
-                    feedback.folder == 'מטווחי ירי' ||
-                    feedback.folder == 'מטווחים 474' ||
-                    feedback.module == 'shooting_ranges')
-                ? Text(
-                    'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
-                  )
-                : Text('תפקיד: ${feedback.role}'),
+            // Conditional display: "טווח:" for ranges, nothing for surprise drills, "תפקיד:" for others
+            if (feedback.folderKey == 'shooting_ranges' ||
+                feedback.folderKey == 'ranges_474' ||
+                feedback.folder == 'מטווחי ירי' ||
+                feedback.folder == 'מטווחים 474' ||
+                feedback.module == 'shooting_ranges')
+              Text(
+                'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
+              )
+            else if (feedback.folder == 'משוב תרגילי הפתעה' ||
+                feedback.module == 'surprise_drill')
+              const SizedBox.shrink() // No role display for surprise drills
+            else
+              Text('תפקיד: ${feedback.role}'),
             const SizedBox(height: 8),
-            (feedback.folderKey == 'shooting_ranges' ||
-                    feedback.folder == 'מטווחי ירי' ||
-                    feedback.module == 'shooting_ranges')
-                ? Text('יישוב: ${feedback.settlement}')
-                : Text('שם: ${feedback.name}'),
+            // Display settlement/name based on feedback type
+            if (feedback.folderKey == 'shooting_ranges' ||
+                feedback.folder == 'מטווחי ירי' ||
+                feedback.module == 'shooting_ranges')
+              Text('יישוב: ${feedback.settlement}')
+            else if (feedback.folder == 'משוב תרגילי הפתעה' ||
+                feedback.module == 'surprise_drill')
+              Text(
+                'יישוב: ${feedback.name}',
+              ) // For surprise drills, 'name' field contains settlement
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('שם: ${feedback.name}'),
+                  if (feedback.settlement.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text('יישוב: ${feedback.settlement}'),
+                  ],
+                ],
+              ),
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 8),

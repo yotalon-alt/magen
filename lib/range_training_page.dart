@@ -4207,7 +4207,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   // RIGHT SCROLLABLE AREA (scrolls both ways, synced)
                   Expanded(
                     child: SingleChildScrollView(
-                      controller: _headerHorizontal,
+                      controller: _resultsHorizontal,
                       scrollDirection: Axis.horizontal,
                       child: SizedBox(
                         width: totalStationsWidth,
