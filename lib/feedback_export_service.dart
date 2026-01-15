@@ -1262,7 +1262,7 @@ class FeedbackExportService {
       cell.value = TextCellValue(createdByName);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Row 1: Headers - "יישוב", "שם", then drill names
+      // Row 1: Headers - "יישוב", "שם", then drill names (with time for בוחן רמה)
       cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1),
       );
@@ -1281,23 +1281,55 @@ class FeedbackExportService {
         bold: true,
       );
 
+      // Build column mapping for stations (track which columns have time)
+      final List<Map<String, dynamic>> stationColumns = [];
+      int currentColumn = 2;
+
       // Add drill names to row 1 (columns C onward)
+      // For בוחן רמה stations, add both hits and time columns
       for (var si = 0; si < stations.length; si++) {
         final station = stations[si];
         final stationName = station['name']?.toString() ?? 'מקצה ${si + 1}';
+        final isLevelTester = station['isLevelTester'] == true;
+
+        // Hits column
         cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: 1),
+          CellIndex.indexByColumnRow(columnIndex: currentColumn, rowIndex: 1),
         );
         cell.value = TextCellValue(stationName);
         cell.cellStyle = CellStyle(
           horizontalAlign: HorizontalAlign.Right,
           bold: true,
         );
+
+        stationColumns.add({
+          'stationIndex': si,
+          'hitsColumn': currentColumn,
+          'hasTime': isLevelTester,
+        });
+
+        currentColumn++;
+
+        // Time column for בוחן רמה
+        if (isLevelTester) {
+          cell = sheet.cell(
+            CellIndex.indexByColumnRow(columnIndex: currentColumn, rowIndex: 1),
+          );
+          cell.value = TextCellValue('$stationName - זמן');
+          cell.cellStyle = CellStyle(
+            horizontalAlign: HorizontalAlign.Right,
+            bold: true,
+          );
+
+          stationColumns[stationColumns.length - 1]['timeColumn'] =
+              currentColumn;
+          currentColumn++;
+        }
       }
 
       // NEW: Add two new columns at the end of row 1: "סה״כ פגיעות חניך" and "ממוצע חניך"
-      final totalHitsColumnIndex = 2 + stations.length;
-      final avgColumnIndex = 3 + stations.length;
+      final totalHitsColumnIndex = currentColumn;
+      final avgColumnIndex = currentColumn + 1;
 
       cell = sheet.cell(
         CellIndex.indexByColumnRow(
@@ -1335,17 +1367,34 @@ class FeedbackExportService {
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       // For each drill column, write the bullets per trainee for THAT drill
-      for (var si = 0; si < stations.length; si++) {
+      // For time columns (בוחן רמה), leave empty
+      for (final stationCol in stationColumns) {
+        final si = stationCol['stationIndex'] as int;
+        final hitsColumn = stationCol['hitsColumn'] as int;
+        final hasTime = stationCol['hasTime'] as bool;
+
         final station = stations[si];
         final bulletsCount = (station['bulletsCount'] as num?)?.toInt() ?? 0;
+
+        // Bullets in hits column
         cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: 2),
+          CellIndex.indexByColumnRow(columnIndex: hitsColumn, rowIndex: 2),
         );
         cell.value = IntCellValue(bulletsCount);
         cell.cellStyle = CellStyle(
           horizontalAlign: HorizontalAlign.Right,
           italic: true,
         );
+
+        // Leave time column empty
+        if (hasTime) {
+          final timeColumn = stationCol['timeColumn'] as int;
+          cell = sheet.cell(
+            CellIndex.indexByColumnRow(columnIndex: timeColumn, rowIndex: 2),
+          );
+          cell.value = TextCellValue('');
+          cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+        }
       }
 
       // Rows 4+: Trainee data (row 0 = metadata, row 1 = headers, row 2 = bullets, row 3+ = data)
@@ -1355,6 +1404,8 @@ class FeedbackExportService {
         final trainee = trainees[ti];
         final traineeName = trainee['name']?.toString() ?? 'חניך ${ti + 1}';
         final hitsMap = trainee['hits'] as Map<String, dynamic>? ?? {};
+        final timeValuesMap =
+            trainee['timeValues'] as Map<String, dynamic>? ?? {};
 
         final rowIndex =
             ti +
@@ -1374,17 +1425,25 @@ class FeedbackExportService {
         cell.value = TextCellValue(traineeName);
         cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-        // Columns C+: Hits for each drill (numbers only)
+        // Columns C+: Hits for each drill (numbers only), plus time for בוחן רמה
         // Also compute total hits and count stages for average
         int traineeTotalHits = 0;
         int stagesWithHits = 0;
 
-        for (var si = 0; si < stations.length; si++) {
+        for (final stationCol in stationColumns) {
+          final si = stationCol['stationIndex'] as int;
+          final hitsColumn = stationCol['hitsColumn'] as int;
+          final hasTime = stationCol['hasTime'] as bool;
+
           // Get hits for this station from trainee record
           final hits = (hitsMap['station_$si'] as num?)?.toInt();
 
+          // Hits column
           cell = sheet.cell(
-            CellIndex.indexByColumnRow(columnIndex: 2 + si, rowIndex: rowIndex),
+            CellIndex.indexByColumnRow(
+              columnIndex: hitsColumn,
+              rowIndex: rowIndex,
+            ),
           );
 
           if (hits != null && hits > 0) {
@@ -1396,6 +1455,27 @@ class FeedbackExportService {
             cell.value = TextCellValue('');
           }
           cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+          // Time column for בוחן רמה
+          if (hasTime) {
+            final timeColumn = stationCol['timeColumn'] as int;
+            final timeInSeconds =
+                (timeValuesMap['station_${si}_time'] as num?)?.toInt() ?? 0;
+
+            cell = sheet.cell(
+              CellIndex.indexByColumnRow(
+                columnIndex: timeColumn,
+                rowIndex: rowIndex,
+              ),
+            );
+
+            if (timeInSeconds > 0) {
+              cell.value = TextCellValue('${timeInSeconds}s');
+            } else {
+              cell.value = TextCellValue('');
+            }
+            cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+          }
         }
 
         // NEW: Add סה״כ פגיעות חניך column

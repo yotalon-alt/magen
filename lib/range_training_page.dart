@@ -151,6 +151,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     'מעבר קרובות',
     'מניפה',
     'בוחן רמה',
+    'איפוס',
     'מקצה ידני',
   ];
 
@@ -4765,11 +4766,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   textAlign: TextAlign.center,
                                                 ),
                                               ]
-                                              // בוחן רמה: Show "פגיעות/זמן" label
+                                              // בוחן רמה: Show "מס' כדורים" label (for stage definition field)
                                               else if (widget.mode == 'range' &&
                                                   station.isLevelTester) ...[
                                                 Text(
-                                                  'פגיעות / זמן',
+                                                  'מס\' כדורים',
                                                   style: TextStyle(
                                                     fontSize: 9,
                                                     color:
@@ -5598,6 +5599,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     hits,
                                                                   );
+                                                                  setState(
+                                                                    () {},
+                                                                  ); // מאלץ רענון מיידי של הטבלה
                                                                   _scheduleAutoSave();
                                                                 },
                                                                 onSubmitted: (v) {
@@ -5610,6 +5614,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     hits,
                                                                   );
+                                                                  setState(
+                                                                    () {},
+                                                                  ); // מאלץ רענון מיידי של הטבלה
                                                                   _saveImmediately();
                                                                 },
                                                               ),
@@ -5680,6 +5687,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     time,
                                                                   );
+                                                                  setState(
+                                                                    () {},
+                                                                  ); // מאלץ רענון מיידי של הטבלה
                                                                   _scheduleAutoSave();
                                                                 },
                                                                 onSubmitted: (v) {
@@ -5692,6 +5702,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     time,
                                                                   );
+                                                                  setState(
+                                                                    () {},
+                                                                  ); // מאלץ רענון מיידי של הטבלה
                                                                   _saveImmediately();
                                                                 },
                                                               ),
@@ -6620,6 +6633,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       hits,
                                                     );
+                                                    setState(
+                                                      () {},
+                                                    ); // מאלץ רענון מיידי של הטבלה
                                                     _scheduleAutoSave();
                                                   },
                                                   onSubmitted: (v) {
@@ -6629,6 +6645,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       hits,
                                                     );
+                                                    setState(
+                                                      () {},
+                                                    ); // מאלץ רענון מיידי של הטבלה
                                                     _saveImmediately();
                                                   },
                                                 ),
@@ -6679,6 +6698,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       time,
                                                     );
+                                                    setState(
+                                                      () {},
+                                                    ); // מאלץ רענון מיידי של הטבלה
                                                     _scheduleAutoSave();
                                                   },
                                                   onSubmitted: (v) {
@@ -6688,6 +6710,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       time,
                                                     );
+                                                    setState(
+                                                      () {},
+                                                    ); // מאלץ רענון מיידי של הטבלה
                                                     _saveImmediately();
                                                   },
                                                 ),

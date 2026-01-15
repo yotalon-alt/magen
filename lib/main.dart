@@ -4426,6 +4426,26 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           final pct = bullets > 0
                               ? ((hits / bullets) * 100).toStringAsFixed(1)
                               : '0.0';
+
+                          // Get time value for בוחן רמה
+                          final timeValuesMap =
+                              (t['timeValues'] as Map?)
+                                  ?.cast<String, dynamic>() ??
+                              {};
+                          final timeInSeconds =
+                              (timeValuesMap['station_${stationIndex}_time']
+                                      as num?)
+                                  ?.toInt() ??
+                              0;
+                          final timeDisplay = timeInSeconds > 0
+                              ? '${timeInSeconds}s'
+                              : '';
+
+                          // Check if this is a בוחן רמה station by station name
+                          final isLevelTester = stationName.contains(
+                            'בוחן רמה',
+                          );
+
                           return DataRow(
                             cells: [
                               DataCell(
@@ -4446,6 +4466,15 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
+                                    // Show time for בוחן רמה stations
+                                    if (isLevelTester && timeDisplay.isNotEmpty)
+                                      Text(
+                                        'זמן: $timeDisplay',
+                                        style: const TextStyle(
+                                          color: Colors.lightBlueAccent,
+                                          fontSize: 12,
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
