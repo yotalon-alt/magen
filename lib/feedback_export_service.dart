@@ -1219,14 +1219,6 @@ class FeedbackExportService {
         throw Exception('אין נתוני מקצים או חניכים לייצוא');
       }
 
-      // ✅ Detect if this is long range feedback
-      final feedbackType = feedbackData['feedbackType']?.toString();
-      final rangeSubType = feedbackData['rangeSubType']?.toString();
-      final isLongRange =
-          feedbackType == 'range_long' ||
-          feedbackType == 'דווח רחוק' ||
-          rangeSubType == 'טווח רחוק';
-
       final excel = Excel.createExcel();
       final sheet = excel['השוואת מטווחים'];
       sheet.isRTL = true; // Global Hebrew fix: RTL mode
@@ -1557,62 +1549,59 @@ class FeedbackExportService {
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // ✅ LONG RANGE ONLY: Add "סה״כ כדורים שנורו" row below summary
-      if (isLongRange) {
-        final bulletsRowIndex = summaryRowIndex + 1;
+      // ✅ Add "סה״כ כדורים שנורו" row below summary (for both short and long range)
+      final bulletsRowIndex = summaryRowIndex + 1;
 
-        // Calculate total bullets fired
-        int totalBulletsFired = 0;
-        for (final station in stations) {
-          final bulletsTracking =
-              (station['bulletsCount'] as num?)?.toInt() ?? 0;
-          totalBulletsFired += bulletsTracking * trainees.length;
-        }
+      // Calculate total bullets fired
+      int totalBulletsFired = 0;
+      for (final station in stations) {
+        final bulletsTracking = (station['bulletsCount'] as num?)?.toInt() ?? 0;
+        totalBulletsFired += bulletsTracking * trainees.length;
+      }
 
-        // First column: "סה״כ כדורים שנורו"
-        cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: bulletsRowIndex),
-        );
-        cell.value = TextCellValue('סה״כ כדורים שנורו');
-        cell.cellStyle = CellStyle(
-          horizontalAlign: HorizontalAlign.Right,
-          bold: true,
-        );
+      // First column: "סה״כ כדורים שנורו"
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: bulletsRowIndex),
+      );
+      cell.value = TextCellValue('סה״כ כדורים שנורו');
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
 
-        // Leave columns B through stations.length empty
-        for (var colIdx = 1; colIdx < totalHitsColumnIndex; colIdx++) {
-          cell = sheet.cell(
-            CellIndex.indexByColumnRow(
-              columnIndex: colIdx,
-              rowIndex: bulletsRowIndex,
-            ),
-          );
-          cell.value = TextCellValue('');
-        }
-
-        // סה״כ פגיעות חניך column: total bullets
+      // Leave columns B through stations.length empty
+      for (var colIdx = 1; colIdx < totalHitsColumnIndex; colIdx++) {
         cell = sheet.cell(
           CellIndex.indexByColumnRow(
-            columnIndex: totalHitsColumnIndex,
-            rowIndex: bulletsRowIndex,
-          ),
-        );
-        cell.value = IntCellValue(totalBulletsFired);
-        cell.cellStyle = CellStyle(
-          horizontalAlign: HorizontalAlign.Right,
-          bold: true,
-        );
-
-        // ממוצע חניך column: leave blank
-        cell = sheet.cell(
-          CellIndex.indexByColumnRow(
-            columnIndex: avgColumnIndex,
+            columnIndex: colIdx,
             rowIndex: bulletsRowIndex,
           ),
         );
         cell.value = TextCellValue('');
-        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
       }
+
+      // סה״כ פגיעות חניך column: total bullets
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(
+          columnIndex: totalHitsColumnIndex,
+          rowIndex: bulletsRowIndex,
+        ),
+      );
+      cell.value = IntCellValue(totalBulletsFired);
+      cell.cellStyle = CellStyle(
+        horizontalAlign: HorizontalAlign.Right,
+        bold: true,
+      );
+
+      // ממוצע חניך column: leave blank
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(
+          columnIndex: avgColumnIndex,
+          rowIndex: bulletsRowIndex,
+        ),
+      );
+      cell.value = TextCellValue('');
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       // Encode and export
       final fileBytes = excel.encode();
