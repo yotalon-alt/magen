@@ -70,9 +70,9 @@ class _InstructorCourseFeedbackPageState
     return hitsScore.clamp(1.0, 5.0);
   }
 
-  /// Calculate timeScore for בוחן רמה (UNCHANGED - existing logic)
+  /// Calculate timeScore for בוחן רמה (MODIFIED - accepts decimal seconds)
   /// Scale: 7 seconds or less → 5, 15 seconds or more → 1
-  double _calculateTimeScore(int timeSeconds) {
+  double _calculateTimeScore(double timeSeconds) {
     if (timeSeconds <= 0) return 0.0;
     if (timeSeconds <= 7) {
       debugPrint(
@@ -97,7 +97,7 @@ class _InstructorCourseFeedbackPageState
 
   int _calculateLevelTestRating() {
     final hits = int.tryParse(_hitsController.text) ?? 0;
-    final timeSeconds = int.tryParse(_timeSecondsController.text) ?? 0;
+    final timeSeconds = double.tryParse(_timeSecondsController.text) ?? 0.0;
 
     // If both are zero, return 0 (no rating yet)
     if (hits == 0 && timeSeconds == 0) return 0;
@@ -200,7 +200,7 @@ class _InstructorCourseFeedbackPageState
           };
           if (name == 'בוחן רמה') {
             final hits = int.tryParse(_hitsController.text);
-            final time = int.tryParse(_timeSecondsController.text);
+            final time = double.tryParse(_timeSecondsController.text);
             if (hits != null) meta['hits'] = hits;
             if (time != null) meta['timeSeconds'] = time;
           }
@@ -455,7 +455,7 @@ class _InstructorCourseFeedbackPageState
           };
           if (name == 'בוחן רמה') {
             final hits = int.tryParse(_hitsController.text);
-            final time = int.tryParse(_timeSecondsController.text);
+            final time = double.tryParse(_timeSecondsController.text);
             if (hits != null) meta['hits'] = hits;
             if (time != null) meta['timeSeconds'] = time;
           }
@@ -701,10 +701,12 @@ class _InstructorCourseFeedbackPageState
                     child: TextField(
                       controller: _timeSecondsController,
                       enabled: !_isFormLocked,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: 'זמן (שניות)',
-                        hintText: 'הזן שניות',
+                        hintText: 'הזן שניות (למשל: 9.5)',
                         prefixIcon: Icon(Icons.timer),
                       ),
                       style: const TextStyle(

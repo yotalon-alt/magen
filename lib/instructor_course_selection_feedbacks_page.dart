@@ -373,6 +373,17 @@ class _InstructorCourseSelectionFeedbacksPageState
                 totalScore += numValue;
                 scoreCount++;
               }
+
+              // ✅ LEVEL TEST: Extract hits and time for detail display
+              if (hebrewName == 'בוחן רמה') {
+                data['levelTestHits'] = fieldData['hits'] as int?;
+                data['levelTestTimeSeconds'] = (fieldData['timeSeconds'] is num)
+                    ? (fieldData['timeSeconds'] as num).toDouble()
+                    : null;
+                debugPrint(
+                  '  📊 LEVEL_TEST_DETAILS: hits=${data["levelTestHits"]}, time=${data["levelTestTimeSeconds"]}s',
+                );
+              }
             }
 
             debugPrint(
@@ -1171,22 +1182,35 @@ class _InstructorCourseSelectionFeedbacksPageState
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 8),
-                _buildScoreRow('בוחן רמה', scores['levelTest'], 'levelTest'),
+                _buildScoreRow(
+                  'בוחן רמה',
+                  scores['levelTest'],
+                  'levelTest',
+                  feedback,
+                ),
                 _buildScoreRow(
                   'הדרכה טובה',
                   scores['goodInstruction'],
                   'goodInstruction',
+                  feedback,
                 ),
                 _buildScoreRow(
                   'הדרכת מבנה',
                   scores['structureInstruction'],
                   'structureInstruction',
+                  feedback,
                 ),
-                _buildScoreRow('יבשים', scores['dryPractice'], 'dryPractice'),
+                _buildScoreRow(
+                  'יבשים',
+                  scores['dryPractice'],
+                  'dryPractice',
+                  feedback,
+                ),
                 _buildScoreRow(
                   'תרגיל הפתעה',
                   scores['surpriseExercise'],
                   'surpriseExercise',
+                  feedback,
                 ),
                 const Divider(),
                 _buildDetailRow(
@@ -1247,7 +1271,19 @@ class _InstructorCourseSelectionFeedbacksPageState
     );
   }
 
-  Widget _buildScoreRow(String label, dynamic score, [String? scoreKey]) {
+  Widget _buildScoreRow(
+    String label,
+    dynamic score, [
+    String? scoreKey,
+    Map<String, dynamic>? feedback,
+  ]) {
+    // Extract level test details if this is the level test row
+    int? levelTestHits;
+    double? levelTestTimeSeconds;
+    if (scoreKey == 'levelTest' && feedback != null) {
+      levelTestHits = feedback['levelTestHits'] as int?;
+      levelTestTimeSeconds = feedback['levelTestTimeSeconds'] as double?;
+    }
     // Parse score value with proper type handling
     String displayValue;
     if (score == null) {
@@ -1266,6 +1302,27 @@ class _InstructorCourseSelectionFeedbacksPageState
       displayValue = '—';
     }
 
+    // Build additional details for level test (hits and time)
+    String prefix = '';
+    if (levelTestHits != null || levelTestTimeSeconds != null) {
+      final List<String> parts = [];
+
+      // תחילה הזמן (תמיד עם נקודה עשרונית)
+      if (levelTestTimeSeconds != null) {
+        parts.add('${levelTestTimeSeconds.toStringAsFixed(1)} שנ\'');
+      }
+
+      // אחר כך הפגיעות
+      if (levelTestHits != null) {
+        parts.add('$levelTestHits פג\'');
+      }
+
+      // בניית הקידומת: זמן | פגיעות •
+      if (parts.isNotEmpty) {
+        prefix = '${parts.join(' | ')} • ';
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1273,7 +1330,7 @@ class _InstructorCourseSelectionFeedbacksPageState
         children: [
           Text(label),
           Text(
-            displayValue,
+            '$prefix$displayValue',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ],
