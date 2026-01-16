@@ -4435,8 +4435,8 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           final timeInSeconds =
                               (timeValuesMap['station_${stationIndex}_time']
                                       as num?)
-                                  ?.toInt() ??
-                              0;
+                                  ?.toDouble() ??
+                              0.0;
                           final timeDisplay = timeInSeconds > 0
                               ? '${timeInSeconds}s'
                               : '';

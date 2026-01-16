@@ -289,13 +289,19 @@ class FeedbackExportService {
         {'key': 'surpriseExercise', 'label': 'תרגיל הפתעה'},
       ];
 
-      // Build column headers matching UI
+      // Build column headers matching UI (with levelTest expanded to 3 columns)
       final columnOrder = <String>[
         'פיקוד',
         'חטיבה',
         'מספר מועמד',
         'שם מועמד',
-        ...scoreColumns.map((c) => c['label']!),
+        'בוחן רמה',
+        'בוחן רמה - פגיעות', // NEW: hits column
+        'בוחן רמה - זמן', // NEW: time column
+        'הדרכה טובה',
+        'הדרכת מבנה',
+        'יבשים',
+        'תרגיל הפתעה',
         'ממוצע',
         'מדריך',
         'תאריך יצירה',
@@ -377,9 +383,64 @@ class FeedbackExportService {
         cell.value = TextCellValue(feedback['candidateName']?.toString() ?? '');
         cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-        // Score columns (matching UI)
+        // Score columns (with levelTest expanded to 3 cells)
         final scores = feedback['scores'] as Map<String, dynamic>?;
-        for (final scoreCol in scoreColumns) {
+
+        // First: בוחן רמה score
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: colIndex++,
+            rowIndex: rowIndex,
+          ),
+        );
+        final levelTestValue = scores?['levelTest'];
+        if (levelTestValue is int) {
+          cell.value = IntCellValue(levelTestValue);
+        } else if (levelTestValue is double) {
+          cell.value = DoubleCellValue(levelTestValue);
+        } else if (levelTestValue is num) {
+          cell.value = IntCellValue(levelTestValue.toInt());
+        } else {
+          cell.value = TextCellValue('');
+        }
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+        // Second: בוחן רמה - פגיעות
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: colIndex++,
+            rowIndex: rowIndex,
+          ),
+        );
+        final hits = feedback['levelTestHits'];
+        if (hits is int) {
+          cell.value = IntCellValue(hits);
+        } else if (hits is num) {
+          cell.value = IntCellValue(hits.toInt());
+        } else {
+          cell.value = TextCellValue('');
+        }
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+        // Third: בוחן רמה - זמן
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: colIndex++,
+            rowIndex: rowIndex,
+          ),
+        );
+        final timeSeconds = feedback['levelTestTimeSeconds'];
+        if (timeSeconds is double) {
+          cell.value = DoubleCellValue(timeSeconds);
+        } else if (timeSeconds is num) {
+          cell.value = DoubleCellValue(timeSeconds.toDouble());
+        } else {
+          cell.value = TextCellValue('');
+        }
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+        // Rest of score columns (skip levelTest since we already handled it)
+        for (final scoreCol in scoreColumns.skip(1)) {
           cell = sheet.cell(
             CellIndex.indexByColumnRow(
               columnIndex: colIndex++,

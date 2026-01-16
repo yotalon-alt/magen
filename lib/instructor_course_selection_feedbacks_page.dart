@@ -785,6 +785,14 @@ class _InstructorCourseSelectionFeedbacksPageState
                     textAlign: TextAlign.center,
                   ),
                 ),
+                // Refresh button
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white),
+                  onPressed: _isLoading
+                      ? null
+                      : () => _loadFeedbacks(_selectedCategory!),
+                  tooltip: 'רענן רשימה',
+                ),
                 // Export button
                 IconButton(
                   icon: const Icon(Icons.download, color: Colors.white),

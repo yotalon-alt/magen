@@ -637,7 +637,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           row.values.addAll(updatedValues);
 
           // Also shift timeValues indices
-          final updatedTimeValues = <int, int>{};
+          final updatedTimeValues = <int, double>{};
           row.timeValues.forEach((stationIdx, value) {
             if (stationIdx > index) {
               updatedTimeValues[stationIdx - 1] = value;
@@ -1518,7 +1518,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         });
 
         // Build time values map from timeValues (for בוחן רמה) - include ALL stages
-        final Map<String, int> timeValuesMap = {};
+        final Map<String, double> timeValuesMap = {};
         row.timeValues.forEach((stationIdx, value) {
           timeValuesMap['station_${stationIdx}_time'] = value;
         });
@@ -5662,11 +5662,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                       ),
                                                                 ),
                                                                 keyboardType:
-                                                                    TextInputType
-                                                                        .number,
+                                                                    const TextInputType.numberWithOptions(
+                                                                      decimal:
+                                                                          true,
+                                                                    ),
                                                                 inputFormatters: [
-                                                                  FilteringTextInputFormatter
-                                                                      .digitsOnly,
+                                                                  FilteringTextInputFormatter.allow(
+                                                                    RegExp(
+                                                                      r'^\d*\.?\d*$',
+                                                                    ),
+                                                                  ),
                                                                 ],
                                                                 textAlign:
                                                                     TextAlign
@@ -5679,10 +5684,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                 maxLines: 1,
                                                                 onChanged: (v) {
                                                                   final time =
-                                                                      int.tryParse(
+                                                                      double.tryParse(
                                                                         v,
                                                                       ) ??
-                                                                      0;
+                                                                      0.0;
                                                                   row.setTimeValue(
                                                                     stationIndex,
                                                                     time,
@@ -5694,10 +5699,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                 },
                                                                 onSubmitted: (v) {
                                                                   final time =
-                                                                      int.tryParse(
+                                                                      double.tryParse(
                                                                         v,
                                                                       ) ??
-                                                                      0;
+                                                                      0.0;
                                                                   row.setTimeValue(
                                                                     stationIndex,
                                                                     time,
@@ -6682,10 +6687,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             ),
                                                       ),
                                                   keyboardType:
-                                                      TextInputType.number,
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
+                                                      ),
                                                   inputFormatters: [
-                                                    FilteringTextInputFormatter
-                                                        .digitsOnly,
+                                                    FilteringTextInputFormatter.allow(
+                                                      RegExp(r'^\d*\.?\d*$'),
+                                                    ),
                                                   ],
                                                   textAlign: TextAlign.center,
                                                   style: const TextStyle(
@@ -6693,7 +6701,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   ),
                                                   onChanged: (v) {
                                                     final time =
-                                                        int.tryParse(v) ?? 0;
+                                                        double.tryParse(v) ??
+                                                        0.0;
                                                     row.setTimeValue(
                                                       stationIndex,
                                                       time,
@@ -6705,7 +6714,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   },
                                                   onSubmitted: (v) {
                                                     final time =
-                                                        int.tryParse(v) ?? 0;
+                                                        double.tryParse(v) ??
+                                                        0.0;
                                                     row.setTimeValue(
                                                       stationIndex,
                                                       time,
@@ -6985,8 +6995,8 @@ class TraineeRowModel {
   final int index;
   String name;
   final Map<int, int> values; // stationIndex -> value (hits or score)
-  final Map<int, int>
-  timeValues; // stationIndex -> time in seconds (for בוחן רמה only)
+  final Map<int, double>
+  timeValues; // stationIndex -> time in seconds (for בוחן רמה only) - supports decimals
   // Track which fields have been explicitly touched/entered (null/untouched vs 0/entered)
   final Map<int, bool>
   valuesTouched; // stationIndex -> true if explicitly entered
@@ -6997,7 +7007,7 @@ class TraineeRowModel {
     required this.index,
     required this.name,
     Map<int, int>? values,
-    Map<int, int>? timeValues,
+    Map<int, double>? timeValues,
     Map<int, bool>? valuesTouched,
     Map<int, bool>? timeValuesTouched,
   }) : values = values ?? {},
@@ -7025,14 +7035,14 @@ class TraineeRowModel {
   }
 
   // Get time value for a specific station (for בוחן רמה)
-  int getTimeValue(int stationIndex) => timeValues[stationIndex] ?? 0;
+  double getTimeValue(int stationIndex) => timeValues[stationIndex] ?? 0.0;
 
   // Set time value for a specific station (for בוחן רמה)
-  void setTimeValue(int stationIndex, int value) {
+  void setTimeValue(int stationIndex, double value) {
     // Mark as touched when user explicitly changes the field
     timeValuesTouched[stationIndex] = true;
 
-    if (value == 0) {
+    if (value == 0.0) {
       timeValues.remove(stationIndex);
     } else {
       timeValues[stationIndex] = value;
@@ -7064,9 +7074,9 @@ class TraineeRowModel {
         valuesMap['station_$stationIdx'] = val;
       }
     });
-    final timeValuesMap = <String, int>{};
+    final timeValuesMap = <String, double>{};
     timeValues.forEach((stationIdx, val) {
-      if (val != 0) {
+      if (val != 0.0) {
         timeValuesMap['station_${stationIdx}_time'] = val;
       }
     });
@@ -7116,15 +7126,15 @@ class TraineeRowModel {
       }
     });
 
-    final timeValues = <int, int>{};
+    final timeValues = <int, double>{};
     timeValuesRaw.forEach((key, val) {
       if (key.startsWith('station_') && key.endsWith('_time')) {
         final stationIdxStr = key
             .replaceFirst('station_', '')
             .replaceFirst('_time', '');
         final stationIdx = int.tryParse(stationIdxStr);
-        final value = (val as num?)?.toInt() ?? 0;
-        if (stationIdx != null && value != 0) {
+        final value = (val as num?)?.toDouble() ?? 0.0;
+        if (stationIdx != null && value != 0.0) {
           timeValues[stationIdx] = value;
         }
       }
