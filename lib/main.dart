@@ -2082,69 +2082,80 @@ class ExercisesPage extends StatelessWidget {
       'תרגילי הפתעה',
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('תרגילים'),
-        leading: const StandardBackButton(),
-      ),
-      body: ListView.builder(
-        itemCount: exercises.length,
-        itemBuilder: (ctx, i) {
-          final ex = exercises[i];
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            elevation: 2,
-            child: InkWell(
-              onTap: () {
-                debugPrint('⚡ פתח משוב עבור "$ex"');
-                // Allow Instructors and Admins to open feedback
-                if (currentUser == null ||
-                    (currentUser?.role != 'Instructor' &&
-                        currentUser?.role != 'Admin')) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('רק מדריכים או מנהל יכולים לפתוח משוב'),
-                    ),
-                  );
-                  return;
-                }
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('תרגילים'),
+          leading: const StandardBackButton(),
+        ),
+        body: ListView.builder(
+          itemCount: exercises.length,
+          itemBuilder: (ctx, i) {
+            final ex = exercises[i];
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              elevation: 2,
+              child: InkWell(
+                onTap: () {
+                  debugPrint('⚡ פתח משוב עבור "$ex"');
+                  // Allow Instructors and Admins to open feedback
+                  if (currentUser == null ||
+                      (currentUser?.role != 'Instructor' &&
+                          currentUser?.role != 'Admin')) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('רק מדריכים או מנהל יכולים לפתוח משוב'),
+                      ),
+                    );
+                    return;
+                  }
 
-                // מיונים לקורס מדריכים: זרימה חדשה למסך ניהול מיונים
-                if (ex == 'מיונים לקורס מדריכים') {
-                  // Navigate to screenings menu (two-buttons screen)
-                  Navigator.of(context).pushNamed('/screenings_menu');
-                } else if (ex == 'מטווחים') {
-                  Navigator.of(context).pushNamed('/range_selection');
-                } else if (ex == 'תרגילי הפתעה') {
-                  Navigator.of(context).pushNamed('/surprise_drills');
-                } else {
-                  Navigator.of(
-                    context,
-                  ).pushNamed('/feedback_form', arguments: ex);
-                }
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Icon(Icons.assignment, size: 32, color: Colors.blueAccent),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        ex,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
+                  // מיונים לקורס מדריכים: זרימה חדשה למסך ניהול מיונים
+                  if (ex == 'מיונים לקורס מדריכים') {
+                    // Navigate to screenings menu (two-buttons screen)
+                    Navigator.of(context).pushNamed('/screenings_menu');
+                  } else if (ex == 'מטווחים') {
+                    Navigator.of(context).pushNamed('/range_selection');
+                  } else if (ex == 'תרגילי הפתעה') {
+                    Navigator.of(context).pushNamed('/surprise_drills');
+                  } else {
+                    Navigator.of(
+                      context,
+                    ).pushNamed('/feedback_form', arguments: ex);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.assignment,
+                        size: 32,
+                        color: Colors.blueAccent,
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          ex,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
-                    Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                  ],
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -4548,1192 +4559,830 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         feedback.folder == '474 Ranges' ||
         feedback.folderKey == 'ranges_474';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('פרטי משוב'),
-        leading: const StandardBackButton(),
-        actions: [],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: ListView(
-          children: [
-            // Show resolved instructor name (or loading indicator)
-            isResolvingName
-                ? const Row(
-                    children: [
-                      Text('מדריך: '),
-                      SizedBox(width: 8),
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ],
-                  )
-                : Text(
-                    'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
-                  ),
-            const SizedBox(height: 8),
-            Text('תאריך: $date'),
-            const SizedBox(height: 8),
-            Text('תרגיל: ${feedback.exercise}'),
-            const SizedBox(height: 8),
-            if (feedback.folder.isNotEmpty) ...[
-              Text('תיקייה: ${feedback.folder}'),
-              const SizedBox(height: 8),
-            ],
-            if (feedback.scenario.isNotEmpty) ...[
-              Text('תרחיש: ${feedback.scenario}'),
-              const SizedBox(height: 8),
-            ],
-            if ((feedback.folderKey == 'shooting_ranges' ||
-                    feedback.folder == 'מטווחי ירי' ||
-                    feedback.module == 'shooting_ranges') &&
-                feedback.attendeesCount > 0) ...[
-              Text(
-                'מספר חניכים/נוכחים באימון: ${feedback.attendeesCount}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orangeAccent,
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            // Conditional display: "טווח:" for ranges, nothing for surprise drills, "תפקיד:" for others
-            if (feedback.folderKey == 'shooting_ranges' ||
-                feedback.folderKey == 'ranges_474' ||
-                feedback.folder == 'מטווחי ירי' ||
-                feedback.folder == 'מטווחים 474' ||
-                feedback.module == 'shooting_ranges')
-              Text(
-                'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
-              )
-            else if (feedback.folder == 'משוב תרגילי הפתעה' ||
-                feedback.module == 'surprise_drill')
-              const SizedBox.shrink() // No role display for surprise drills
-            else
-              Text('תפקיד: ${feedback.role}'),
-            const SizedBox(height: 8),
-            // Display settlement/name based on feedback type
-            if (feedback.folderKey == 'shooting_ranges' ||
-                feedback.folder == 'מטווחי ירי' ||
-                feedback.module == 'shooting_ranges')
-              Text('יישוב: ${feedback.settlement}')
-            else if (feedback.folder == 'משוב תרגילי הפתעה' ||
-                feedback.module == 'surprise_drill')
-              Text(
-                'יישוב: ${feedback.name}',
-              ) // For surprise drills, 'name' field contains settlement
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('שם: ${feedback.name}'),
-                  if (feedback.settlement.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text('יישוב: ${feedback.settlement}'),
-                  ],
-                ],
-              ),
-            const SizedBox(height: 12),
-            const Divider(),
-            const SizedBox(height: 8),
-            const Text(
-              'קריטריונים:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            // show saved criteria names if present, otherwise fall back to scores map (only non-zero)
-            if (feedback.criteriaList.isNotEmpty)
-              ...feedback.criteriaList.map((name) {
-                final score = feedback.scores[name] ?? '';
-                final note = feedback.notes[name] ?? '';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('$name — $score'),
-                      if (note.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text('הערה: $note'),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('פרטי משוב'),
+          leading: const StandardBackButton(),
+          actions: [],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView(
+            children: [
+              // Show resolved instructor name (or loading indicator)
+              isResolvingName
+                  ? const Row(
+                      children: [
+                        Text('מדריך: '),
+                        SizedBox(width: 8),
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ],
+                    )
+                  : Text(
+                      'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                    ),
+              const SizedBox(height: 8),
+              Text('תאריך: $date'),
+              const SizedBox(height: 8),
+              Text('תרגיל: ${feedback.exercise}'),
+              const SizedBox(height: 8),
+              if (feedback.folder.isNotEmpty) ...[
+                Text('תיקייה: ${feedback.folder}'),
+                const SizedBox(height: 8),
+              ],
+              if (feedback.scenario.isNotEmpty) ...[
+                Text('תרחיש: ${feedback.scenario}'),
+                const SizedBox(height: 8),
+              ],
+              if ((feedback.folderKey == 'shooting_ranges' ||
+                      feedback.folder == 'מטווחי ירי' ||
+                      feedback.module == 'shooting_ranges') &&
+                  feedback.attendeesCount > 0) ...[
+                Text(
+                  'מספר חניכים/נוכחים באימון: ${feedback.attendeesCount}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orangeAccent,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              // Conditional display: "טווח:" for ranges, nothing for surprise drills, "תפקיד:" for others
+              if (feedback.folderKey == 'shooting_ranges' ||
+                  feedback.folderKey == 'ranges_474' ||
+                  feedback.folder == 'מטווחי ירי' ||
+                  feedback.folder == 'מטווחים 474' ||
+                  feedback.module == 'shooting_ranges')
+                Text(
+                  'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
+                )
+              else if (feedback.folder == 'משוב תרגילי הפתעה' ||
+                  feedback.module == 'surprise_drill')
+                const SizedBox.shrink() // No role display for surprise drills
+              else
+                Text('תפקיד: ${feedback.role}'),
+              const SizedBox(height: 8),
+              // Display settlement/name based on feedback type
+              if (feedback.folderKey == 'shooting_ranges' ||
+                  feedback.folder == 'מטווחי ירי' ||
+                  feedback.module == 'shooting_ranges')
+                Text('יישוב: ${feedback.settlement}')
+              else if (feedback.folder == 'משוב תרגילי הפתעה' ||
+                  feedback.module == 'surprise_drill')
+                Text(
+                  'יישוב: ${feedback.name}',
+                ) // For surprise drills, 'name' field contains settlement
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('שם: ${feedback.name}'),
+                    if (feedback.settlement.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('יישוב: ${feedback.settlement}'),
                     ],
-                  ),
-                );
-              })
-            else
-              ...feedback.scores.entries.where((e) => e.value != 0).map((e) {
-                final name = e.key;
-                final score = e.value;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [Text('$name — $score')],
-                  ),
-                );
-              }),
-            const SizedBox(height: 20),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'קריטריונים:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              // show saved criteria names if present, otherwise fall back to scores map (only non-zero)
+              if (feedback.criteriaList.isNotEmpty)
+                ...feedback.criteriaList.map((name) {
+                  final score = feedback.scores[name] ?? '';
+                  final note = feedback.notes[name] ?? '';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$name — $score'),
+                        if (note.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('הערה: $note'),
+                        ],
+                      ],
+                    ),
+                  );
+                })
+              else
+                ...feedback.scores.entries.where((e) => e.value != 0).map((e) {
+                  final name = e.key;
+                  final score = e.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [Text('$name — $score')],
+                    ),
+                  );
+                }),
+              const SizedBox(height: 20),
 
-            // סיכום ופירוט עקרונות למשובי תרגילי הפתעה
-            ...(feedback.folder == 'משוב תרגילי הפתעה' ||
-                        feedback.module == 'surprise_drill') &&
-                    feedback.id != null &&
-                    feedback.id!.isNotEmpty
-                ? <Widget>[
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('feedbacks')
-                          .doc(feedback.id)
-                          .get(),
-                      builder: (context, snapshot) {
-                        debugPrint('\n🔍 SURPRISE DRILLS DETAILS SCREEN');
-                        debugPrint('   Feedback ID: ${feedback.id}');
-                        debugPrint('   Folder: ${feedback.folder}');
-                        debugPrint('   Module: ${feedback.module}');
-                        debugPrint(
-                          '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
-                        );
-
-                        if (!snapshot.hasData || !snapshot.data!.exists) {
-                          debugPrint('   ❌ No snapshot data or doc not exists');
-                          return const SizedBox.shrink();
-                        }
-
-                        final data =
-                            snapshot.data!.data() as Map<String, dynamic>?;
-                        if (data == null) {
-                          debugPrint('   ❌ Snapshot data is null');
-                          return const SizedBox.shrink();
-                        }
-
-                        debugPrint('   ✅ Document keys: ${data.keys.toList()}');
-
-                        final stations =
-                            (data['stations'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                            [];
-                        final trainees =
-                            (data['trainees'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                            [];
-
-                        debugPrint(
-                          '   Stations (principles) count: ${stations.length}',
-                        );
-                        debugPrint('   Trainees count: ${trainees.length}');
-
-                        if (stations.isEmpty && trainees.isEmpty) {
+              // סיכום ופירוט עקרונות למשובי תרגילי הפתעה
+              ...(feedback.folder == 'משוב תרגילי הפתעה' ||
+                          feedback.module == 'surprise_drill') &&
+                      feedback.id != null &&
+                      feedback.id!.isNotEmpty
+                  ? <Widget>[
+                      FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('feedbacks')
+                            .doc(feedback.id)
+                            .get(),
+                        builder: (context, snapshot) {
+                          debugPrint('\n🔍 SURPRISE DRILLS DETAILS SCREEN');
+                          debugPrint('   Feedback ID: ${feedback.id}');
+                          debugPrint('   Folder: ${feedback.folder}');
+                          debugPrint('   Module: ${feedback.module}');
                           debugPrint(
-                            '   ⚠️ Both stations and trainees are empty',
+                            '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
                           );
-                          return const SizedBox.shrink();
-                        }
 
-                        // For surprise drills: stations = principles
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Show principles list
-                            if (stations.isNotEmpty) ...[
-                              const Text(
-                                'עקרונות',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                          if (!snapshot.hasData || !snapshot.data!.exists) {
+                            debugPrint(
+                              '   ❌ No snapshot data or doc not exists',
+                            );
+                            return const SizedBox.shrink();
+                          }
+
+                          final data =
+                              snapshot.data!.data() as Map<String, dynamic>?;
+                          if (data == null) {
+                            debugPrint('   ❌ Snapshot data is null');
+                            return const SizedBox.shrink();
+                          }
+
+                          debugPrint(
+                            '   ✅ Document keys: ${data.keys.toList()}',
+                          );
+
+                          final stations =
+                              (data['stations'] as List?)
+                                  ?.cast<Map<String, dynamic>>() ??
+                              [];
+                          final trainees =
+                              (data['trainees'] as List?)
+                                  ?.cast<Map<String, dynamic>>() ??
+                              [];
+
+                          debugPrint(
+                            '   Stations (principles) count: ${stations.length}',
+                          );
+                          debugPrint('   Trainees count: ${trainees.length}');
+
+                          if (stations.isEmpty && trainees.isEmpty) {
+                            debugPrint(
+                              '   ⚠️ Both stations and trainees are empty',
+                            );
+                            return const SizedBox.shrink();
+                          }
+
+                          // For surprise drills: stations = principles
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Show principles list
+                              if (stations.isNotEmpty) ...[
+                                const Text(
+                                  'עקרונות',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              ...stations.asMap().entries.map((entry) {
-                                final index = entry.key;
-                                final station = entry.value;
-                                final principleName =
-                                    station['name'] ?? 'עיקרון ${index + 1}';
+                                const SizedBox(height: 8),
+                                ...stations.asMap().entries.map((entry) {
+                                  final index = entry.key;
+                                  final station = entry.value;
+                                  final principleName =
+                                      station['name'] ?? 'עיקרון ${index + 1}';
 
-                                return Card(
-                                  color: Colors.blueGrey.shade700,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 32,
-                                          height: 32,
-                                          decoration: const BoxDecoration(
-                                            color: Colors.orangeAccent,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              '${index + 1}',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                  return Card(
+                                    color: Colors.blueGrey.shade700,
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 32,
+                                            height: 32,
+                                            decoration: const BoxDecoration(
+                                              color: Colors.orangeAccent,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '${index + 1}',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Text(
-                                            principleName,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 16,
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              principleName,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 16,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }),
-                              const SizedBox(height: 16),
-                            ],
-
-                            // Show trainees table
-                            if (trainees.isNotEmpty) ...[
-                              const Text(
-                                'חניכים',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Card(
-                                color: Colors.blueGrey.shade800,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: DataTable(
-                                      headingRowColor: WidgetStateProperty.all(
-                                        Colors.blueGrey.shade700,
+                                        ],
                                       ),
-                                      columns: [
-                                        const DataColumn(
-                                          label: Text(
-                                            'שם',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
+                                    ),
+                                  );
+                                }),
+                                const SizedBox(height: 16),
+                              ],
+
+                              // Show trainees table
+                              if (trainees.isNotEmpty) ...[
+                                const Text(
+                                  'חניכים',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Card(
+                                  color: Colors.blueGrey.shade800,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: DataTable(
+                                        headingRowColor:
+                                            WidgetStateProperty.all(
+                                              Colors.blueGrey.shade700,
+                                            ),
+                                        columns: [
+                                          const DataColumn(
+                                            label: Text(
+                                              'שם',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        ...stations.asMap().entries.map((
-                                          entry,
-                                        ) {
-                                          final station = entry.value;
-                                          final name =
-                                              station['name'] ??
-                                              'עיקרון ${entry.key + 1}';
-                                          return DataColumn(
+                                          ...stations.asMap().entries.map((
+                                            entry,
+                                          ) {
+                                            final station = entry.value;
+                                            final name =
+                                                station['name'] ??
+                                                'עיקרון ${entry.key + 1}';
+                                            return DataColumn(
+                                              label: Text(
+                                                name,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                          DataColumn(
                                             label: Text(
-                                              name,
+                                              'ממוצע',
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 color: Colors.white,
                                               ),
                                             ),
-                                          );
-                                        }),
-                                        DataColumn(
-                                          label: Text(
-                                            'ממוצע',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
                                           ),
-                                        ),
-                                      ],
-                                      rows: trainees.map((trainee) {
-                                        final name = (trainee['name'] ?? '')
-                                            .toString();
-                                        final hitsMap =
-                                            (trainee['hits'] as Map?)
-                                                ?.cast<String, dynamic>() ??
-                                            {};
+                                        ],
+                                        rows: trainees.map((trainee) {
+                                          final name = (trainee['name'] ?? '')
+                                              .toString();
+                                          final hitsMap =
+                                              (trainee['hits'] as Map?)
+                                                  ?.cast<String, dynamic>() ??
+                                              {};
 
-                                        // Calculate average of filled criteria (ignore null/empty)
-                                        final filledValues = <int>[];
-                                        for (
-                                          var i = 0;
-                                          i < stations.length;
-                                          i++
-                                        ) {
-                                          final value = hitsMap['station_$i'];
-                                          if (value != null && value is num) {
-                                            final intVal = value.toInt();
-                                            if (intVal > 0) {
-                                              filledValues.add(intVal);
+                                          // Calculate average of filled criteria (ignore null/empty)
+                                          final filledValues = <int>[];
+                                          for (
+                                            var i = 0;
+                                            i < stations.length;
+                                            i++
+                                          ) {
+                                            final value = hitsMap['station_$i'];
+                                            if (value != null && value is num) {
+                                              final intVal = value.toInt();
+                                              if (intVal > 0) {
+                                                filledValues.add(intVal);
+                                              }
                                             }
                                           }
-                                        }
 
-                                        // Calculate average
-                                        String avgDisplay;
-                                        if (filledValues.isEmpty) {
-                                          avgDisplay = '-';
-                                        } else {
-                                          final sum = filledValues.reduce(
-                                            (a, b) => a + b,
-                                          );
-                                          final avg = sum / filledValues.length;
-                                          // Format: integer without decimals, otherwise 1 decimal
-                                          if (avg == avg.toInt()) {
-                                            avgDisplay = avg.toInt().toString();
+                                          // Calculate average
+                                          String avgDisplay;
+                                          if (filledValues.isEmpty) {
+                                            avgDisplay = '-';
                                           } else {
-                                            avgDisplay = avg.toStringAsFixed(1);
+                                            final sum = filledValues.reduce(
+                                              (a, b) => a + b,
+                                            );
+                                            final avg =
+                                                sum / filledValues.length;
+                                            // Format: integer without decimals, otherwise 1 decimal
+                                            if (avg == avg.toInt()) {
+                                              avgDisplay = avg
+                                                  .toInt()
+                                                  .toString();
+                                            } else {
+                                              avgDisplay = avg.toStringAsFixed(
+                                                1,
+                                              );
+                                            }
                                           }
-                                        }
 
-                                        return DataRow(
-                                          cells: [
-                                            DataCell(
-                                              Text(
-                                                name,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                            ...stations.asMap().entries.map((
-                                              entry,
-                                            ) {
-                                              final stationIdx = entry.key;
-                                              final score =
-                                                  (hitsMap['station_$stationIdx']
-                                                          as num?)
-                                                      ?.toInt() ??
-                                                  0;
-                                              return DataCell(
+                                          return DataRow(
+                                            cells: [
+                                              DataCell(
                                                 Text(
-                                                  score.toString(),
+                                                  name,
                                                   style: const TextStyle(
                                                     color: Colors.white,
                                                   ),
                                                 ),
-                                              );
-                                            }),
-                                            DataCell(
-                                              Text(
-                                                avgDisplay,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.orangeAccent,
+                                              ),
+                                              ...stations.asMap().entries.map((
+                                                entry,
+                                              ) {
+                                                final stationIdx = entry.key;
+                                                final score =
+                                                    (hitsMap['station_$stationIdx']
+                                                            as num?)
+                                                        ?.toInt() ??
+                                                    0;
+                                                return DataCell(
+                                                  Text(
+                                                    score.toString(),
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                );
+                                              }),
+                                              DataCell(
+                                                Text(
+                                                  avgDisplay,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.orangeAccent,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          ],
-                                        );
-                                      }).toList(),
+                                            ],
+                                          );
+                                        }).toList(),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
-                          ],
-                        );
-                      },
-                    ),
-                  ]
-                : [],
+                          );
+                        },
+                      ),
+                    ]
+                  : [],
 
-            // סיכום ופירוט מקצים למשובי מטווחים 474
-            ...is474Ranges && feedback.id != null && feedback.id!.isNotEmpty
-                ? <Widget>[
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('feedbacks')
-                          .doc(feedback.id)
-                          .get(),
-                      builder: (context, snapshot) {
-                        debugPrint('\n🔍 474 RANGES DETAILS SCREEN');
-                        debugPrint('   Feedback ID: ${feedback.id}');
-                        debugPrint('   Folder: ${feedback.folder}');
-                        debugPrint('   FolderKey: ${feedback.folderKey}');
-                        debugPrint(
-                          '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
-                        );
-
-                        // ✅ DEBUG: Log fetched document path for טווח רחוק bug verification
-                        final debugFeedbackType = feedback.type;
-                        final debugRangeSubType = feedback.rangeSubType;
-                        final debugIsLongRange =
-                            debugFeedbackType == 'range_long' ||
-                            debugFeedbackType == 'דווח רחוק' ||
-                            debugRangeSubType == 'טווח רחוק';
-                        if (debugIsLongRange) {
+              // סיכום ופירוט מקצים למשובי מטווחים 474
+              ...is474Ranges && feedback.id != null && feedback.id!.isNotEmpty
+                  ? <Widget>[
+                      FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('feedbacks')
+                            .doc(feedback.id)
+                            .get(),
+                        builder: (context, snapshot) {
+                          debugPrint('\n🔍 474 RANGES DETAILS SCREEN');
+                          debugPrint('   Feedback ID: ${feedback.id}');
+                          debugPrint('   Folder: ${feedback.folder}');
+                          debugPrint('   FolderKey: ${feedback.folderKey}');
                           debugPrint(
-                            '🔍 טווח רחוק FETCHED: collection=feedbacks, docId=${feedback.id}',
+                            '   Has data: ${snapshot.hasData}, Exists: ${snapshot.data?.exists}',
                           );
-                          debugPrint('   Path: feedbacks/${feedback.id}');
-                          debugPrint(
-                            '   Document exists: ${snapshot.data?.exists}',
-                          );
-                          debugPrint(
-                            '   feedbackType: $debugFeedbackType, rangeSubType: $debugRangeSubType',
-                          );
-                        }
 
-                        if (!snapshot.hasData || !snapshot.data!.exists) {
-                          debugPrint('   ❌ No snapshot data or doc not exists');
-                          return const SizedBox.shrink();
-                        }
-
-                        final data =
-                            snapshot.data!.data() as Map<String, dynamic>?;
-                        if (data == null) {
-                          debugPrint('   ❌ Snapshot data is null');
-                          return const SizedBox.shrink();
-                        }
-
-                        debugPrint('   ✅ Document keys: ${data.keys.toList()}');
-
-                        final stations =
-                            (data['stations'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                            [];
-                        final trainees =
-                            (data['trainees'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                            [];
-
-                        debugPrint('   Stations count: ${stations.length}');
-                        debugPrint('   Trainees count: ${trainees.length}');
-
-                        if (trainees.isNotEmpty) {
-                          final firstTrainee = trainees[0];
-                          final firstTraineeHits = firstTrainee['hits'] ?? {};
-                          debugPrint(
-                            '   First trainee: ${firstTrainee['name']}',
-                          );
-                          debugPrint(
-                            '   First trainee hits keys: ${firstTraineeHits is Map ? firstTraineeHits.keys.toList() : 'Not a map'}',
-                          );
-                        }
-
-                        if (stations.isEmpty || trainees.isEmpty) {
-                          debugPrint(
-                            '   ⚠️ Either stations or trainees are empty',
-                          );
-                          return Card(
-                            color: Colors.blueGrey.shade800,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                children: [
-                                  const Text(
-                                    'מטווח 474 - אין נתונים מפורטים',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'מקצים: ${stations.length}, חניכים: ${trainees.length}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-
-                        // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
-                        final feedbackType =
-                            (data['feedbackType'] as String?) ?? '';
-                        final rangeSubType =
-                            (data['rangeSubType'] as String?) ?? '';
-                        final isLongRange =
-                            feedbackType == 'range_long' ||
-                            feedbackType == 'דווח רחוק' ||
-                            rangeSubType == 'טווח רחוק';
-
-                        debugPrint(
-                          '\n🔍 ===== 474 RANGES FEEDBACK DETAILS =====',
-                        );
-                        debugPrint('   Feedback ID: ${feedback.id}');
-                        debugPrint('   feedbackType: $feedbackType');
-                        debugPrint('   rangeSubType: $rangeSubType');
-                        debugPrint('   isLongRange: $isLongRange');
-                        debugPrint(
-                          '   trainees.length (N): ${trainees.length}',
-                        );
-                        debugPrint('   stations.length: ${stations.length}');
-
-                        // ✅ AUTO-MIGRATE: Fix old long-range feedbacks missing maxScorePoints
-                        bool needsMigration = false;
-                        if (isLongRange) {
-                          for (int i = 0; i < stations.length; i++) {
-                            final station = stations[i];
-                            final maxScorePoints = station['maxScorePoints'];
-                            if (maxScorePoints == null) {
-                              needsMigration = true;
-                              // Use legacy maxPoints if exists, else 0 (NEVER default to 10)
-                              final legacyMaxPoints =
-                                  (station['maxPoints'] as num?)?.toInt() ?? 0;
-                              stations[i]['maxScorePoints'] = legacyMaxPoints;
-                              debugPrint(
-                                '   🔧 MIGRATION: station[$i] missing maxScorePoints, set to $legacyMaxPoints (from legacy maxPoints)',
-                              );
-                            }
-                          }
-
-                          if (needsMigration && feedback.id != null) {
+                          // ✅ DEBUG: Log fetched document path for טווח רחוק bug verification
+                          final debugFeedbackType = feedback.type;
+                          final debugRangeSubType = feedback.rangeSubType;
+                          final debugIsLongRange =
+                              debugFeedbackType == 'range_long' ||
+                              debugFeedbackType == 'דווח רחוק' ||
+                              debugRangeSubType == 'טווח רחוק';
+                          if (debugIsLongRange) {
                             debugPrint(
-                              '   💾 MIGRATION: Writing corrected stations to Firestore...',
+                              '🔍 טווח רחוק FETCHED: collection=feedbacks, docId=${feedback.id}',
                             );
-                            // Schedule migration outside builder to avoid async in sync context
-                            Future.microtask(() async {
-                              try {
-                                await FirebaseFirestore.instance
-                                    .collection('feedbacks')
-                                    .doc(feedback.id)
-                                    .update({'stations': stations});
-                                debugPrint(
-                                  '   ✅ MIGRATION: Stations updated in Firestore',
-                                );
-                              } catch (e) {
-                                debugPrint('   ❌ MIGRATION ERROR: $e');
-                              }
-                            });
-                          }
-                        }
-
-                        // ✅ CONDITIONAL LOGIC: Points for long range, hits for short range
-                        int totalValue = 0;
-                        int totalMax = 0;
-
-                        if (isLongRange) {
-                          // LONG RANGE: Use points-based calculation
-                          debugPrint(
-                            '\n   📊 LONG RANGE CALCULATION (POINTS):',
-                          );
-
-                          // Sum achieved points from trainees
-                          for (final trainee in trainees) {
-                            final traineePoints =
-                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
-                            totalValue += traineePoints;
-                          }
-
-                          // Calculate totalMax from N * SUM(maxScorePoints)
-                          int sumMaxScorePoints = 0;
-                          for (int i = 0; i < stations.length; i++) {
-                            final station = stations[i];
-                            final stageName = station['name'] ?? 'Stage $i';
-                            final maxScorePoints =
-                                (station['maxScorePoints'] as num?)?.toInt() ??
-                                0;
-                            final legacyMaxPoints =
-                                (station['maxPoints'] as num?)?.toInt() ?? 0;
-                            final bulletsTracking =
-                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
-
-                            debugPrint('   Stage[$i]: "$stageName"');
-                            debugPrint('      maxScorePoints: $maxScorePoints');
+                            debugPrint('   Path: feedbacks/${feedback.id}');
                             debugPrint(
-                              '      legacy maxPoints: $legacyMaxPoints',
+                              '   Document exists: ${snapshot.data?.exists}',
                             );
                             debugPrint(
-                              '      bulletsTracking: $bulletsTracking',
+                              '   feedbackType: $debugFeedbackType, rangeSubType: $debugRangeSubType',
+                            );
+                          }
+
+                          if (!snapshot.hasData || !snapshot.data!.exists) {
+                            debugPrint(
+                              '   ❌ No snapshot data or doc not exists',
+                            );
+                            return const SizedBox.shrink();
+                          }
+
+                          final data =
+                              snapshot.data!.data() as Map<String, dynamic>?;
+                          if (data == null) {
+                            debugPrint('   ❌ Snapshot data is null');
+                            return const SizedBox.shrink();
+                          }
+
+                          debugPrint(
+                            '   ✅ Document keys: ${data.keys.toList()}',
+                          );
+
+                          final stations =
+                              (data['stations'] as List?)
+                                  ?.cast<Map<String, dynamic>>() ??
+                              [];
+                          final trainees =
+                              (data['trainees'] as List?)
+                                  ?.cast<Map<String, dynamic>>() ??
+                              [];
+
+                          debugPrint('   Stations count: ${stations.length}');
+                          debugPrint('   Trainees count: ${trainees.length}');
+
+                          if (trainees.isNotEmpty) {
+                            final firstTrainee = trainees[0];
+                            final firstTraineeHits = firstTrainee['hits'] ?? {};
+                            debugPrint(
+                              '   First trainee: ${firstTrainee['name']}',
                             );
                             debugPrint(
-                              '      ✅ USED maxScorePoints: $maxScorePoints',
+                              '   First trainee hits keys: ${firstTraineeHits is Map ? firstTraineeHits.keys.toList() : 'Not a map'}',
                             );
-
-                            sumMaxScorePoints += maxScorePoints;
                           }
 
-                          totalMax = trainees.length * sumMaxScorePoints;
-                          debugPrint('\n   📐 TOTAL MAX CALCULATION:');
-                          debugPrint('      N (trainees): ${trainees.length}');
-                          debugPrint(
-                            '      SUM(maxScorePoints): $sumMaxScorePoints',
-                          );
-                          debugPrint(
-                            '      totalMax = N × SUM = ${trainees.length} × $sumMaxScorePoints = $totalMax',
-                          );
-                          debugPrint(
-                            '      totalValue (achieved): $totalValue',
-                          );
-                          debugPrint('      RESULT: $totalValue / $totalMax');
-                        } else {
-                          // SHORT RANGE: Use hits/bullets (existing logic)
-                          for (final trainee in trainees) {
-                            totalValue +=
-                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
-                          }
-                          int totalBulletsPerTrainee = 0;
-                          for (final station in stations) {
-                            totalBulletsPerTrainee +=
-                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                          }
-                          totalMax = trainees.length * totalBulletsPerTrainee;
-                        }
-
-                        // חישוב אחוז כללי
-                        final percentage = totalMax > 0
-                            ? ((totalValue / totalMax) * 100).toStringAsFixed(1)
-                            : '0.0';
-
-                        // ✅ LONG RANGE: Calculate total bullets fired (tracking only)
-                        int totalBulletsFired = 0;
-                        if (isLongRange) {
-                          for (final station in stations) {
-                            final bulletsTracking =
-                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                            totalBulletsFired +=
-                                bulletsTracking * trainees.length;
-                          }
-                        }
-
-                        debugPrint(
-                          '🔍 ===== END 474 RANGES FEEDBACK DETAILS =====\n',
-                        );
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // כרטיס סיכום כללי למטווח 474
-                            Card(
+                          if (stations.isEmpty || trainees.isEmpty) {
+                            debugPrint(
+                              '   ⚠️ Either stations or trainees are empty',
+                            );
+                            return Card(
                               color: Colors.blueGrey.shade800,
                               child: Padding(
                                 padding: const EdgeInsets.all(16.0),
                                 child: Column(
                                   children: [
                                     const Text(
-                                      'סיכום כללי - מטווח 474',
+                                      'מטווח 474 - אין נתונים מפורטים',
                                       style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
-                                    // ✅ LONG RANGE: Show points, percentage, and bullets fired
-                                    isLongRange
-                                        ? Column(
-                                            children: [
-                                              // Points display
-                                              Text(
-                                                'סך נקודות',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  color: Colors.white70,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                '$totalValue / $totalMax',
-                                                style: const TextStyle(
-                                                  fontSize: 32,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.orangeAccent,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              // Percentage (from points only)
-                                              Text(
-                                                '$percentage%',
-                                                style: const TextStyle(
-                                                  fontSize: 24,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.greenAccent,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              const Text(
-                                                'אחוז הצלחה',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.white60,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              // Total bullets fired (tracking only)
-                                              Text(
-                                                'סה"כ כדורים שנורו: $totalBulletsFired',
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.white70,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceAround,
-                                            children: [
-                                              Column(
-                                                children: [
-                                                  const Text(
-                                                    'סך פגיעות/כדורים',
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    '$totalValue/$totalMax',
-                                                    style: const TextStyle(
-                                                      fontSize: 24,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color:
-                                                          Colors.orangeAccent,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              Column(
-                                                children: [
-                                                  const Text('אחוז פגיעה כללי'),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    '$percentage%',
-                                                    style: const TextStyle(
-                                                      fontSize: 32,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.greenAccent,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'מקצים: ${stations.length}, חניכים: ${trainees.length}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
+                            );
+                          }
 
-                            // פירוט מקצים למטווח 474
-                            const Text(
-                              'פירוט מקצים',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                          // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
+                          final feedbackType =
+                              (data['feedbackType'] as String?) ?? '';
+                          final rangeSubType =
+                              (data['rangeSubType'] as String?) ?? '';
+                          final isLongRange =
+                              feedbackType == 'range_long' ||
+                              feedbackType == 'דווח רחוק' ||
+                              rangeSubType == 'טווח רחוק';
 
-                            ...stations.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final station = entry.value;
-                              final stationName =
-                                  station['name'] ?? 'מקצה ${index + 1}';
+                          debugPrint(
+                            '\n🔍 ===== 474 RANGES FEEDBACK DETAILS =====',
+                          );
+                          debugPrint('   Feedback ID: ${feedback.id}');
+                          debugPrint('   feedbackType: $feedbackType');
+                          debugPrint('   rangeSubType: $rangeSubType');
+                          debugPrint('   isLongRange: $isLongRange');
+                          debugPrint(
+                            '   trainees.length (N): ${trainees.length}',
+                          );
+                          debugPrint('   stations.length: ${stations.length}');
 
-                              // ✅ CONDITIONAL: For long range use maxScorePoints, for short use bullets
-                              final stationMaxPerTrainee = isLongRange
-                                  ? ((station['maxScorePoints'] as num?)
-                                            ?.toInt() ??
-                                        0)
-                                  : ((station['bulletsCount'] as num?)
-                                            ?.toInt() ??
-                                        0);
-
-                              // חישוב סך פגיעות/נקודות למקצה
-                              int stationValue = 0;
-                              for (final trainee in trainees) {
-                                final hits =
-                                    trainee['hits'] as Map<String, dynamic>?;
-                                if (hits != null) {
-                                  stationValue +=
-                                      (hits['station_$index'] as num?)
-                                          ?.toInt() ??
-                                      0;
-                                }
+                          // ✅ AUTO-MIGRATE: Fix old long-range feedbacks missing maxScorePoints
+                          bool needsMigration = false;
+                          if (isLongRange) {
+                            for (int i = 0; i < stations.length; i++) {
+                              final station = stations[i];
+                              final maxScorePoints = station['maxScorePoints'];
+                              if (maxScorePoints == null) {
+                                needsMigration = true;
+                                // Use legacy maxPoints if exists, else 0 (NEVER default to 10)
+                                final legacyMaxPoints =
+                                    (station['maxPoints'] as num?)?.toInt() ??
+                                    0;
+                                stations[i]['maxScorePoints'] = legacyMaxPoints;
+                                debugPrint(
+                                  '   🔧 MIGRATION: station[$i] missing maxScorePoints, set to $legacyMaxPoints (from legacy maxPoints)',
+                                );
                               }
+                            }
 
-                              // חישוב נכון: מספר חניכים × max per trainee
-                              final totalStationMax =
-                                  trainees.length * stationMaxPerTrainee;
-
-                              // חישוב אחוז פגיעות למקצה
-                              final stationPercentage = totalStationMax > 0
-                                  ? ((stationValue / totalStationMax) * 100)
-                                        .toStringAsFixed(1)
-                                  : '0.0';
-
-                              // ✅ LONG RANGE: Calculate stage bullets fired (tracking only)
-                              final stageBulletsFired = isLongRange
-                                  ? ((station['bulletsCount'] as num?)
-                                                ?.toInt() ??
-                                            0) *
-                                        trainees.length
-                                  : 0;
-
-                              return InkWell(
-                                onTap: () {
-                                  // For long range: pass maxPoints instead of bullets
-                                  final modalMaxValue = isLongRange
-                                      ? stationMaxPerTrainee
-                                      : stationMaxPerTrainee;
-                                  _showStationDetailsModal(
-                                    context,
-                                    index,
-                                    stationName.toString(),
-                                    modalMaxValue,
-                                    trainees,
+                            if (needsMigration && feedback.id != null) {
+                              debugPrint(
+                                '   💾 MIGRATION: Writing corrected stations to Firestore...',
+                              );
+                              // Schedule migration outside builder to avoid async in sync context
+                              Future.microtask(() async {
+                                try {
+                                  await FirebaseFirestore.instance
+                                      .collection('feedbacks')
+                                      .doc(feedback.id)
+                                      .update({'stations': stations});
+                                  debugPrint(
+                                    '   ✅ MIGRATION: Stations updated in Firestore',
                                   );
-                                },
-                                child: Card(
-                                  color: Colors.blueGrey.shade700,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // שורה 1: שם המקצה
-                                        Text(
-                                          stationName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
+                                } catch (e) {
+                                  debugPrint('   ❌ MIGRATION ERROR: $e');
+                                }
+                              });
+                            }
+                          }
+
+                          // ✅ CONDITIONAL LOGIC: Points for long range, hits for short range
+                          int totalValue = 0;
+                          int totalMax = 0;
+
+                          if (isLongRange) {
+                            // LONG RANGE: Use points-based calculation
+                            debugPrint(
+                              '\n   📊 LONG RANGE CALCULATION (POINTS):',
+                            );
+
+                            // Sum achieved points from trainees
+                            for (final trainee in trainees) {
+                              final traineePoints =
+                                  (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                              totalValue += traineePoints;
+                            }
+
+                            // Calculate totalMax from N * SUM(maxScorePoints)
+                            int sumMaxScorePoints = 0;
+                            for (int i = 0; i < stations.length; i++) {
+                              final station = stations[i];
+                              final stageName = station['name'] ?? 'Stage $i';
+                              final maxScorePoints =
+                                  (station['maxScorePoints'] as num?)
+                                      ?.toInt() ??
+                                  0;
+                              final legacyMaxPoints =
+                                  (station['maxPoints'] as num?)?.toInt() ?? 0;
+                              final bulletsTracking =
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+
+                              debugPrint('   Stage[$i]: "$stageName"');
+                              debugPrint(
+                                '      maxScorePoints: $maxScorePoints',
+                              );
+                              debugPrint(
+                                '      legacy maxPoints: $legacyMaxPoints',
+                              );
+                              debugPrint(
+                                '      bulletsTracking: $bulletsTracking',
+                              );
+                              debugPrint(
+                                '      ✅ USED maxScorePoints: $maxScorePoints',
+                              );
+
+                              sumMaxScorePoints += maxScorePoints;
+                            }
+
+                            totalMax = trainees.length * sumMaxScorePoints;
+                            debugPrint('\n   📐 TOTAL MAX CALCULATION:');
+                            debugPrint(
+                              '      N (trainees): ${trainees.length}',
+                            );
+                            debugPrint(
+                              '      SUM(maxScorePoints): $sumMaxScorePoints',
+                            );
+                            debugPrint(
+                              '      totalMax = N × SUM = ${trainees.length} × $sumMaxScorePoints = $totalMax',
+                            );
+                            debugPrint(
+                              '      totalValue (achieved): $totalValue',
+                            );
+                            debugPrint('      RESULT: $totalValue / $totalMax');
+                          } else {
+                            // SHORT RANGE: Use hits/bullets (existing logic)
+                            for (final trainee in trainees) {
+                              totalValue +=
+                                  (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                            }
+                            int totalBulletsPerTrainee = 0;
+                            for (final station in stations) {
+                              totalBulletsPerTrainee +=
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+                            }
+                            totalMax = trainees.length * totalBulletsPerTrainee;
+                          }
+
+                          // חישוב אחוז כללי
+                          final percentage = totalMax > 0
+                              ? ((totalValue / totalMax) * 100).toStringAsFixed(
+                                  1,
+                                )
+                              : '0.0';
+
+                          // ✅ LONG RANGE: Calculate total bullets fired (tracking only)
+                          int totalBulletsFired = 0;
+                          if (isLongRange) {
+                            for (final station in stations) {
+                              final bulletsTracking =
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+                              totalBulletsFired +=
+                                  bulletsTracking * trainees.length;
+                            }
+                          }
+
+                          debugPrint(
+                            '🔍 ===== END 474 RANGES FEEDBACK DETAILS =====\n',
+                          );
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // כרטיס סיכום כללי למטווח 474
+                              Card(
+                                color: Colors.blueGrey.shade800,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Column(
+                                    children: [
+                                      const Text(
+                                        'סיכום כללי - מטווח 474',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
                                         ),
-                                        const SizedBox(height: 8),
-                                        // מדדים מרוכזים בשורה אחת
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceEvenly,
-                                          children: [
-                                            // סך כל כדורים/נקודות מקסימליות
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // ✅ LONG RANGE: Show points, percentage, and bullets fired
+                                      isLongRange
+                                          ? Column(
                                               children: [
+                                                // Points display
                                                 Text(
-                                                  '$totalStationMax',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.white70,
+                                                  'סך נקודות',
+                                                  style: TextStyle(
                                                     fontSize: 16,
+                                                    color: Colors.white70,
                                                   ),
                                                 ),
+                                                const SizedBox(height: 8),
                                                 Text(
-                                                  isLongRange
-                                                      ? 'סך נקודות מקס'
-                                                      : 'סך כל כדורים',
+                                                  '$totalValue / $totalMax',
                                                   style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // סך כל פגיעות/נקודות
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  '$stationValue',
-                                                  style: const TextStyle(
+                                                    fontSize: 32,
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.orangeAccent,
-                                                    fontSize: 16,
                                                   ),
                                                 ),
+                                                const SizedBox(height: 8),
+                                                // Percentage (from points only)
                                                 Text(
-                                                  isLongRange
-                                                      ? 'סך נקודות'
-                                                      : 'סך כל פגיעות',
+                                                  '$percentage%',
                                                   style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // אחוז - SHOW FOR BOTH (from points for long, from hits for short)
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  '$stationPercentage%',
-                                                  style: const TextStyle(
-                                                    fontSize: 18,
+                                                    fontSize: 24,
                                                     fontWeight: FontWeight.bold,
                                                     color: Colors.greenAccent,
                                                   ),
                                                 ),
-                                                Text(
-                                                  isLongRange
-                                                      ? 'אחוז הצלחה'
-                                                      : 'אחוז פגיעות',
-                                                  style: const TextStyle(
+                                                const SizedBox(height: 4),
+                                                const Text(
+                                                  'אחוז הצלחה',
+                                                  style: TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.white60,
                                                   ),
                                                 ),
+                                                const SizedBox(height: 12),
+                                                // Total bullets fired (tracking only)
+                                                Text(
+                                                  'סה"כ כדורים שנורו: $totalBulletsFired',
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.white70,
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.spaceAround,
+                                              children: [
+                                                Column(
+                                                  children: [
+                                                    const Text(
+                                                      'סך פגיעות/כדורים',
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '$totalValue/$totalMax',
+                                                      style: const TextStyle(
+                                                        fontSize: 24,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.orangeAccent,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                Column(
+                                                  children: [
+                                                    const Text(
+                                                      'אחוז פגיעה כללי',
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '$percentage%',
+                                                      style: const TextStyle(
+                                                        fontSize: 32,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.greenAccent,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ],
                                             ),
-                                          ],
-                                        ),
-                                        // ✅ LONG RANGE: Show bullets fired for this stage
-                                        if (isLongRange &&
-                                            stageBulletsFired > 0) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'כדורים שנורו במקצה: $stageBulletsFired',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.white60,
-                                              fontStyle: FontStyle.italic,
-                                            ),
-                                          ),
-                                        ],
-                                        const SizedBox(height: 6),
-                                        const Text(
-                                          'לחץ לפרטי החניכים במקצה',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.white70,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            }),
-                          ],
-                        );
-                      },
-                    ),
-                  ]
-                : [],
+                              ),
+                              const SizedBox(height: 16),
 
-            // סיכום ופירוט מקצים למשובי מטווחים
-            ...feedback.folder == 'מטווחי ירי' &&
-                    feedback.id != null &&
-                    feedback.id!.isNotEmpty
-                ? <Widget>[
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('feedbacks')
-                          .doc(feedback.id)
-                          .get(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData || !snapshot.data!.exists) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final data =
-                            snapshot.data!.data() as Map<String, dynamic>?;
-                        if (data == null) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final stations =
-                            (data['stations'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                            [];
-                        final trainees =
-                            (data['trainees'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                            [];
-
-                        if (stations.isEmpty || trainees.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-
-                        // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
-                        final feedbackType =
-                            (data['feedbackType'] as String?) ?? '';
-                        final rangeSubType =
-                            (data['rangeSubType'] as String?) ?? '';
-                        final isLongRange =
-                            feedbackType == 'range_long' ||
-                            feedbackType == 'דווח רחוק' ||
-                            rangeSubType == 'טווח רחוק';
-
-                        // ✅ CONDITIONAL LOGIC: Points for long range, hits for short range
-                        int totalValue = 0;
-                        int totalMax = 0;
-
-                        if (isLongRange) {
-                          // LONG RANGE: Use points (raw values as stored)
-                          for (final trainee in trainees) {
-                            totalValue +=
-                                (trainee['totalHits'] as num?)?.toInt() ??
-                                0; // Raw points stored in totalHits
-                          }
-                          // Sum maxPoints from stations
-                          for (final station in stations) {
-                            final stationMaxPoints =
-                                (station['maxPoints'] as num?)?.toInt() ?? 0;
-                            totalMax += stationMaxPoints * trainees.length;
-                          }
-                        } else {
-                          // SHORT RANGE: Use hits/bullets (existing logic)
-                          for (final trainee in trainees) {
-                            totalValue +=
-                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
-                          }
-                          // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
-                          int totalBulletsPerTrainee = 0;
-                          for (final station in stations) {
-                            totalBulletsPerTrainee +=
-                                (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                          }
-                          totalMax = trainees.length * totalBulletsPerTrainee;
-                        }
-
-                        // חישוב אחוז כללי
-                        final percentage = totalMax > 0
-                            ? ((totalValue / totalMax) * 100).toStringAsFixed(1)
-                            : '0.0';
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // כרטיס סיכום כללי
-                            Card(
-                              color: Colors.blueGrey.shade800,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  children: [
-                                    const Text(
-                                      'סיכום כללי',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // ✅ LONG RANGE: Show ONLY points, NO percentage
-                                    isLongRange
-                                        ? Column(
-                                            children: [
-                                              const Text(
-                                                'סך נקודות',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  color: Colors.white70,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                '$totalValue / $totalMax',
-                                                style: const TextStyle(
-                                                  fontSize: 32,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.orangeAccent,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              const Text(
-                                                'נקודות',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.white60,
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceAround,
-                                            children: [
-                                              Column(
-                                                children: [
-                                                  const Text(
-                                                    'סך פגיעות/כדורים',
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    '$totalValue/$totalMax',
-                                                    style: const TextStyle(
-                                                      fontSize: 24,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color:
-                                                          Colors.orangeAccent,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              Column(
-                                                children: [
-                                                  const Text('אחוז פגיעה כללי'),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    '$percentage%',
-                                                    style: const TextStyle(
-                                                      fontSize: 32,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.greenAccent,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                  ],
+                              // פירוט מקצים למטווח 474
+                              const Text(
+                                'פירוט מקצים',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
+                              const SizedBox(height: 8),
 
-                            // פירוט מקצים
-                            const Text(
-                              'פירוט מקצים',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                              ...stations.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final station = entry.value;
+                                final stationName =
+                                    station['name'] ?? 'מקצה ${index + 1}';
 
-                            ...stations.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final station = entry.value;
-                              final stationName =
-                                  station['name'] ?? 'מקצה ${index + 1}';
+                                // ✅ CONDITIONAL: For long range use maxScorePoints, for short use bullets
+                                final stationMaxPerTrainee = isLongRange
+                                    ? ((station['maxScorePoints'] as num?)
+                                              ?.toInt() ??
+                                          0)
+                                    : ((station['bulletsCount'] as num?)
+                                              ?.toInt() ??
+                                          0);
 
-                              // ✅ CONDITIONAL: Points for long range, hits for short range
-                              int stationValue = 0;
-                              int stationMax = 0;
-
-                              if (isLongRange) {
-                                // LONG RANGE: Use points (raw values)
-                                for (final trainee in trainees) {
-                                  final hits =
-                                      trainee['hits'] as Map<String, dynamic>?;
-                                  if (hits != null) {
-                                    stationValue +=
-                                        (hits['station_$index'] as num?)
-                                            ?.toInt() ??
-                                        0; // Raw points stored in hits map
-                                  }
-                                }
-                                // Use maxPoints from station
-                                final maxPoints =
-                                    (station['maxPoints'] as num?)?.toInt() ??
-                                    0;
-                                stationMax = trainees.length * maxPoints;
-                              } else {
-                                // SHORT RANGE: Use hits/bullets
-                                final stationBulletsPerTrainee =
-                                    (station['bulletsCount'] as num?)
-                                        ?.toInt() ??
-                                    0;
-
+                                // חישוב סך פגיעות/נקודות למקצה
+                                int stationValue = 0;
                                 for (final trainee in trainees) {
                                   final hits =
                                       trainee['hits'] as Map<String, dynamic>?;
@@ -5745,108 +5394,113 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   }
                                 }
 
-                                // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
-                                stationMax =
-                                    trainees.length * stationBulletsPerTrainee;
-                              }
+                                // חישוב נכון: מספר חניכים × max per trainee
+                                final totalStationMax =
+                                    trainees.length * stationMaxPerTrainee;
 
-                              // חישוב אחוז
-                              final stationPercentage = stationMax > 0
-                                  ? ((stationValue / stationMax) * 100)
-                                        .toStringAsFixed(1)
-                                  : '0.0';
+                                // חישוב אחוז פגיעות למקצה
+                                final stationPercentage = totalStationMax > 0
+                                    ? ((stationValue / totalStationMax) * 100)
+                                          .toStringAsFixed(1)
+                                    : '0.0';
 
-                              return InkWell(
-                                onTap: () {
-                                  // For long range: pass maxPoints instead of bullets
-                                  final modalMaxValue = isLongRange
-                                      ? ((station['maxPoints'] as num?)
-                                                ?.toInt() ??
-                                            0)
-                                      : (trainees.isNotEmpty
-                                            ? (stationMax ~/ trainees.length)
-                                            : 0);
-                                  _showStationDetailsModal(
-                                    context,
-                                    index,
-                                    stationName.toString(),
-                                    modalMaxValue,
-                                    trainees,
-                                  );
-                                },
-                                child: Card(
-                                  color: Colors.blueGrey.shade700,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // שורה 1: שם המקצה
-                                        Text(
-                                          stationName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
+                                // ✅ LONG RANGE: Calculate stage bullets fired (tracking only)
+                                final stageBulletsFired = isLongRange
+                                    ? ((station['bulletsCount'] as num?)
+                                                  ?.toInt() ??
+                                              0) *
+                                          trainees.length
+                                    : 0;
+
+                                return InkWell(
+                                  onTap: () {
+                                    // For long range: pass maxPoints instead of bullets
+                                    final modalMaxValue = isLongRange
+                                        ? stationMaxPerTrainee
+                                        : stationMaxPerTrainee;
+                                    _showStationDetailsModal(
+                                      context,
+                                      index,
+                                      stationName.toString(),
+                                      modalMaxValue,
+                                      trainees,
+                                    );
+                                  },
+                                  child: Card(
+                                    color: Colors.blueGrey.shade700,
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // שורה 1: שם המקצה
+                                          Text(
+                                            stationName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        // מדדים מרוכזים בשורה אחת
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceEvenly,
-                                          children: [
-                                            // סך כל כדורים/נקודות מקסימליות
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  '$stationMax',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.white70,
-                                                    fontSize: 16,
+                                          const SizedBox(height: 8),
+                                          // מדדים מרוכזים בשורה אחת
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceEvenly,
+                                            children: [
+                                              // סך כל כדורים/נקודות מקסימליות
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    '$totalStationMax',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.white70,
+                                                      fontSize: 16,
+                                                    ),
                                                   ),
-                                                ),
-                                                Text(
-                                                  isLongRange
-                                                      ? 'סך נקודות מקס'
-                                                      : 'סך כל כדורים',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
+                                                  Text(
+                                                    isLongRange
+                                                        ? 'סך נקודות מקס'
+                                                        : 'סך כל כדורים',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                            // סך כל פגיעות/נקודות
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  '$stationValue',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.orangeAccent,
-                                                    fontSize: 16,
+                                                ],
+                                              ),
+                                              // סך כל פגיעות/נקודות
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    '$stationValue',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                      fontSize: 16,
+                                                    ),
                                                   ),
-                                                ),
-                                                Text(
-                                                  isLongRange
-                                                      ? 'סך נקודות'
-                                                      : 'סך כל פגיעות',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
+                                                  Text(
+                                                    isLongRange
+                                                        ? 'סך נקודות'
+                                                        : 'סך כל פגיעות',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                            // אחוז פגיעות/נקודות - HIDE FOR LONG RANGE
-                                            if (!isLongRange)
+                                                ],
+                                              ),
+                                              // אחוז - SHOW FOR BOTH (from points for long, from hits for short)
                                               Column(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.center,
@@ -5860,368 +5514,776 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                       color: Colors.greenAccent,
                                                     ),
                                                   ),
-                                                  const Text(
-                                                    'אחוז פגיעות',
-                                                    style: TextStyle(
+                                                  Text(
+                                                    isLongRange
+                                                        ? 'אחוז הצלחה'
+                                                        : 'אחוז פגיעות',
+                                                    style: const TextStyle(
                                                       fontSize: 12,
                                                       color: Colors.white60,
                                                     ),
                                                   ),
                                                 ],
                                               ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 6),
-                                        const Text(
-                                          'לחץ לפרטי החניכים במקצה',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.white70,
+                                            ],
                                           ),
-                                        ),
-                                      ],
+                                          // ✅ LONG RANGE: Show bullets fired for this stage
+                                          if (isLongRange &&
+                                              stageBulletsFired > 0) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'כדורים שנורו במקצה: $stageBulletsFired',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white60,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 6),
+                                          const Text(
+                                            'לחץ לפרטי החניכים במקצה',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            }),
-                          ],
-                        );
-                      },
-                    ),
-                  ]
-                : <Widget>[
-                    Builder(
-                      builder: (ctx) {
-                        final scores = feedback.scores.values
-                            .where((v) => v > 0)
-                            .toList();
-                        if (scores.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-                        final avg =
-                            scores.reduce((a, b) => a + b) / scores.length;
-                        return Card(
-                          color: Colors.blueGrey.shade800,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'ציון ממוצע',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${avg.toStringAsFixed(1)} / 5',
-                                  style: const TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orangeAccent,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-            const SizedBox(height: 12),
-            // Command box (visible to Admin + Instructors)
-            if (canViewCommand) ...[
-              const SizedBox(height: 12),
-              Card(
-                color: Colors.blueGrey.shade800,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'הנחיה פיקודית',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          if (isAdmin)
-                            IconButton(
-                              icon: Icon(
-                                _isEditingCommand ? Icons.close : Icons.edit,
-                              ),
-                              onPressed: _isSaving
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _isEditingCommand = !_isEditingCommand;
-                                        if (!_isEditingCommand) {
-                                          // Reset to original values on cancel
-                                          editCommandText =
-                                              feedback.commandText;
-                                          editCommandStatus =
-                                              feedback.commandStatus;
-                                        }
-                                      });
-                                    },
-                              tooltip: _isEditingCommand ? 'ביטול' : 'עריכה',
-                            ),
-                        ],
+                                );
+                              }),
+                            ],
+                          );
+                        },
                       ),
-                      const SizedBox(height: 8),
-                      if (_isEditingCommand) ...[
-                        TextField(
-                          controller:
-                              TextEditingController(text: editCommandText)
-                                ..selection = TextSelection.collapsed(
-                                  offset: editCommandText.length,
+                    ]
+                  : [],
+
+              // סיכום ופירוט מקצים למשובי מטווחים
+              ...feedback.folder == 'מטווחי ירי' &&
+                      feedback.id != null &&
+                      feedback.id!.isNotEmpty
+                  ? <Widget>[
+                      FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('feedbacks')
+                            .doc(feedback.id)
+                            .get(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData || !snapshot.data!.exists) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final data =
+                              snapshot.data!.data() as Map<String, dynamic>?;
+                          if (data == null) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final stations =
+                              (data['stations'] as List?)
+                                  ?.cast<Map<String, dynamic>>() ??
+                              [];
+                          final trainees =
+                              (data['trainees'] as List?)
+                                  ?.cast<Map<String, dynamic>>() ??
+                              [];
+
+                          if (stations.isEmpty || trainees.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+
+                          // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
+                          final feedbackType =
+                              (data['feedbackType'] as String?) ?? '';
+                          final rangeSubType =
+                              (data['rangeSubType'] as String?) ?? '';
+                          final isLongRange =
+                              feedbackType == 'range_long' ||
+                              feedbackType == 'דווח רחוק' ||
+                              rangeSubType == 'טווח רחוק';
+
+                          // ✅ CONDITIONAL LOGIC: Points for long range, hits for short range
+                          int totalValue = 0;
+                          int totalMax = 0;
+
+                          if (isLongRange) {
+                            // LONG RANGE: Use points (raw values as stored)
+                            for (final trainee in trainees) {
+                              totalValue +=
+                                  (trainee['totalHits'] as num?)?.toInt() ??
+                                  0; // Raw points stored in totalHits
+                            }
+                            // Sum maxPoints from stations
+                            for (final station in stations) {
+                              final stationMaxPoints =
+                                  (station['maxPoints'] as num?)?.toInt() ?? 0;
+                              totalMax += stationMaxPoints * trainees.length;
+                            }
+                          } else {
+                            // SHORT RANGE: Use hits/bullets (existing logic)
+                            for (final trainee in trainees) {
+                              totalValue +=
+                                  (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                            }
+                            // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
+                            int totalBulletsPerTrainee = 0;
+                            for (final station in stations) {
+                              totalBulletsPerTrainee +=
+                                  (station['bulletsCount'] as num?)?.toInt() ??
+                                  0;
+                            }
+                            totalMax = trainees.length * totalBulletsPerTrainee;
+                          }
+
+                          // חישוב אחוז כללי
+                          final percentage = totalMax > 0
+                              ? ((totalValue / totalMax) * 100).toStringAsFixed(
+                                  1,
+                                )
+                              : '0.0';
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // כרטיס סיכום כללי
+                              Card(
+                                color: Colors.blueGrey.shade800,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Column(
+                                    children: [
+                                      const Text(
+                                        'סיכום כללי',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // ✅ LONG RANGE: Show ONLY points, NO percentage
+                                      isLongRange
+                                          ? Column(
+                                              children: [
+                                                const Text(
+                                                  'סך נקודות',
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  '$totalValue / $totalMax',
+                                                  style: const TextStyle(
+                                                    fontSize: 32,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.orangeAccent,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                const Text(
+                                                  'נקודות',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.white60,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.spaceAround,
+                                              children: [
+                                                Column(
+                                                  children: [
+                                                    const Text(
+                                                      'סך פגיעות/כדורים',
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '$totalValue/$totalMax',
+                                                      style: const TextStyle(
+                                                        fontSize: 24,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.orangeAccent,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                Column(
+                                                  children: [
+                                                    const Text(
+                                                      'אחוז פגיעה כללי',
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '$percentage%',
+                                                      style: const TextStyle(
+                                                        fontSize: 32,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.greenAccent,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                    ],
+                                  ),
                                 ),
-                          decoration: const InputDecoration(
-                            labelText: 'טקסט הנחיה',
-                            border: OutlineInputBorder(),
-                          ),
-                          maxLines: 3,
-                          onChanged: (v) => editCommandText = v,
+                              ),
+                              const SizedBox(height: 16),
+
+                              // פירוט מקצים
+                              const Text(
+                                'פירוט מקצים',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              ...stations.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final station = entry.value;
+                                final stationName =
+                                    station['name'] ?? 'מקצה ${index + 1}';
+
+                                // ✅ CONDITIONAL: Points for long range, hits for short range
+                                int stationValue = 0;
+                                int stationMax = 0;
+
+                                if (isLongRange) {
+                                  // LONG RANGE: Use points (raw values)
+                                  for (final trainee in trainees) {
+                                    final hits =
+                                        trainee['hits']
+                                            as Map<String, dynamic>?;
+                                    if (hits != null) {
+                                      stationValue +=
+                                          (hits['station_$index'] as num?)
+                                              ?.toInt() ??
+                                          0; // Raw points stored in hits map
+                                    }
+                                  }
+                                  // Use maxPoints from station
+                                  final maxPoints =
+                                      (station['maxPoints'] as num?)?.toInt() ??
+                                      0;
+                                  stationMax = trainees.length * maxPoints;
+                                } else {
+                                  // SHORT RANGE: Use hits/bullets
+                                  final stationBulletsPerTrainee =
+                                      (station['bulletsCount'] as num?)
+                                          ?.toInt() ??
+                                      0;
+
+                                  for (final trainee in trainees) {
+                                    final hits =
+                                        trainee['hits']
+                                            as Map<String, dynamic>?;
+                                    if (hits != null) {
+                                      stationValue +=
+                                          (hits['station_$index'] as num?)
+                                              ?.toInt() ??
+                                          0;
+                                    }
+                                  }
+
+                                  // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
+                                  stationMax =
+                                      trainees.length *
+                                      stationBulletsPerTrainee;
+                                }
+
+                                // חישוב אחוז
+                                final stationPercentage = stationMax > 0
+                                    ? ((stationValue / stationMax) * 100)
+                                          .toStringAsFixed(1)
+                                    : '0.0';
+
+                                return InkWell(
+                                  onTap: () {
+                                    // For long range: pass maxPoints instead of bullets
+                                    final modalMaxValue = isLongRange
+                                        ? ((station['maxPoints'] as num?)
+                                                  ?.toInt() ??
+                                              0)
+                                        : (trainees.isNotEmpty
+                                              ? (stationMax ~/ trainees.length)
+                                              : 0);
+                                    _showStationDetailsModal(
+                                      context,
+                                      index,
+                                      stationName.toString(),
+                                      modalMaxValue,
+                                      trainees,
+                                    );
+                                  },
+                                  child: Card(
+                                    color: Colors.blueGrey.shade700,
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // שורה 1: שם המקצה
+                                          Text(
+                                            stationName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          // מדדים מרוכזים בשורה אחת
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceEvenly,
+                                            children: [
+                                              // סך כל כדורים/נקודות מקסימליות
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    '$stationMax',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.white70,
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    isLongRange
+                                                        ? 'סך נקודות מקס'
+                                                        : 'סך כל כדורים',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              // סך כל פגיעות/נקודות
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    '$stationValue',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    isLongRange
+                                                        ? 'סך נקודות'
+                                                        : 'סך כל פגיעות',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              // אחוז פגיעות/נקודות - HIDE FOR LONG RANGE
+                                              if (!isLongRange)
+                                                Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      '$stationPercentage%',
+                                                      style: const TextStyle(
+                                                        fontSize: 18,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.greenAccent,
+                                                      ),
+                                                    ),
+                                                    const Text(
+                                                      'אחוז פגיעות',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.white60,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          const Text(
+                                            'לחץ לפרטי החניכים במקצה',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
+                          );
+                        },
+                      ),
+                    ]
+                  : <Widget>[
+                      Builder(
+                        builder: (ctx) {
+                          final scores = feedback.scores.values
+                              .where((v) => v > 0)
+                              .toList();
+                          if (scores.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          final avg =
+                              scores.reduce((a, b) => a + b) / scores.length;
+                          return Card(
+                            color: Colors.blueGrey.shade800,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'ציון ממוצע',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${avg.toStringAsFixed(1)} / 5',
+                                    style: const TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orangeAccent,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+              const SizedBox(height: 12),
+              // Command box (visible to Admin + Instructors)
+              if (canViewCommand) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: Colors.blueGrey.shade800,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'הנחיה פיקודית',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            if (isAdmin)
+                              IconButton(
+                                icon: Icon(
+                                  _isEditingCommand ? Icons.close : Icons.edit,
+                                ),
+                                onPressed: _isSaving
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _isEditingCommand =
+                                              !_isEditingCommand;
+                                          if (!_isEditingCommand) {
+                                            // Reset to original values on cancel
+                                            editCommandText =
+                                                feedback.commandText;
+                                            editCommandStatus =
+                                                feedback.commandStatus;
+                                          }
+                                        });
+                                      },
+                                tooltip: _isEditingCommand ? 'ביטול' : 'עריכה',
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: editCommandStatus,
-                          decoration: const InputDecoration(
-                            labelText: 'סטטוס',
-                            border: OutlineInputBorder(),
+                        if (_isEditingCommand) ...[
+                          TextField(
+                            controller:
+                                TextEditingController(text: editCommandText)
+                                  ..selection = TextSelection.collapsed(
+                                    offset: editCommandText.length,
+                                  ),
+                            decoration: const InputDecoration(
+                              labelText: 'טקסט הנחיה',
+                              border: OutlineInputBorder(),
+                            ),
+                            maxLines: 3,
+                            onChanged: (v) => editCommandText = v,
                           ),
-                          items: const ['פתוח', 'בטיפול', 'בוצע']
-                              .map(
-                                (s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)),
-                              )
-                              .toList(),
-                          onChanged: (v) => setState(
-                            () => editCommandStatus = v ?? editCommandStatus,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _isSaving ? null : _saveCommandChanges,
-                          child: _isSaving
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: editCommandStatus,
+                            decoration: const InputDecoration(
+                              labelText: 'סטטוס',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: const ['פתוח', 'בטיפול', 'בוצע']
+                                .map(
+                                  (s) => DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s),
                                   ),
                                 )
-                              : const Text('שמור שינויים'),
-                        ),
-                      ] else ...[
-                        Text(
-                          feedback.commandText.isNotEmpty
-                              ? feedback.commandText
-                              : '-',
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'סטטוס: ${feedback.commandStatus}',
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-
-            // כפתור ייצוא ל-XLSX מקומי (רק לאדמין)
-            if (isAdmin) ...[
-              const SizedBox(height: 20),
-              const Divider(),
-              const SizedBox(height: 12),
-              const Text(
-                'ייצוא נתונים',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isExporting
-                      ? null
-                      : () async {
-                          setState(() => _isExporting = true);
-                          try {
-                            final messenger = ScaffoldMessenger.of(context);
-
-                            // Check if this is a range/reporter feedback
-                            final isRangeFeedback =
-                                (feedback.folder == 'מטווחי ירי' ||
-                                    feedback.folder == 'מטווחים 474' ||
-                                    feedback.folderKey == 'shooting_ranges' ||
-                                    feedback.folderKey == 'ranges_474') &&
-                                feedback.id != null &&
-                                feedback.id!.isNotEmpty;
-
-                            if (isRangeFeedback) {
-                              // Use reporter comparison export for range feedbacks
-                              try {
-                                // Fetch full document data from Firestore
-                                final doc = await FirebaseFirestore.instance
-                                    .collection('feedbacks')
-                                    .doc(feedback.id)
-                                    .get();
-
-                                if (!doc.exists || doc.data() == null) {
-                                  throw Exception('לא נמצאו נתוני משוב');
-                                }
-
-                                final feedbackData = doc.data()!;
-
-                                // Check if this feedback has trainee comparison data
-                                final hasComparisonData =
-                                    feedbackData['stations'] != null &&
-                                    feedbackData['trainees'] != null;
-
-                                if (hasComparisonData) {
-                                  await FeedbackExportService.exportReporterComparisonToGoogleSheets(
-                                    feedbackData: feedbackData,
-                                    fileNamePrefix: 'reporter_comparison',
-                                  );
-                                } else {
-                                  // Fallback to standard export if no comparison data
-                                  final keys = [
-                                    'id',
-                                    'role',
-                                    'name',
-                                    'exercise',
-                                    'scores',
-                                    'notes',
-                                    'criteriaList',
-                                    'createdAt',
-                                    'instructorName',
-                                    'instructorRole',
-                                    'commandText',
-                                    'commandStatus',
-                                    'folder',
-                                    'scenario',
-                                    'settlement',
-                                    'attendeesCount',
-                                  ];
-                                  final headers = [
-                                    'ID',
-                                    'תפקיד',
-                                    'שם',
-                                    'תרגיל',
-                                    'ציונים',
-                                    'הערות',
-                                    'קריטריונים',
-                                    'תאריך יצירה',
-                                    'מדריך',
-                                    'תפקיד מדריך',
-                                    'טקסט פקודה',
-                                    'סטטוס פקודה',
-                                    'תיקייה',
-                                    'תרחיש',
-                                    'יישוב',
-                                    'מספר נוכחים',
-                                  ];
-                                  await FeedbackExportService.exportWithSchema(
-                                    keys: keys,
-                                    headers: headers,
-                                    feedbacks: [feedback],
-                                    fileNamePrefix: 'feedback_single',
-                                  );
-                                }
-
-                                if (!mounted) return;
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('הקובץ נוצר בהצלחה!'),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 3),
-                                  ),
-                                );
-                              } catch (e) {
-                                if (!mounted) return;
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text('שגיאה בייצוא: $e'),
-                                    backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 5),
-                                  ),
-                                );
-                              }
-                            } else {
-                              // DEDICATED export for single feedback details ("פרטי משוב" screen)
-                              // Structure: סוג משוב, שם המדריך המשב, שם, תפקיד, חטיבה, יישוב, תאריך
-                              // Then ONLY criteria that exist in THIS feedback
-                              // Then ציון ממוצע, then הערות
-                              try {
-                                debugPrint(
-                                  '📊 Exporting single feedback details',
-                                );
-                                debugPrint('   Screen: פרטי משוב');
-                                debugPrint(
-                                  '   Feedback: ${feedback.name} (${feedback.exercise})',
-                                );
-
-                                await FeedbackExportService.exportSingleFeedbackDetails(
-                                  feedback: feedback,
-                                  fileNamePrefix: 'משוב_${feedback.name}',
-                                );
-
-                                if (!mounted) return;
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('הקובץ נוצר בהצלחה!'),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 3),
-                                  ),
-                                );
-                              } catch (e) {
-                                debugPrint('❌ Export error: $e');
-                                if (!mounted) return;
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text('שגיאה בייצוא: $e'),
-                                    backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 5),
-                                  ),
-                                );
-                              }
-                            }
-                          } finally {
-                            if (mounted) {
-                              setState(() => _isExporting = false);
-                            }
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Colors.green,
-                  ),
-                  icon: _isExporting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
+                                .toList(),
+                            onChanged: (v) => setState(
+                              () => editCommandStatus = v ?? editCommandStatus,
                             ),
                           ),
-                        )
-                      : const Icon(Icons.download),
-                  label: Text(
-                    _isExporting ? 'מייצא...' : 'ייצוא לקובץ מקומי',
-                    style: const TextStyle(fontSize: 18),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _isSaving ? null : _saveCommandChanges,
+                            child: _isSaving
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('שמור שינויים'),
+                          ),
+                        ] else ...[
+                          Text(
+                            feedback.commandText.isNotEmpty
+                                ? feedback.commandText
+                                : '-',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'סטטוס: ${feedback.commandStatus}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
+
+              // כפתור ייצוא ל-XLSX מקומי (רק לאדמין)
+              if (isAdmin) ...[
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 12),
+                const Text(
+                  'ייצוא נתונים',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isExporting
+                        ? null
+                        : () async {
+                            setState(() => _isExporting = true);
+                            try {
+                              final messenger = ScaffoldMessenger.of(context);
+
+                              // Check if this is a range/reporter feedback
+                              final isRangeFeedback =
+                                  (feedback.folder == 'מטווחי ירי' ||
+                                      feedback.folder == 'מטווחים 474' ||
+                                      feedback.folderKey == 'shooting_ranges' ||
+                                      feedback.folderKey == 'ranges_474') &&
+                                  feedback.id != null &&
+                                  feedback.id!.isNotEmpty;
+
+                              if (isRangeFeedback) {
+                                // Use reporter comparison export for range feedbacks
+                                try {
+                                  // Fetch full document data from Firestore
+                                  final doc = await FirebaseFirestore.instance
+                                      .collection('feedbacks')
+                                      .doc(feedback.id)
+                                      .get();
+
+                                  if (!doc.exists || doc.data() == null) {
+                                    throw Exception('לא נמצאו נתוני משוב');
+                                  }
+
+                                  final feedbackData = doc.data()!;
+
+                                  // Check if this feedback has trainee comparison data
+                                  final hasComparisonData =
+                                      feedbackData['stations'] != null &&
+                                      feedbackData['trainees'] != null;
+
+                                  if (hasComparisonData) {
+                                    await FeedbackExportService.exportReporterComparisonToGoogleSheets(
+                                      feedbackData: feedbackData,
+                                      fileNamePrefix: 'reporter_comparison',
+                                    );
+                                  } else {
+                                    // Fallback to standard export if no comparison data
+                                    final keys = [
+                                      'id',
+                                      'role',
+                                      'name',
+                                      'exercise',
+                                      'scores',
+                                      'notes',
+                                      'criteriaList',
+                                      'createdAt',
+                                      'instructorName',
+                                      'instructorRole',
+                                      'commandText',
+                                      'commandStatus',
+                                      'folder',
+                                      'scenario',
+                                      'settlement',
+                                      'attendeesCount',
+                                    ];
+                                    final headers = [
+                                      'ID',
+                                      'תפקיד',
+                                      'שם',
+                                      'תרגיל',
+                                      'ציונים',
+                                      'הערות',
+                                      'קריטריונים',
+                                      'תאריך יצירה',
+                                      'מדריך',
+                                      'תפקיד מדריך',
+                                      'טקסט פקודה',
+                                      'סטטוס פקודה',
+                                      'תיקייה',
+                                      'תרחיש',
+                                      'יישוב',
+                                      'מספר נוכחים',
+                                    ];
+                                    await FeedbackExportService.exportWithSchema(
+                                      keys: keys,
+                                      headers: headers,
+                                      feedbacks: [feedback],
+                                      fileNamePrefix: 'feedback_single',
+                                    );
+                                  }
+
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('הקובץ נוצר בהצלחה!'),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('שגיאה בייצוא: $e'),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 5),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                // DEDICATED export for single feedback details ("פרטי משוב" screen)
+                                // Structure: סוג משוב, שם המדריך המשב, שם, תפקיד, חטיבה, יישוב, תאריך
+                                // Then ONLY criteria that exist in THIS feedback
+                                // Then ציון ממוצע, then הערות
+                                try {
+                                  debugPrint(
+                                    '📊 Exporting single feedback details',
+                                  );
+                                  debugPrint('   Screen: פרטי משוב');
+                                  debugPrint(
+                                    '   Feedback: ${feedback.name} (${feedback.exercise})',
+                                  );
+
+                                  await FeedbackExportService.exportSingleFeedbackDetails(
+                                    feedback: feedback,
+                                    fileNamePrefix: 'משוב_${feedback.name}',
+                                  );
+
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('הקובץ נוצר בהצלחה!'),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  debugPrint('❌ Export error: $e');
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('שגיאה בייצוא: $e'),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 5),
+                                    ),
+                                  );
+                                }
+                              }
+                            } finally {
+                              if (mounted) {
+                                setState(() => _isExporting = false);
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.green,
+                    ),
+                    icon: _isExporting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Icon(Icons.download),
+                    label: Text(
+                      _isExporting ? 'מייצא...' : 'ייצוא לקובץ מקומי',
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
