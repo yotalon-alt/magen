@@ -2249,8 +2249,28 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       if (!mounted) return;
 
+      // ✅ DELETE TEMPORARY DRAFT after successful final save (range feedback only)
+      if (widget.mode != 'surprise' &&
+          _editingFeedbackId != null &&
+          _editingFeedbackId!.isNotEmpty) {
+        try {
+          debugPrint(
+            '🗑️ CLEANUP: Deleting temporary draft draftId=$_editingFeedbackId',
+          );
+          await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(_editingFeedbackId!)
+              .delete();
+          debugPrint('✅ CLEANUP: Temporary draft deleted successfully');
+        } catch (deleteError) {
+          // Log but don't block navigation - draft cleanup is not critical
+          debugPrint('⚠️ CLEANUP: Failed to delete draft: $deleteError');
+        }
+      }
+
       // Navigate back to appropriate feedbacks list
       // Since we're using nested navigation, just pop back
+      if (!mounted) return;
       Navigator.pop(context);
 
       debugPrint('SAVE: Navigation complete');
@@ -2570,28 +2590,30 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('DRAFT_SAVE: traineeRows.length=${traineeRows.length}');
       debugPrint('========== ✅ DRAFT_SAVE END ==========');
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ שמירה אוטומטית'),
-          duration: Duration(seconds: 1),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Auto-save notification removed - saves silently in background
+      // if (!mounted) return;
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(
+      //     content: Text('✅ שמירה אוטומטית'),
+      //     duration: Duration(seconds: 1),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
     } catch (e, stackTrace) {
       debugPrint('\n========== ❌ DRAFT_SAVE ERROR ==========');
       debugPrint('DRAFT_SAVE_ERROR: $e');
       debugPrint('DRAFT_SAVE_ERROR_STACK: $stackTrace');
       debugPrint('==========================================\n');
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ שגיאה בשמירה: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // Auto-save error notification removed - errors logged to console only
+      // if (!mounted) return;
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text('❌ שגיאה בשמירה: $e'),
+      //     backgroundColor: Colors.red,
+      //     duration: const Duration(seconds: 3),
+      //   ),
+      // );
     } finally {
       _isSaving = false;
     }
