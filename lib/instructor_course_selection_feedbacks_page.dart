@@ -1000,39 +1000,58 @@ class _InstructorCourseSelectionFeedbacksPageState
                               if (brigade.isNotEmpty) Text('חטיבה: $brigade'),
                             ],
                           ),
-                          trailing: SizedBox(
-                            width: 50,
-                            height: 50,
-                            child: Container(
-                              margin: const EdgeInsets.all(2),
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: categoryColor,
-                                borderRadius: BorderRadius.circular(6),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              // Percentage (left side)
+                              Text(
+                                '${((averageScore / 5.0) * 100).toStringAsFixed(0)}%',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: averageScore > 3.6
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
                               ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'ממוצע',
-                                    style: TextStyle(
-                                      fontSize: 8,
-                                      color: Colors.white,
-                                    ),
+                              const SizedBox(width: 8),
+                              // Score box (right side)
+                              SizedBox(
+                                width: 50,
+                                height: 50,
+                                child: Container(
+                                  margin: const EdgeInsets.all(2),
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: categoryColor,
+                                    borderRadius: BorderRadius.circular(6),
                                   ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    averageScore.toStringAsFixed(1),
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Text(
+                                        'ממוצע',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        averageScore.toStringAsFixed(1),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                           onTap: () => _showFeedbackDetails(feedback),
                         ),
@@ -1226,6 +1245,31 @@ class _InstructorCourseSelectionFeedbacksPageState
                   averageScore.toStringAsFixed(2),
                   isHighlight: true,
                 ),
+                const SizedBox(height: 8),
+                // Percentage row
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'אחוז הצלחה:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        '${((averageScore / 5.0) * 100).toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: averageScore > 3.6 ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -1348,25 +1392,28 @@ class _InstructorCourseSelectionFeedbacksPageState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('מיונים לקורס מדריכים'),
-        leading: const StandardBackButton(),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('מיונים לקורס מדריכים'),
+          leading: const StandardBackButton(),
+        ),
+        body: _isLoading
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('טוען משובים...'),
+                  ],
+                ),
+              )
+            : _selectedCategory == null
+            ? _buildCategoryButtons()
+            : _buildFeedbacksList(),
       ),
-      body: _isLoading
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('טוען משובים...'),
-                ],
-              ),
-            )
-          : _selectedCategory == null
-          ? _buildCategoryButtons()
-          : _buildFeedbacksList(),
     );
   }
 }

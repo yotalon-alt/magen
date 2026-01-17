@@ -303,6 +303,7 @@ class FeedbackExportService {
         'יבשים',
         'תרגיל הפתעה',
         'ממוצע',
+        'אחוז הצלחה',
         'מדריך',
         'תאריך יצירה',
       ];
@@ -472,6 +473,21 @@ class FeedbackExportService {
           cell.value = DoubleCellValue(averageScore);
         } else if (averageScore is num) {
           cell.value = DoubleCellValue(averageScore.toDouble());
+        } else {
+          cell.value = TextCellValue('');
+        }
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+        // אחוז הצלחה (percentage)
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: colIndex++,
+            rowIndex: rowIndex,
+          ),
+        );
+        if (averageScore is num && averageScore > 0) {
+          final percentage = ((averageScore / 5.0) * 100).round();
+          cell.value = TextCellValue('$percentage%');
         } else {
           cell.value = TextCellValue('');
         }
@@ -2292,6 +2308,7 @@ class FeedbackExportService {
           'שם מועמד',
           ...scoreColumns.map((c) => c['label']!),
           'ממוצע',
+          'אחוז הצלחה',
           'מדריך משב',
           'תאריך המשוב',
         ];
@@ -2437,6 +2454,21 @@ class FeedbackExportService {
             cell.value = DoubleCellValue(averageScore.toDouble());
           } else if (averageScore is num) {
             cell.value = DoubleCellValue(averageScore.toDouble());
+          } else {
+            cell.value = TextCellValue('');
+          }
+          cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+          // אחוז הצלחה (percentage)
+          cell = sheet.cell(
+            CellIndex.indexByColumnRow(
+              columnIndex: colIndex++,
+              rowIndex: rowIndex,
+            ),
+          );
+          if (averageScore is num && averageScore > 0) {
+            final percentage = ((averageScore / 5.0) * 100).round();
+            cell.value = TextCellValue('$percentage%');
           } else {
             cell.value = TextCellValue('');
           }

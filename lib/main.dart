@@ -2138,6 +2138,9 @@ class ExercisesPage extends StatelessWidget {
                       Expanded(
                         child: Text(
                           ex,
+                          textAlign: ex == 'תרגילי הפתעה'
+                              ? TextAlign.right
+                              : TextAlign.start,
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w500,
@@ -3635,7 +3638,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               SizedBox(height: isMobile ? 8 : 2),
                               Text(
                                 folder,
-                                textAlign: TextAlign.center,
+                                textAlign: isInstructorCourse
+                                    ? TextAlign.right
+                                    : TextAlign.center,
                                 softWrap: true,
                                 style: TextStyle(
                                   fontSize: folderTitleFontSize,
