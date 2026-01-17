@@ -2990,6 +2990,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   String _filterSettlement = 'הכל';
   String _filterExercise = 'הכל';
   String _filterRole = 'הכל';
+  String _filterRangeType = 'הכל'; // Range type filter (short/long range)
 
   // Selection mode state (for 474 ranges multi-select export)
   bool _selectionMode = false;
@@ -3370,6 +3371,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       _filterSettlement = 'הכל';
       _filterExercise = 'הכל';
       _filterRole = 'הכל';
+      _filterRangeType = 'הכל';
     });
   }
 
@@ -3377,7 +3379,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   bool get _hasActiveFilters =>
       _filterSettlement != 'הכל' ||
       _filterExercise != 'הכל' ||
-      _filterRole != 'הכל';
+      _filterRole != 'הכל' ||
+      _filterRangeType != 'הכל';
 
   /// Get unique settlement options from a list of feedbacks
   List<String> _getSettlementOptions(List<FeedbackModel> feedbacks) {
@@ -3430,6 +3433,12 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       // Role filter
       if (_filterRole != 'הכל') {
         if (f.role.isEmpty || f.role != _filterRole) {
+          return false;
+        }
+      }
+      // Range type filter (for shooting ranges)
+      if (_filterRangeType != 'הכל') {
+        if (f.rangeSubType.isEmpty || f.rangeSubType != _filterRangeType) {
           return false;
         }
       }
@@ -3984,109 +3993,192 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             children: [
                               // Settlement filter
                               if (settlementOptions.length > 1)
-                                SizedBox(
-                                  width: 180,
-                                  child: DropdownButtonFormField<String>(
-                                    initialValue:
-                                        settlementOptions.contains(
-                                          _filterSettlement,
-                                        )
-                                        ? _filterSettlement
-                                        : 'הכל',
-                                    isExpanded: true,
-                                    decoration: const InputDecoration(
-                                      labelText: 'יישוב',
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'יישוב',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    items: settlementOptions
-                                        .map(
-                                          (s) => DropdownMenuItem(
-                                            value: s,
-                                            child: Text(
-                                              s,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue:
+                                            settlementOptions.contains(
+                                              _filterSettlement,
+                                            )
+                                            ? _filterSettlement
+                                            : 'הכל',
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
                                           ),
-                                        )
-                                        .toList(),
-                                    onChanged: (v) => setState(
-                                      () => _filterSettlement = v ?? 'הכל',
+                                        ),
+                                        items: settlementOptions
+                                            .map(
+                                              (s) => DropdownMenuItem(
+                                                value: s,
+                                                child: Text(
+                                                  s,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterSettlement = v ?? 'הכל',
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ),
-                              // Exercise filter
-                              if (exerciseOptions.length > 1)
-                                SizedBox(
-                                  width: 180,
-                                  child: DropdownButtonFormField<String>(
-                                    initialValue:
-                                        exerciseOptions.contains(
-                                          _filterExercise,
-                                        )
-                                        ? _filterExercise
-                                        : 'הכל',
-                                    isExpanded: true,
-                                    decoration: const InputDecoration(
-                                      labelText: 'תרגיל',
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
+                              // Exercise filter (only for non-range folders)
+                              if (!isRangeFolder && exerciseOptions.length > 1)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'תרגיל',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    items: exerciseOptions
-                                        .map(
-                                          (e) => DropdownMenuItem(
-                                            value: e,
-                                            child: Text(
-                                              e,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue:
+                                            exerciseOptions.contains(
+                                              _filterExercise,
+                                            )
+                                            ? _filterExercise
+                                            : 'הכל',
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
                                           ),
-                                        )
-                                        .toList(),
-                                    onChanged: (v) => setState(
-                                      () => _filterExercise = v ?? 'הכל',
+                                        ),
+                                        items: exerciseOptions
+                                            .map(
+                                              (e) => DropdownMenuItem(
+                                                value: e,
+                                                child: Text(
+                                                  e,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterExercise = v ?? 'הכל',
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
+                                ),
+                              // Range type filter (only for range folders)
+                              if (isRangeFolder)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מטווח',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue: _filterRangeType,
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        items: ['הכל', 'טווח קצר', 'טווח רחוק']
+                                            .map(
+                                              (t) => DropdownMenuItem(
+                                                value: t,
+                                                child: Text(
+                                                  t,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterRangeType = v ?? 'הכל',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               // Role filter
                               if (roleOptions.length > 1)
-                                SizedBox(
-                                  width: 180,
-                                  child: DropdownButtonFormField<String>(
-                                    initialValue:
-                                        roleOptions.contains(_filterRole)
-                                        ? _filterRole
-                                        : 'הכל',
-                                    isExpanded: true,
-                                    decoration: const InputDecoration(
-                                      labelText: 'תפקיד',
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'תפקיד',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    items: roleOptions
-                                        .map(
-                                          (r) => DropdownMenuItem(
-                                            value: r,
-                                            child: Text(
-                                              r,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue:
+                                            roleOptions.contains(_filterRole)
+                                            ? _filterRole
+                                            : 'הכל',
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
                                           ),
-                                        )
-                                        .toList(),
-                                    onChanged: (v) => setState(
-                                      () => _filterRole = v ?? 'הכל',
+                                        ),
+                                        items: roleOptions
+                                            .map(
+                                              (r) => DropdownMenuItem(
+                                                value: r,
+                                                child: Text(
+                                                  r,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterRole = v ?? 'הכל',
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ),
                               // Clear filters button (only show when filters are active)
                               if (_hasActiveFilters)
@@ -6312,7 +6404,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
   String selectedExercise = 'כל התרגילים';
   String selectedSettlement = 'כל היישובים'; // חדש!
   String selectedFolder = 'כל התיקיות'; // חדש!
-  String personFilter = '';
   DateTime? dateFrom;
   DateTime? dateTo;
 
@@ -6343,9 +6434,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
         return false;
       }
       if (selectedFolder != 'כל התיקיות' && f.folder != selectedFolder) {
-        return false;
-      }
-      if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
         return false;
       }
       if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
@@ -6596,6 +6684,19 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
     return sum / vals.length;
   }
 
+  void _clearFilters() {
+    setState(() {
+      selectedRoleFilter = 'כל התפקידים';
+      selectedInstructor = 'כל המדריכים';
+      selectedExercise = 'כל התרגילים';
+      selectedSettlement = 'כל היישובים';
+      selectedFolder = 'הכל';
+      personFilter = '';
+      dateFrom = null;
+      dateTo = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = getFiltered();
@@ -6769,199 +6870,274 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                       ),
                       const SizedBox(height: 8),
                       Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 12,
+                        runSpacing: 12,
                         children: [
                           // Role filter (admin only)
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = availableRoles.toSet().toList();
-                                final value = items.contains(selectedRoleFilter)
-                                    ? selectedRoleFilter
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תפקיד',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (r) => DropdownMenuItem(
-                                          value: r,
-                                          child: Text(r),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: isAdmin
-                                      ? (v) => setState(
-                                          () => selectedRoleFilter =
-                                              v ?? 'כל התפקידים',
-                                        )
-                                      : null,
-                                );
-                              },
-                            ),
-                          ),
-
-                          // Person filter (free text)
-                          SizedBox(
-                            width: 200,
-                            child: TextField(
-                              decoration: const InputDecoration(
-                                labelText: 'שם הנבדק',
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'תפקיד',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                              onChanged: (v) =>
-                                  setState(() => personFilter = v),
-                            ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = availableRoles
+                                        .toSet()
+                                        .toList();
+                                    final value =
+                                        items.contains(selectedRoleFilter)
+                                        ? selectedRoleFilter
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
+                                        ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (r) => DropdownMenuItem(
+                                              value: r,
+                                              child: Text(r),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: isAdmin
+                                          ? (v) => setState(
+                                              () => selectedRoleFilter =
+                                                  v ?? 'כל התפקידים',
+                                            )
+                                          : null,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Instructor filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = instructors.toSet().toList();
-                                final value = items.contains(selectedInstructor)
-                                    ? selectedInstructor
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'מדריך ממשב',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'מדריך ממשב',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = instructors.toSet().toList();
+                                    final value =
+                                        items.contains(selectedInstructor)
+                                        ? selectedInstructor
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: isAdmin
-                                      ? (v) => setState(
-                                          () => selectedInstructor =
-                                              v ?? 'כל המדריכים',
-                                        )
-                                      : null,
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: isAdmin
+                                          ? (v) => setState(
+                                              () => selectedInstructor =
+                                                  v ?? 'כל המדריכים',
+                                            )
+                                          : null,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Exercise filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = exercises.toSet().toList();
-                                final value = items.contains(selectedExercise)
-                                    ? selectedExercise
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תרגיל',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'תרגיל',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = exercises.toSet().toList();
+                                    final value =
+                                        items.contains(selectedExercise)
+                                        ? selectedExercise
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () => selectedExercise = v ?? 'כל התרגילים',
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(
+                                        () => selectedExercise =
+                                            v ?? 'כל התרגילים',
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Settlement filter (for all users)
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final settlements = <String>{'כל היישובים'}
-                                  ..addAll(
-                                    feedbackStorage
-                                        .map((f) => f.settlement)
-                                        .where((s) => s.isNotEmpty),
-                                  );
-                                final items = settlements.toSet().toList();
-                                final value = items.contains(selectedSettlement)
-                                    ? selectedSettlement
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'יישוב',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'יישוב',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final settlements = <String>{'כל היישובים'}
+                                      ..addAll(
+                                        feedbackStorage
+                                            .map((f) => f.settlement)
+                                            .where((s) => s.isNotEmpty),
+                                      );
+                                    final items = settlements.toSet().toList();
+                                    final value =
+                                        items.contains(selectedSettlement)
+                                        ? selectedSettlement
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () =>
-                                        selectedSettlement = v ?? 'כל היישובים',
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(
+                                        () => selectedSettlement =
+                                            v ?? 'כל היישובים',
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Folder filter (restricted to משובים scope)
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                // Restricted folder list for משובים section
-                                final folders = <String>[
-                                  'הכל',
-                                  'משובים – כללי',
-                                  'מחלקות ההגנה – חטיבה 474',
-                                ];
-                                final items = folders;
-                                final value = items.contains(selectedFolder)
-                                    ? selectedFolder
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value ?? 'הכל',
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תיקייה',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'תיקייה',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    // Restricted folder list for משובים section
+                                    final folders = <String>[
+                                      'הכל',
+                                      'משובים – כללי',
+                                      'מחלקות ההגנה – חטיבה 474',
+                                    ];
+                                    final items = folders;
+                                    final value = items.contains(selectedFolder)
+                                        ? selectedFolder
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value ?? 'הכל',
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(() {
-                                    selectedFolder = v ?? 'הכל';
-                                    // Do NOT auto-reset settlement - user controls it via settlement filter
-                                  }),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(() {
+                                        selectedFolder = v ?? 'הכל';
+                                        // Do NOT auto-reset settlement - user controls it via settlement filter
+                                      }),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Date range
@@ -6986,6 +7162,21 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 ),
                               ),
                             ],
+                          ),
+
+                          // Clear filters button
+                          ElevatedButton.icon(
+                            onPressed: _clearFilters,
+                            icon: const Icon(Icons.clear_all, size: 18),
+                            label: const Text('נקה סינונים'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orangeAccent,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -7264,8 +7455,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   String selectedStation = 'כל המקצים';
   String selectedFolder = 'הכל'; // Range folder filter
   String selectedRangeType = 'הכל'; // Range type filter
-  String personFilter = '';
-  String searchText = '';
   DateTime? dateFrom;
   DateTime? dateTo;
 
@@ -7302,6 +7491,18 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
         setState(() {});
       }
     }
+  }
+
+  void _clearFilters() {
+    setState(() {
+      selectedInstructor = 'כל המדריכים';
+      selectedSettlement = 'כל היישובים';
+      selectedStation = 'כל המקצים';
+      selectedFolder = 'הכל';
+      selectedRangeType = 'הכל';
+      dateFrom = null;
+      dateTo = null;
+    });
   }
 
   List<FeedbackModel> getFiltered() {
@@ -7368,31 +7569,8 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
         );
         if (!hasSelectedStation) return false;
       }
-      if (personFilter.isNotEmpty && !f.name.contains(personFilter)) {
-        return false;
-      }
       if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
       if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
-
-      // Free text search
-      if (searchText.isNotEmpty) {
-        final searchLower = searchText.toLowerCase();
-        final nameMatch = f.name.toLowerCase().contains(searchLower);
-        final settlementMatch = f.settlement.toLowerCase().contains(
-          searchLower,
-        );
-        final scenarioMatch = f.scenario.toLowerCase().contains(searchLower);
-        final dateMatch = f.createdAt
-            .toLocal()
-            .toString()
-            .split('.')
-            .first
-            .toLowerCase()
-            .contains(searchLower);
-        if (!nameMatch && !settlementMatch && !scenarioMatch && !dateMatch) {
-          return false;
-        }
-      }
 
       return true;
     }).toList();
@@ -7639,244 +7817,301 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                       ),
                       const SizedBox(height: 8),
                       Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 12,
+                        runSpacing: 12,
                         children: [
                           // Folder filter (restricted to range folders)
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final folders = <String>[
-                                  'הכל',
-                                  'מטווחי ירי',
-                                  'מטווחים 474',
-                                ];
-                                final items = folders;
-                                final value = items.contains(selectedFolder)
-                                    ? selectedFolder
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value ?? 'הכל',
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תיקייה',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'תיקייה',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final folders = <String>[
+                                      'הכל',
+                                      'מטווחי ירי',
+                                      'מטווחים 474',
+                                    ];
+                                    final items = folders;
+                                    final value = items.contains(selectedFolder)
+                                        ? selectedFolder
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value ?? 'הכל',
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(() {
-                                    selectedFolder = v ?? 'הכל';
-                                  }),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(() {
+                                        selectedFolder = v ?? 'הכל';
+                                      }),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Range type filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final rangeTypes = <String>[
-                                  'הכל',
-                                  'טווח קצר',
-                                  'טווח רחוק',
-                                ];
-                                final items = rangeTypes;
-                                final value = items.contains(selectedRangeType)
-                                    ? selectedRangeType
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value ?? 'הכל',
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'סוג מטווח',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(() {
-                                    selectedRangeType = v ?? 'הכל';
-                                  }),
-                                );
-                              },
-                            ),
-                          ),
-
-                          // Person filter (free text)
-                          SizedBox(
-                            width: 200,
-                            child: TextField(
-                              decoration: const InputDecoration(
-                                labelText: 'שם הנבדק',
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'סוג מטווח',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                              onChanged: (v) =>
-                                  setState(() => personFilter = v),
-                            ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final rangeTypes = <String>[
+                                      'הכל',
+                                      'טווח קצר',
+                                      'טווח רחוק',
+                                    ];
+                                    final items = rangeTypes;
+                                    final value =
+                                        items.contains(selectedRangeType)
+                                        ? selectedRangeType
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value ?? 'הכל',
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
+                                        ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(() {
+                                        selectedRangeType = v ?? 'הכל';
+                                      }),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Instructor filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = instructors.toSet().toList();
-                                final value = items.contains(selectedInstructor)
-                                    ? selectedInstructor
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'מדריך ממשב',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'מדריך ממשב',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = instructors.toSet().toList();
+                                    final value =
+                                        items.contains(selectedInstructor)
+                                        ? selectedInstructor
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: isAdmin
-                                      ? (v) => setState(
-                                          () => selectedInstructor =
-                                              v ?? 'כל המדריכים',
-                                        )
-                                      : null,
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: isAdmin
+                                          ? (v) => setState(
+                                              () => selectedInstructor =
+                                                  v ?? 'כל המדריכים',
+                                            )
+                                          : null,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Settlement filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final settlements = <String>{'כל היישובים'}
-                                  ..addAll(
-                                    feedbackStorage
-                                        .map((f) => f.settlement)
-                                        .where((s) => s.isNotEmpty),
-                                  );
-                                final items = settlements.toSet().toList();
-                                final value = items.contains(selectedSettlement)
-                                    ? selectedSettlement
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'יישוב',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'יישוב',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final settlements = <String>{'כל היישובים'}
+                                      ..addAll(
+                                        feedbackStorage
+                                            .map((f) => f.settlement)
+                                            .where((s) => s.isNotEmpty),
+                                      );
+                                    final items = settlements.toSet().toList();
+                                    final value =
+                                        items.contains(selectedSettlement)
+                                        ? selectedSettlement
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () =>
-                                        selectedSettlement = v ?? 'כל היישובים',
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(
+                                        () => selectedSettlement =
+                                            v ?? 'כל היישובים',
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Station filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                // Build station list dynamically from range data
-                                final Set<String> stationNames = {};
-                                final List<String> orderedStations = [];
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'מקצה',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    // Build station list dynamically from range data
+                                    final Set<String> stationNames = {};
+                                    final List<String> orderedStations = [];
 
-                                // Collect station names from all range feedbacks in order
-                                for (final f in filtered) {
-                                  if (rangeData.containsKey(f.id)) {
-                                    final data = rangeData[f.id];
-                                    final stations =
-                                        (data?['stations'] as List?)
-                                            ?.cast<Map<String, dynamic>>() ??
-                                        [];
-                                    for (final station in stations) {
-                                      final stationName =
-                                          station['name'] as String? ?? '';
-                                      if (stationName.isNotEmpty &&
-                                          !stationNames.contains(stationName)) {
-                                        stationNames.add(stationName);
-                                        orderedStations.add(stationName);
+                                    // Collect station names from all range feedbacks in order
+                                    for (final f in filtered) {
+                                      if (rangeData.containsKey(f.id)) {
+                                        final data = rangeData[f.id];
+                                        final stations =
+                                            (data?['stations'] as List?)
+                                                ?.cast<
+                                                  Map<String, dynamic>
+                                                >() ??
+                                            [];
+                                        for (final station in stations) {
+                                          final stationName =
+                                              station['name'] as String? ?? '';
+                                          if (stationName.isNotEmpty &&
+                                              !stationNames.contains(
+                                                stationName,
+                                              )) {
+                                            stationNames.add(stationName);
+                                            orderedStations.add(stationName);
+                                          }
+                                        }
                                       }
                                     }
-                                  }
-                                }
 
-                                final items = ['כל המקצים'] + orderedStations;
-                                final value = items.contains(selectedStation)
-                                    ? selectedStation
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'מקצה',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                                    final items =
+                                        ['כל המקצים'] + orderedStations;
+                                    final value =
+                                        items.contains(selectedStation)
+                                        ? selectedStation
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () => selectedStation = v ?? 'כל המקצים',
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-
-                          // Free text search
-                          SizedBox(
-                            width: 280,
-                            child: TextField(
-                              decoration: InputDecoration(
-                                labelText:
-                                    'חיפוש לפי שוב / יישוב / מקצה / תאריך',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIcon: searchText.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () =>
-                                            setState(() => searchText = ''),
-                                      )
-                                    : null,
-                                isDense: true,
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(
+                                        () =>
+                                            selectedStation = v ?? 'כל המקצים',
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
-                              onChanged: (v) => setState(() => searchText = v),
-                            ),
+                            ],
                           ),
 
                           // Date range
@@ -7901,6 +8136,21 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 ),
                               ),
                             ],
+                          ),
+
+                          // Clear filters button
+                          ElevatedButton.icon(
+                            onPressed: _clearFilters,
+                            icon: const Icon(Icons.clear_all, size: 18),
+                            label: const Text('נקה סינונים'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orangeAccent,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -8234,6 +8484,17 @@ class _SurpriseDrillsStatisticsPageState
     }
   }
 
+  void _clearFilters() {
+    setState(() {
+      selectedInstructor = 'כל המדריכים';
+      selectedSettlement = 'כל היישובים';
+      selectedPrinciple = 'כל העקרונות';
+      selectedFolder = 'הכל';
+      dateFrom = null;
+      dateTo = null;
+    });
+  }
+
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
     return feedbackStorage.where((f) {
@@ -8504,144 +8765,211 @@ class _SurpriseDrillsStatisticsPageState
                       ),
                       const SizedBox(height: 8),
                       Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 12,
+                        runSpacing: 12,
                         children: [
                           // Instructor filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = instructors.toSet().toList();
-                                final value = items.contains(selectedInstructor)
-                                    ? selectedInstructor
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'מדריך ממשב',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'מדריך ממשב',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = instructors.toSet().toList();
+                                    final value =
+                                        items.contains(selectedInstructor)
+                                        ? selectedInstructor
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: isAdmin
-                                      ? (v) => setState(
-                                          () => selectedInstructor =
-                                              v ?? 'כל המדריכים',
-                                        )
-                                      : null,
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: isAdmin
+                                          ? (v) => setState(
+                                              () => selectedInstructor =
+                                                  v ?? 'כל המדריכים',
+                                            )
+                                          : null,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Settlement filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = settlements.toSet().toList();
-                                final value = items.contains(selectedSettlement)
-                                    ? selectedSettlement
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'יישוב',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'יישוב',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = settlements.toSet().toList();
+                                    final value =
+                                        items.contains(selectedSettlement)
+                                        ? selectedSettlement
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () =>
-                                        selectedSettlement = v ?? 'כל היישובים',
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(
+                                        () => selectedSettlement =
+                                            v ?? 'כל היישובים',
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Principle filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final items = principles;
-                                final value = items.contains(selectedPrinciple)
-                                    ? selectedPrinciple
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'עיקרון',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'עיקרון',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final items = principles;
+                                    final value =
+                                        items.contains(selectedPrinciple)
+                                        ? selectedPrinciple
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(
-                                    () =>
-                                        selectedPrinciple = v ?? 'כל העקרונות',
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(
+                                        () => selectedPrinciple =
+                                            v ?? 'כל העקרונות',
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Folder filter
-                          SizedBox(
-                            width: 240,
-                            child: Builder(
-                              builder: (ctx) {
-                                final folders = <String>[
-                                  'הכל',
-                                  'משוב תרגילי הפתעה',
-                                ];
-                                final items = folders;
-                                final value = items.contains(selectedFolder)
-                                    ? selectedFolder
-                                    : null;
-                                return DropdownButtonFormField<String>(
-                                  initialValue: value ?? 'הכל',
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'תיקייה',
-                                    isDense: true,
-                                  ),
-                                  items: items
-                                      .map(
-                                        (i) => DropdownMenuItem(
-                                          value: i,
-                                          child: Text(i),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'תיקייה',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              SizedBox(
+                                width: 240,
+                                child: Builder(
+                                  builder: (ctx) {
+                                    final folders = <String>[
+                                      'הכל',
+                                      'משוב תרגילי הפתעה',
+                                    ];
+                                    final items = folders;
+                                    final value = items.contains(selectedFolder)
+                                        ? selectedFolder
+                                        : null;
+                                    return DropdownButtonFormField<String>(
+                                      initialValue: value ?? 'הכל',
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 16,
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(() {
-                                    selectedFolder = v ?? 'הכל';
-                                  }),
-                                );
-                              },
-                            ),
+                                      ),
+                                      items: items
+                                          .map(
+                                            (i) => DropdownMenuItem(
+                                              value: i,
+                                              child: Text(i),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setState(() {
+                                        selectedFolder = v ?? 'הכל';
+                                      }),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
 
                           // Date range
@@ -8666,6 +8994,21 @@ class _SurpriseDrillsStatisticsPageState
                                 ),
                               ),
                             ],
+                          ),
+
+                          // Clear filters button
+                          ElevatedButton.icon(
+                            onPressed: _clearFilters,
+                            icon: const Icon(Icons.clear_all, size: 18),
+                            label: const Text('נקה סינונים'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orangeAccent,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
                           ),
                         ],
                       ),
