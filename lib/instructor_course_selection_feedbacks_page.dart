@@ -22,17 +22,16 @@ class _InstructorCourseSelectionFeedbacksPageState
   Set<String> _selectedFeedbackIds = {}; // For export selection
 
   // Filter state variables
-  final TextEditingController _filterCommandController =
-      TextEditingController();
+  String _filterCommand = 'הכל'; // Dropdown: הכל, צפון, מרכז, דרום
   final TextEditingController _filterNameController = TextEditingController();
   final TextEditingController _filterNumberController = TextEditingController();
-  String _filterCommand = '';
   String _filterName = '';
   String _filterNumber = '';
+  DateTime? _filterDateFrom;
+  DateTime? _filterDateTo;
 
   @override
   void dispose() {
-    _filterCommandController.dispose();
     _filterNameController.dispose();
     _filterNumberController.dispose();
     super.dispose();
@@ -40,17 +39,19 @@ class _InstructorCourseSelectionFeedbacksPageState
 
   /// Get filtered feedbacks based on search filters (AND logic, case-insensitive contains)
   List<Map<String, dynamic>> get _filteredFeedbacks {
-    if (_filterCommand.isEmpty &&
+    if (_filterCommand == 'הכל' &&
         _filterName.isEmpty &&
-        _filterNumber.isEmpty) {
+        _filterNumber.isEmpty &&
+        _filterDateFrom == null &&
+        _filterDateTo == null) {
       return _feedbacks;
     }
 
     return _feedbacks.where((feedback) {
-      // Command filter (פיקוד)
-      if (_filterCommand.isNotEmpty) {
-        final command = (feedback['command'] ?? '').toString().toLowerCase();
-        if (!command.contains(_filterCommand.toLowerCase())) {
+      // Command filter (פיקוד) - exact match
+      if (_filterCommand != 'הכל') {
+        final command = (feedback['command'] ?? '').toString();
+        if (command != _filterCommand) {
           return false;
         }
       }
@@ -73,6 +74,29 @@ class _InstructorCourseSelectionFeedbacksPageState
         }
       }
 
+      // Date filter
+      if (_filterDateFrom != null || _filterDateTo != null) {
+        final createdAt = feedback['createdAt'];
+        DateTime? feedbackDate;
+        if (createdAt is Timestamp) {
+          feedbackDate = createdAt.toDate();
+        } else if (createdAt is String) {
+          feedbackDate = DateTime.tryParse(createdAt);
+        }
+        if (feedbackDate != null) {
+          if (_filterDateFrom != null &&
+              feedbackDate.isBefore(_filterDateFrom!)) {
+            return false;
+          }
+          if (_filterDateTo != null &&
+              feedbackDate.isAfter(
+                _filterDateTo!.add(const Duration(days: 1)),
+              )) {
+            return false;
+          }
+        }
+      }
+
       return true;
     }).toList();
   }
@@ -80,10 +104,11 @@ class _InstructorCourseSelectionFeedbacksPageState
   /// Clear all filters
   void _clearFilters() {
     setState(() {
-      _filterCommand = '';
+      _filterCommand = 'הכל';
       _filterName = '';
       _filterNumber = '';
-      _filterCommandController.clear();
+      _filterDateFrom = null;
+      _filterDateTo = null;
       _filterNameController.clear();
       _filterNumberController.clear();
     });
@@ -91,9 +116,11 @@ class _InstructorCourseSelectionFeedbacksPageState
 
   /// Check if any filter is active
   bool get _hasActiveFilters =>
-      _filterCommand.isNotEmpty ||
+      _filterCommand != 'הכל' ||
       _filterName.isNotEmpty ||
-      _filterNumber.isNotEmpty;
+      _filterNumber.isNotEmpty ||
+      _filterDateFrom != null ||
+      _filterDateTo != null;
 
   Future<void> _exportInstructorCourseFeedbacks() async {
     // Show selection dialog with 3 options
@@ -818,33 +845,30 @@ class _InstructorCourseSelectionFeedbacksPageState
                     runSpacing: 12,
                     alignment: WrapAlignment.start,
                     children: [
-                      // Command filter (פיקוד)
+                      // Command filter (פיקוד) - Dropdown
                       SizedBox(
                         width: 160,
-                        child: TextField(
-                          controller: _filterCommandController,
-                          decoration: InputDecoration(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _filterCommand,
+                          decoration: const InputDecoration(
                             labelText: 'פיקוד',
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
+                            contentPadding: EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 8,
                             ),
-                            prefixIcon: const Icon(
-                              Icons.military_tech,
-                              size: 20,
-                            ),
-                            suffixIcon: _filterCommand.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      _filterCommandController.clear();
-                                      setState(() => _filterCommand = '');
-                                    },
-                                  )
-                                : null,
+                            prefixIcon: Icon(Icons.military_tech, size: 20),
                           ),
-                          onChanged: (v) => setState(() => _filterCommand = v),
+                          items: ['הכל', 'צפון', 'מרכז', 'דרום']
+                              .map(
+                                (cmd) => DropdownMenuItem(
+                                  value: cmd,
+                                  child: Text(cmd),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _filterCommand = v ?? 'הכל'),
                         ),
                       ),
                       // Name filter (שם)
@@ -898,6 +922,66 @@ class _InstructorCourseSelectionFeedbacksPageState
                           ),
                           keyboardType: TextInputType.number,
                           onChanged: (v) => setState(() => _filterNumber = v),
+                        ),
+                      ),
+                      // Date from filter
+                      SizedBox(
+                        width: 140,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _filterDateFrom ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setState(() => _filterDateFrom = picked);
+                            }
+                          },
+                          icon: const Icon(Icons.calendar_today, size: 16),
+                          label: Text(
+                            _filterDateFrom == null
+                                ? 'מתאריך'
+                                : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Date to filter
+                      SizedBox(
+                        width: 140,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _filterDateTo ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setState(() => _filterDateTo = picked);
+                            }
+                          },
+                          icon: const Icon(Icons.calendar_today, size: 16),
+                          label: Text(
+                            _filterDateTo == null
+                                ? 'עד תאריך'
+                                : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                          ),
                         ),
                       ),
                       // Clear all filters button
