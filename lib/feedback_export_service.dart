@@ -1931,6 +1931,143 @@ class FeedbackExportService {
     }
   }
 
+  /// Export training summary feedback to Excel/Google Sheets
+  /// Dedicated structure for "משוב סיכום אימון 474"
+  /// Headers: תאריך, מדריך, תיקייה, יישוב, סוג אימון, מספר נוכחים, רשימת נוכחים, סיכום
+  static Future<void> exportTrainingSummaryDetails({
+    required Map<String, dynamic> feedbackData,
+    required String fileNamePrefix,
+  }) async {
+    try {
+      debugPrint('\n📊 ===== EXPORT TRAINING SUMMARY DETAILS =====');
+      debugPrint('   fileNamePrefix: $fileNamePrefix');
+
+      final excel = Excel.createExcel();
+      final Sheet sheet = excel['משוב סיכום אימון'];
+      excel.delete('Sheet1');
+
+      // Headers
+      final headers = [
+        'תאריך',
+        'מדריך',
+        'תיקייה',
+        'יישוב',
+        'סוג אימון',
+        'מספר נוכחים',
+        'רשימת נוכחים',
+        'סיכום',
+      ];
+
+      // Write headers (row 0)
+      for (var i = 0; i < headers.length; i++) {
+        final cell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+        );
+        cell.value = TextCellValue(headers[i]);
+        cell.cellStyle = CellStyle(
+          bold: true,
+          fontSize: 12,
+          backgroundColorHex: ExcelColor.blue,
+          fontColorHex: ExcelColor.white,
+        );
+      }
+
+      // Extract data
+      final createdAt = feedbackData['createdAt'];
+      String dateStr = '';
+      if (createdAt is Timestamp) {
+        final dt = createdAt.toDate();
+        dateStr =
+            '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+      } else if (createdAt is String) {
+        try {
+          final dt = DateTime.parse(createdAt);
+          dateStr =
+              '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+        } catch (_) {
+          dateStr = createdAt;
+        }
+      }
+
+      final instructorName = (feedbackData['instructorName'] ?? '').toString();
+      final folder = (feedbackData['folder'] ?? '').toString();
+      final settlement = (feedbackData['settlement'] ?? '').toString();
+      final trainingType = (feedbackData['trainingType'] ?? '').toString();
+      final attendeesCount =
+          (feedbackData['attendeesCount'] as num?)?.toInt() ?? 0;
+
+      // Join attendees list
+      final attendeesList =
+          (feedbackData['attendees'] as List?)?.cast<String>() ?? [];
+      final attendeesStr = attendeesList.join(', ');
+
+      final summary = (feedbackData['summary'] ?? '').toString();
+
+      // Write data row
+      final rowData = [
+        dateStr,
+        instructorName,
+        folder,
+        settlement,
+        trainingType,
+        attendeesCount.toString(),
+        attendeesStr,
+        summary,
+      ];
+
+      for (var i = 0; i < rowData.length; i++) {
+        final cell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1),
+        );
+        cell.value = TextCellValue(rowData[i]);
+      }
+
+      // Auto-size columns
+      for (var i = 0; i < headers.length; i++) {
+        sheet.setColumnWidth(i, 20);
+      }
+      // Make comments column wider
+      sheet.setColumnWidth(6, 40); // רשימת נוכחים
+      sheet.setColumnWidth(7, 50); // סיכום
+
+      debugPrint('   Headers: ${headers.join(", ")}');
+      debugPrint('   Data row written');
+      debugPrint('✅ Excel sheet created');
+
+      // Save/download file
+      final fileBytes = excel.encode();
+      if (fileBytes == null) {
+        throw Exception('Failed to encode Excel file');
+      }
+
+      if (kIsWeb) {
+        final blob = html.Blob([fileBytes]);
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute(
+            'download',
+            '${fileNamePrefix}_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+          )
+          ..click();
+        html.Url.revokeObjectUrl(url);
+        debugPrint('✅ Web download triggered');
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final fileName =
+            '${fileNamePrefix}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        debugPrint('✅ File saved: $filePath');
+      }
+
+      debugPrint('✅ Export training summary completed successfully');
+    } catch (e) {
+      debugPrint('❌ Error in exportTrainingSummaryDetails: $e');
+      rethrow;
+    }
+  }
+
   /// NEW: Export standard feedbacks with specific column structure
   /// Applies ONLY to feedback contexts (NOT ranges or miunim):
   /// - "שער המשובים", "משובים כלליים", "משובי מחלקות ההגנה", "עבודה במבנה"

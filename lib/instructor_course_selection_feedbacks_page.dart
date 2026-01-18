@@ -1082,6 +1082,24 @@ class _InstructorCourseSelectionFeedbacksPageState
                               Text('מדריך: $instructorName'),
                               if (command.isNotEmpty) Text('פיקוד: $command'),
                               if (brigade.isNotEmpty) Text('חטיבה: $brigade'),
+                              // תאריך יצירת המשוב
+                              Builder(
+                                builder: (context) {
+                                  final createdAt = feedback['createdAt'];
+                                  DateTime? date;
+                                  if (createdAt is Timestamp) {
+                                    date = createdAt.toDate();
+                                  } else if (createdAt is String) {
+                                    date = DateTime.tryParse(createdAt);
+                                  }
+                                  if (date != null) {
+                                    final formatted =
+                                        '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                                    return Text('תאריך: $formatted');
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
                             ],
                           ),
                           trailing: Row(

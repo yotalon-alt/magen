@@ -59,6 +59,7 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
     'isHidden': true,
   }, // ✅ SOFT DELETE: Unused folder removed from UI
   {'title': 'משוב תרגילי הפתעה', 'isHidden': false},
+  {'title': 'משוב סיכום אימון 474', 'isHidden': false},
 ];
 
 // Helper: Get all folder titles (including hidden) for backwards compatibility
@@ -1417,6 +1418,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const SurpriseDrillsEntryPage(),
                 settings: settings,
               );
+            case '/training_summary':
+              return MaterialPageRoute(
+                builder: (_) => const TrainingSummaryFormPage(),
+                settings: settings,
+              );
             case '/feedback_form':
               final exercise = settings.arguments as String?;
               return MaterialPageRoute(
@@ -2080,6 +2086,7 @@ class ExercisesPage extends StatelessWidget {
       'מיונים לקורס מדריכים',
       'מטווחים',
       'תרגילי הפתעה',
+      'סיכום אימון',
     ];
 
     return Directionality(
@@ -2119,6 +2126,8 @@ class ExercisesPage extends StatelessWidget {
                     Navigator.of(context).pushNamed('/range_selection');
                   } else if (ex == 'תרגילי הפתעה') {
                     Navigator.of(context).pushNamed('/surprise_drills');
+                  } else if (ex == 'סיכום אימון') {
+                    Navigator.of(context).pushNamed('/training_summary');
                   } else {
                     Navigator.of(
                       context,
@@ -2960,6 +2969,467 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
 // helper removed: statuses are not editable in UI (read-only for admin)
 
+/* ================== TRAINING SUMMARY FORM PAGE ================== */
+
+class TrainingSummaryFormPage extends StatefulWidget {
+  const TrainingSummaryFormPage({super.key});
+
+  @override
+  State<TrainingSummaryFormPage> createState() =>
+      _TrainingSummaryFormPageState();
+}
+
+class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
+  String instructorNameDisplay = '';
+  String instructorRoleDisplay = '';
+  final String folder = 'משוב סיכום אימון 474';
+  String selectedSettlement = '';
+  String trainingType = '';
+  String summary = '';
+  int attendeesCount = 0;
+  late TextEditingController _attendeesCountController;
+  final Map<String, TextEditingController> _attendeeNameControllers = {};
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (currentUser != null) {
+      instructorNameDisplay = currentUser?.name ?? '';
+      instructorRoleDisplay = currentUser?.role ?? '';
+    }
+    _attendeesCountController = TextEditingController(
+      text: attendeesCount.toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _attendeesCountController.dispose();
+    for (final controller in _attendeeNameControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  TextEditingController _getAttendeeController(
+    String key,
+    String initialValue,
+  ) {
+    if (!_attendeeNameControllers.containsKey(key)) {
+      _attendeeNameControllers[key] = TextEditingController(text: initialValue);
+    }
+    return _attendeeNameControllers[key]!;
+  }
+
+  void _updateAttendeesCount(int count) {
+    setState(() {
+      attendeesCount = count;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    // Validation
+    if (currentUser == null ||
+        (currentUser?.role != 'Instructor' && currentUser?.role != 'Admin')) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('רק מדריכים או מנהל יכולים לשמור משוב')),
+      );
+      return;
+    }
+
+    if (selectedSettlement.isEmpty) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר יישוב')));
+      return;
+    }
+
+    if (trainingType.trim().isEmpty) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא הזן סוג אימון')));
+      return;
+    }
+
+    // Validate attendees count
+    if (attendeesCount == 0) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא הזן כמות נוכחים')));
+      return;
+    }
+
+    // Filter out empty attendees and collect names
+    final List<String> validAttendees = [];
+    for (int i = 0; i < attendeesCount; i++) {
+      final controller = _attendeeNameControllers['attendee_$i'];
+      final name = controller?.text.trim() ?? '';
+      if (name.isNotEmpty) {
+        validAttendees.add(name);
+      }
+    }
+
+    // Validate at least one attendee has a name
+    if (validAttendees.isEmpty) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא הזן לפחות נוכח אחד')));
+      return;
+    }
+
+    try {
+      final now = DateTime.now();
+      final uid = currentUser?.uid ?? '';
+
+      // Resolve instructor's Hebrew full name from Firestore
+      String resolvedInstructorName = instructorNameDisplay;
+      if (uid.isNotEmpty) {
+        resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
+      final Map<String, dynamic> doc = {
+        'folder': folder,
+        'settlement': selectedSettlement,
+        'trainingType': trainingType,
+        'attendees': validAttendees,
+        'attendeesCount': validAttendees.length,
+        'summary': summary,
+        'instructorName': resolvedInstructorName,
+        'instructorRole': instructorRoleDisplay,
+        'instructorId': uid,
+        'createdAt': now,
+        'createdByName': resolvedInstructorName,
+        'createdByUid': uid,
+        // For compatibility with existing feedback system
+        'role': '',
+        'name': selectedSettlement,
+        'exercise': 'סיכום אימון',
+        'scores': {},
+        'notes': {},
+        'criteriaList': [],
+        'commandText': '',
+        'commandStatus': 'פתוח',
+        'scenario': '',
+        'module': 'training_summary',
+        'type': 'training_summary',
+        'isTemporary': false,
+      };
+
+      final ref = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .add(doc);
+
+      // Update local cache
+      final model = FeedbackModel.fromMap(doc, id: ref.id);
+      if (model != null) {
+        feedbackStorage.insert(0, model);
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('הסיכום נשמר בהצלחה')));
+      Navigator.pop(context);
+    } catch (e) {
+      debugPrint('❌ save training summary error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('סיכום אימון'),
+          leading: const StandardBackButton(),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView(
+            children: [
+              // 1. Instructor (read-only)
+              const Text(
+                'מדריך ממשב',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                instructorNameDisplay.isNotEmpty
+                    ? instructorNameDisplay
+                    : 'לא מחובר',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'תפקיד: ${instructorRoleDisplay.isNotEmpty ? instructorRoleDisplay : 'לא מוגדר'}',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 12),
+
+              // 2. Folder (read-only, disabled)
+              const Text(
+                'תיקייה',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: folder,
+                enabled: false,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Color(0xFFE0E0E0),
+                ),
+                style: const TextStyle(fontSize: 16, color: Colors.black87),
+              ),
+              const SizedBox(height: 12),
+
+              // 3. Settlement dropdown
+              const Text(
+                'יישוב',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: selectedSettlement.isNotEmpty
+                    ? selectedSettlement
+                    : null,
+                hint: const Text('בחר יישוב'),
+                decoration: const InputDecoration(
+                  labelText: 'בחר יישוב',
+                  border: OutlineInputBorder(),
+                ),
+                items: golanSettlements
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .toList(),
+                onChanged: (v) => setState(() => selectedSettlement = v ?? ''),
+              ),
+              const SizedBox(height: 12),
+
+              // 4. Training type (free text)
+              const Text(
+                'סוג אימון',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'סוג אימון',
+                  hintText: 'לדוגמה: אימון ירי, אימון שטח, תרגיל לילה',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => trainingType = v),
+              ),
+              const SizedBox(height: 12),
+
+              // 5. כמות נוכחים
+              const Text(
+                'כמות נוכחים',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _attendeesCountController,
+                decoration: const InputDecoration(
+                  labelText: 'כמות נוכחים',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  final count = int.tryParse(v) ?? 0;
+                  _updateAttendeesCount(count);
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // 6. Attendees table (displayed when count > 0)
+              if (attendeesCount > 0) ...[
+                const Text(
+                  'נוכחים',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  color: Colors.blueGrey.shade800,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Table header
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade700,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: const [
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  'מספר',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'שם',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Attendees rows
+                        ...List.generate(attendeesCount, (index) {
+                          final controllerKey = 'attendee_$index';
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Row(
+                              children: [
+                                // Number column
+                                Container(
+                                  width: 60,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.orangeAccent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Name column
+                                Expanded(
+                                  child: TextField(
+                                    controller: _getAttendeeController(
+                                      controllerKey,
+                                      '',
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'שם',
+                                      border: OutlineInputBorder(),
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // 8. Summary (free text, multiline)
+              const Text(
+                'סיכום האימון',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'סיכום',
+                  hintText: 'תאר את האימון, נקודות חשובות, הערות...',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 6,
+                onChanged: (v) => setState(() => summary = v),
+              ),
+              const SizedBox(height: 20),
+
+              // 9. Save button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Text(
+                          'שמור סיכום',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /* ================== FEEDBACKS LIST + DETAILS ================== */
 
 const List<String> rangeStations = [
@@ -3549,129 +4019,82 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               ),
             ],
           ),
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final screenWidth = constraints.maxWidth;
-              final isMobile = screenWidth < 600;
-              final isDesktop = screenWidth >= 1200;
+          body: ListView.builder(
+            itemCount: visibleFeedbackFolders.length,
+            itemBuilder: (ctx, i) {
+              final folder = visibleFeedbackFolders[i];
+              // Get internal value for filtering (if exists)
+              final folderConfig = _feedbackFoldersConfig.firstWhere(
+                (config) => config['title'] == folder,
+                orElse: () => {'title': folder},
+              );
+              final internalValue =
+                  folderConfig['internalValue'] as String? ?? folder;
 
-              // Responsive typography using clamp-like calculations
-              double getResponsiveFontSize(
-                double minSize,
-                double maxSize,
-                double preferredSize,
-              ) {
-                if (isMobile) return minSize;
-                if (isDesktop) return maxSize;
-                // For tablet: interpolate between min and max
-                final tabletRatio =
-                    (screenWidth - 600) / (1200 - 600); // 0 to 1
-                return minSize + (maxSize - minSize) * tabletRatio;
+              // Count feedbacks: regular + old feedbacks without folder (assigned to "משובים – כללי")
+              int count;
+              if (folder == 'משובים – כללי') {
+                count = feedbackStorage
+                    .where((f) => f.folder == folder || f.folder.isEmpty)
+                    .length;
+              } else {
+                // Use internal value for filtering to match Firestore data
+                count = feedbackStorage
+                    .where(
+                      (f) => f.folder == folder || f.folder == internalValue,
+                    )
+                    .length;
               }
+              final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
 
-              final folderTitleFontSize = getResponsiveFontSize(16, 22, 18);
-              final countFontSize = getResponsiveFontSize(14, 18, 15);
-
-              return Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: GridView.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: isMobile ? 2 : 3,
-                    crossAxisSpacing: isMobile ? 12 : 6,
-                    mainAxisSpacing: isMobile ? 12 : 6,
-                    childAspectRatio: isMobile ? 1.3 : 2.2,
-                  ),
-                  itemCount: visibleFeedbackFolders.length,
-                  itemBuilder: (ctx, i) {
-                    final folder = visibleFeedbackFolders[i];
-                    // Get internal value for filtering (if exists)
-                    final folderConfig = _feedbackFoldersConfig.firstWhere(
-                      (config) => config['title'] == folder,
-                      orElse: () => {'title': folder},
-                    );
-                    final internalValue =
-                        folderConfig['internalValue'] as String? ?? folder;
-
-                    // Count feedbacks: regular + old feedbacks without folder (assigned to "משובים – כללי")
-                    int count;
-                    if (folder == 'משובים – כללי') {
-                      count = feedbackStorage
-                          .where((f) => f.folder == folder || f.folder.isEmpty)
-                          .length;
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () {
+                    if (isInstructorCourse) {
+                      // Feedbacks view for instructor-course: only closed items via two category buttons
+                      Navigator.of(
+                        context,
+                      ).pushNamed('/instructor_course_selection_feedbacks');
                     } else {
-                      // Use internal value for filtering to match Firestore data
-                      count = feedbackStorage
-                          .where(
-                            (f) =>
-                                f.folder == folder || f.folder == internalValue,
-                          )
-                          .length;
+                      // Use internal value for navigation/filtering
+                      setState(() => _selectedFolder = internalValue);
                     }
-                    final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
-                    // isMiunimCourse removed - folder is now hidden
-                    return Card(
-                      elevation: isMobile ? 4 : 2,
-                      color: isInstructorCourse
-                          ? Colors.purple.shade700
-                          : Colors.blueGrey.shade700,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(isMobile ? 12 : 6),
-                        onTap: () {
-                          if (isInstructorCourse) {
-                            // Feedbacks view for instructor-course: only closed items via two category buttons
-                            Navigator.of(context).pushNamed(
-                              '/instructor_course_selection_feedbacks',
-                            );
-                          } else {
-                            // Use internal value for navigation/filtering
-                            setState(() => _selectedFolder = internalValue);
-                          }
-                        },
-                        child: Padding(
-                          padding: EdgeInsets.all(isMobile ? 12.0 : 4.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                isInstructorCourse
-                                    ? Icons.school
-                                    : Icons.folder,
-                                size: isMobile ? 48 : 20,
-                                color: isInstructorCourse
-                                    ? Colors.white
-                                    : Colors.orangeAccent,
-                              ),
-                              SizedBox(height: isMobile ? 8 : 2),
-                              Text(
-                                folder,
-                                textAlign: isInstructorCourse
-                                    ? TextAlign.right
-                                    : TextAlign.center,
-                                softWrap: true,
-                                style: TextStyle(
-                                  fontSize: folderTitleFontSize,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: isMobile ? 4 : 1),
-                              Text(
-                                '$count משובים',
-                                style: TextStyle(
-                                  fontSize: countFontSize,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isInstructorCourse ? Icons.school : Icons.folder,
+                          size: 32,
+                          color: isInstructorCourse
+                              ? Colors.purple
+                              : Colors.orangeAccent,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            folder,
+                            textAlign: TextAlign.start,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                        Text(
+                          '$count משובים',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
@@ -4001,6 +4424,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
+                                        color: Colors.white,
                                       ),
                                     ),
                                     SizedBox(height: 4),
@@ -4050,6 +4474,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
+                                        color: Colors.white,
                                       ),
                                     ),
                                     SizedBox(height: 4),
@@ -4099,6 +4524,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
+                                        color: Colors.white,
                                       ),
                                     ),
                                     SizedBox(height: 4),
@@ -4143,6 +4569,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
+                                        color: Colors.white,
                                       ),
                                     ),
                                     SizedBox(height: 4),
@@ -4710,7 +5137,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                 ),
                 const SizedBox(height: 8),
               ],
-              // Conditional display: "טווח:" for ranges, nothing for surprise drills, "תפקיד:" for others
+              // Conditional display: "טווח:" for ranges, "נוכחים:" for training summary, nothing for surprise drills, "תפקיד:" for others
               if (feedback.folderKey == 'shooting_ranges' ||
                   feedback.folderKey == 'ranges_474' ||
                   feedback.folder == 'מטווחי ירי' ||
@@ -4722,6 +5149,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               else if (feedback.folder == 'משוב תרגילי הפתעה' ||
                   feedback.module == 'surprise_drill')
                 const SizedBox.shrink() // No role display for surprise drills
+              else if (feedback.folder == 'משוב סיכום אימון 474' ||
+                  feedback.module == 'training_summary')
+                Text('נוכחים: ${feedback.attendeesCount}')
               else
                 Text('תפקיד: ${feedback.role}'),
               const SizedBox(height: 8),
@@ -4735,6 +5165,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                 Text(
                   'יישוב: ${feedback.name}',
                 ) // For surprise drills, 'name' field contains settlement
+              else if (feedback.folder == 'משוב סיכום אימון 474' ||
+                  feedback.module == 'training_summary')
+                Text('יישוב: ${feedback.settlement}')
               else
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -4786,6 +5219,177 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   );
                 }),
               const SizedBox(height: 20),
+
+              // סיכום ופירוט למשובי סיכום אימון
+              ...(feedback.folder == 'משוב סיכום אימון 474' ||
+                          feedback.module == 'training_summary') &&
+                      feedback.id != null &&
+                      feedback.id!.isNotEmpty
+                  ? <Widget>[
+                      FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('feedbacks')
+                            .doc(feedback.id)
+                            .get(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData || !snapshot.data!.exists) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final data =
+                              snapshot.data!.data() as Map<String, dynamic>?;
+                          if (data == null) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final trainingType =
+                              (data['trainingType'] as String?) ?? '';
+                          final attendees =
+                              (data['attendees'] as List?)?.cast<String>() ??
+                              [];
+                          final summary = (data['summary'] as String?) ?? '';
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text(
+                                'פרטי האימון',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Training type
+                              if (trainingType.isNotEmpty) ...[
+                                Card(
+                                  color: Colors.blueGrey.shade700,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'סוג אימון',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          trainingType,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+
+                              // Attendees list
+                              if (attendees.isNotEmpty) ...[
+                                Text(
+                                  'נוכחים (${attendees.length})',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Card(
+                                  color: Colors.blueGrey.shade800,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      children: attendees.asMap().entries.map((
+                                        entry,
+                                      ) {
+                                        final index = entry.key;
+                                        final name = entry.value;
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 4.0,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 28,
+                                                height: 28,
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.orangeAccent,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: Center(
+                                                  child: Text(
+                                                    '${index + 1}',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.black,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  name,
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+
+                              // Summary
+                              if (summary.isNotEmpty) ...[
+                                const Text(
+                                  'סיכום האימון',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Card(
+                                  color: Colors.blueGrey.shade700,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Text(
+                                      summary,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        height: 1.5,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          );
+                        },
+                      ),
+                    ]
+                  : [],
 
               // סיכום ופירוט עקרונות למשובי תרגילי הפתעה
               ...(feedback.folder == 'משוב תרגילי הפתעה' ||
@@ -4897,6 +5501,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.w600,
                                                 fontSize: 16,
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
@@ -5142,34 +5747,12 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             );
                           }
 
+                          // Skip empty message for training summary (not a range feedback)
                           if (stations.isEmpty || trainees.isEmpty) {
                             debugPrint(
                               '   ⚠️ Either stations or trainees are empty',
                             );
-                            return Card(
-                              color: Colors.blueGrey.shade800,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  children: [
-                                    const Text(
-                                      'מטווח 474 - אין נתונים מפורטים',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'מקצים: ${stations.length}, חניכים: ${trainees.length}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
+                            return const SizedBox.shrink();
                           }
 
                           // ✅ DETECT LONG RANGE: Check BOTH feedbackType AND rangeSubType for compatibility
@@ -6067,6 +6650,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
+                                      color: Colors.white,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -6312,42 +6896,126 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   );
                                 }
                               } else {
-                                // DEDICATED export for single feedback details ("פרטי משוב" screen)
-                                // Structure: סוג משוב, שם המדריך המשב, שם, תפקיד, חטיבה, יישוב, תאריך
-                                // Then ONLY criteria that exist in THIS feedback
-                                // Then ציון ממוצע, then הערות
-                                try {
-                                  debugPrint(
-                                    '📊 Exporting single feedback details',
-                                  );
-                                  debugPrint('   Screen: פרטי משוב');
-                                  debugPrint(
-                                    '   Feedback: ${feedback.name} (${feedback.exercise})',
-                                  );
+                                // Check if this is a training summary feedback
+                                final isTrainingSummary =
+                                    feedback.folder == 'משוב סיכום אימון 474' ||
+                                    feedback.module == 'training_summary';
 
-                                  await FeedbackExportService.exportSingleFeedbackDetails(
-                                    feedback: feedback,
-                                    fileNamePrefix: 'משוב_${feedback.name}',
-                                  );
+                                debugPrint('🔍 Export Logic Debug:');
+                                debugPrint(
+                                  '   feedback.folder: "${feedback.folder}"',
+                                );
+                                debugPrint(
+                                  '   feedback.module: "${feedback.module}"',
+                                );
+                                debugPrint('   feedback.id: "${feedback.id}"');
+                                debugPrint(
+                                  '   isTrainingSummary: $isTrainingSummary',
+                                );
 
-                                  if (!mounted) return;
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('הקובץ נוצר בהצלחה!'),
-                                      backgroundColor: Colors.green,
-                                      duration: Duration(seconds: 3),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  debugPrint('❌ Export error: $e');
-                                  if (!mounted) return;
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text('שגיאה בייצוא: $e'),
-                                      backgroundColor: Colors.red,
-                                      duration: const Duration(seconds: 5),
-                                    ),
-                                  );
+                                if (isTrainingSummary) {
+                                  if (isTrainingSummary) {
+                                    // TRAINING SUMMARY export - dedicated structure
+                                    if (feedback.id == null ||
+                                        feedback.id!.isEmpty) {
+                                      debugPrint(
+                                        '⚠️ Training summary missing ID, cannot export',
+                                      );
+                                      if (!mounted) return;
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'שגיאה: חסר מזהה למשוב, לא ניתן לייצא',
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    try {
+                                      debugPrint(
+                                        '📊 Exporting training summary details',
+                                      );
+                                      debugPrint(
+                                        '   Screen: פרטי משוב סיכום אימון',
+                                      );
+                                      debugPrint(
+                                        '   Feedback ID: ${feedback.id}',
+                                      );
+
+                                      // Fetch full document from Firestore to get all training data
+                                      final doc = await FirebaseFirestore
+                                          .instance
+                                          .collection('feedbacks')
+                                          .doc(feedback.id)
+                                          .get();
+
+                                      if (!doc.exists || doc.data() == null) {
+                                        throw Exception('לא נמצאו נתוני משוב');
+                                      }
+
+                                      await FeedbackExportService.exportTrainingSummaryDetails(
+                                        feedbackData: doc.data()!,
+                                        fileNamePrefix:
+                                            'סיכום_אימון_${feedback.settlement}',
+                                      );
+
+                                      if (!mounted) return;
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text('הקובץ נוצר בהצלחה!'),
+                                          backgroundColor: Colors.green,
+                                          duration: Duration(seconds: 3),
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      debugPrint('❌ Export error: $e');
+                                      if (!mounted) return;
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text('שגיאה בייצוא: $e'),
+                                          backgroundColor: Colors.red,
+                                          duration: const Duration(seconds: 5),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  // STANDARD feedback export
+                                  try {
+                                    debugPrint(
+                                      '📊 Exporting single feedback details',
+                                    );
+                                    debugPrint('   Screen: פרטי משוב');
+                                    debugPrint(
+                                      '   Feedback: ${feedback.name} (${feedback.exercise})',
+                                    );
+
+                                    await FeedbackExportService.exportSingleFeedbackDetails(
+                                      feedback: feedback,
+                                      fileNamePrefix: 'משוב_${feedback.name}',
+                                    );
+
+                                    if (!mounted) return;
+                                    messenger.showSnackBar(
+                                      const SnackBar(
+                                        content: Text('הקובץ נוצר בהצלחה!'),
+                                        backgroundColor: Colors.green,
+                                        duration: Duration(seconds: 3),
+                                      ),
+                                    );
+                                  } catch (e) {
+                                    debugPrint('❌ Export error: $e');
+                                    if (!mounted) return;
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('שגיאה בייצוא: $e'),
+                                        backgroundColor: Colors.red,
+                                        duration: const Duration(seconds: 5),
+                                      ),
+                                    );
+                                  }
                                 }
                               }
                             } finally {
@@ -6866,6 +7534,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -6882,6 +7551,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -6936,6 +7606,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -6988,6 +7659,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -7038,6 +7710,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -7094,6 +7767,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -7813,6 +8487,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -7829,6 +8504,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -7882,6 +8558,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -7936,6 +8613,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -7988,6 +8666,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -8044,6 +8723,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -8165,7 +8845,11 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
               const SizedBox(height: 12),
               const Text(
                 'ממוצע לפי יישוב',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               ...totalHitsPerSettlement.entries.map((e) {
@@ -8189,7 +8873,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -8234,7 +8918,11 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
               const SizedBox(height: 8),
               const Text(
                 'ממוצע לפי מקצה',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               // New graph for station totals
@@ -8304,7 +8992,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.black87,
+                                color: Colors.white,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -8761,6 +9449,7 @@ class _SurpriseDrillsStatisticsPageState
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -8777,6 +9466,7 @@ class _SurpriseDrillsStatisticsPageState
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -8829,6 +9519,7 @@ class _SurpriseDrillsStatisticsPageState
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -8879,6 +9570,7 @@ class _SurpriseDrillsStatisticsPageState
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -8929,6 +9621,7 @@ class _SurpriseDrillsStatisticsPageState
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
+                                  color: Colors.white,
                                 ),
                               ),
                               SizedBox(height: 4),
