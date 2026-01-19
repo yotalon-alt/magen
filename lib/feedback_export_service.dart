@@ -652,6 +652,14 @@ class FeedbackExportService {
             scoreCount++;
           }
         }
+
+        // ✅ LEVEL TEST: Extract hits and time for export (matching individual export)
+        if (hebrewName == 'בוחן רמה') {
+          result['levelTestHits'] = fieldData['hits'] as int?;
+          result['levelTestTimeSeconds'] = (fieldData['timeSeconds'] is num)
+              ? (fieldData['timeSeconds'] as num).toDouble()
+              : null;
+        }
       }
     });
 
@@ -1944,6 +1952,7 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final Sheet sheet = excel['משוב סיכום אימון'];
+      sheet.isRTL = true; // RTL mode for Hebrew text
       excel.delete('Sheet1');
 
       // Headers
@@ -2437,13 +2446,19 @@ class FeedbackExportService {
           '📊 Score columns (from UI): ${scoreColumns.map((c) => c['label']).join(', ')}',
         );
 
-        // Build headers matching UI structure + required instructor & date columns
+        // ✅ FIX: Build headers matching individual export (3 columns for level test)
         final headers = <String>[
           'פיקוד',
           'חטיבה',
           'מספר מועמד',
           'שם מועמד',
-          ...scoreColumns.map((c) => c['label']!),
+          'בוחן רמה',
+          'בוחן רמה - פגיעות', // NEW: hits column for combined export
+          'בוחן רמה - זמן', // NEW: time column for combined export
+          'הדרכה טובה',
+          'הדרכת מבנה',
+          'יבשים',
+          'תרגיל הפתעה',
           'ממוצע',
           'אחוז הצלחה',
           'מדריך משב',
@@ -2555,26 +2570,91 @@ class FeedbackExportService {
           );
           cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-          // Score columns (matching UI order and field names)
+          // ✅ FIX: Score columns with special handling for level test (3 columns)
           final scores = feedback['scores'] as Map<String, dynamic>?;
           for (final scoreCol in scoreColumns) {
-            cell = sheet.cell(
-              CellIndex.indexByColumnRow(
-                columnIndex: colIndex++,
-                rowIndex: rowIndex,
-              ),
-            );
-            final value = scores?[scoreCol['key']];
-            if (value is int) {
-              cell.value = IntCellValue(value);
-            } else if (value is double) {
-              cell.value = DoubleCellValue(value);
-            } else if (value is num) {
-              cell.value = IntCellValue(value.toInt());
+            // Special handling for level test (3 columns: score, hits, time)
+            if (scoreCol['key'] == 'levelTest') {
+              // First: בוחן רמה (score)
+              cell = sheet.cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: colIndex++,
+                  rowIndex: rowIndex,
+                ),
+              );
+              final levelTestScore = scores?[scoreCol['key']];
+              if (levelTestScore is int) {
+                cell.value = IntCellValue(levelTestScore);
+              } else if (levelTestScore is double) {
+                cell.value = DoubleCellValue(levelTestScore);
+              } else if (levelTestScore is num) {
+                cell.value = IntCellValue(levelTestScore.toInt());
+              } else {
+                cell.value = TextCellValue('');
+              }
+              cell.cellStyle = CellStyle(
+                horizontalAlign: HorizontalAlign.Center,
+              );
+
+              // Second: בוחן רמה - פגיעות (hits)
+              cell = sheet.cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: colIndex++,
+                  rowIndex: rowIndex,
+                ),
+              );
+              final hits = feedback['levelTestHits'];
+              if (hits is int) {
+                cell.value = IntCellValue(hits);
+              } else if (hits is num) {
+                cell.value = IntCellValue(hits.toInt());
+              } else {
+                cell.value = TextCellValue('');
+              }
+              cell.cellStyle = CellStyle(
+                horizontalAlign: HorizontalAlign.Center,
+              );
+
+              // Third: בוחן רמה - זמן (time)
+              cell = sheet.cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: colIndex++,
+                  rowIndex: rowIndex,
+                ),
+              );
+              final timeSeconds = feedback['levelTestTimeSeconds'];
+              if (timeSeconds is double) {
+                cell.value = DoubleCellValue(timeSeconds);
+              } else if (timeSeconds is num) {
+                cell.value = DoubleCellValue(timeSeconds.toDouble());
+              } else {
+                cell.value = TextCellValue('');
+              }
+              cell.cellStyle = CellStyle(
+                horizontalAlign: HorizontalAlign.Center,
+              );
             } else {
-              cell.value = TextCellValue('');
+              // Regular score column (single column)
+              cell = sheet.cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: colIndex++,
+                  rowIndex: rowIndex,
+                ),
+              );
+              final value = scores?[scoreCol['key']];
+              if (value is int) {
+                cell.value = IntCellValue(value);
+              } else if (value is double) {
+                cell.value = DoubleCellValue(value);
+              } else if (value is num) {
+                cell.value = IntCellValue(value.toInt());
+              } else {
+                cell.value = TextCellValue('');
+              }
+              cell.cellStyle = CellStyle(
+                horizontalAlign: HorizontalAlign.Center,
+              );
             }
-            cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
           }
 
           // ממוצע (average score from UI)
@@ -2585,11 +2665,7 @@ class FeedbackExportService {
             ),
           );
           final averageScore = feedback['averageScore'];
-          if (averageScore is double) {
-            cell.value = DoubleCellValue(averageScore);
-          } else if (averageScore is int) {
-            cell.value = DoubleCellValue(averageScore.toDouble());
-          } else if (averageScore is num) {
+          if (averageScore is num) {
             cell.value = DoubleCellValue(averageScore.toDouble());
           } else {
             cell.value = TextCellValue('');

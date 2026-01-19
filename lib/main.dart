@@ -534,6 +534,24 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
     debugPrint(
       '📋 loadFeedbacksForCurrentUser: total ${feedbackStorage.length} feedbacks in storage',
     );
+
+    // Debug: Show training summaries found
+    final trainingSummaries = feedbackStorage
+        .where(
+          (f) =>
+              f.folder == 'משוב סיכום אימון 474' ||
+              f.module == 'training_summary',
+        )
+        .toList();
+    debugPrint('\n🎯 ===== TRAINING SUMMARIES FOUND =====');
+    debugPrint('   Count: ${trainingSummaries.length}');
+    for (final ts in trainingSummaries) {
+      debugPrint(
+        '   - ID: ${ts.id}, Name: ${ts.name}, Settlement: ${ts.settlement}',
+      );
+      debugPrint('     Folder: "${ts.folder}", Module: "${ts.module}"');
+    }
+    debugPrint('🎯 ===================================\n');
   } on FirebaseException catch (e) {
     debugPrint('❌ FirebaseException: ${e.code}');
     debugPrint('   Message: ${e.message}');
@@ -4197,12 +4215,21 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       debugPrint(
         '================================================================\n',
       );
-    } else if (_selectedFolder == '474 Ranges') {
-      // ✅ FIX: 474 RANGES MUST EXCLUDE temporary docs
+    } else if (_selectedFolder == '474 Ranges' ||
+        _selectedFolder == 'מטווחים 474') {
+      // ✅ FIX: 474 RANGES MUST EXCLUDE temporary docs AND training summary
       // Query logic: module==shooting_ranges AND folderKey==ranges_474 AND isTemporary==false
       filteredFeedbacks = feedbackStorage.where((f) {
         // ❌ CRITICAL: Exclude ALL temporary/draft feedbacks
         if (f.isTemporary == true) return false;
+
+        // ❌ CRITICAL: Exclude training summary feedbacks
+        if (f.module == 'training_summary' || f.type == 'training_summary') {
+          return false;
+        }
+        if (f.folder == 'משוב סיכום אימון 474') {
+          return false;
+        }
 
         // ✅ Prefer canonical folderKey (most reliable)
         if (f.folderKey.isNotEmpty) return f.folderKey == 'ranges_474';
@@ -4226,6 +4253,29 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       debugPrint(
         '================================================================\n',
       );
+    } else if (_selectedFolder == 'משוב סיכום אימון 474') {
+      // ✅ TRAINING SUMMARY: Include ONLY training summary feedbacks
+      filteredFeedbacks = feedbackStorage.where((f) {
+        // Exclude temporary drafts
+        if (f.isTemporary == true) return false;
+
+        // NEW SCHEMA: Has module field populated
+        if (f.module.isNotEmpty) {
+          return f.module == 'training_summary';
+        }
+
+        // Legacy schema: use folder match
+        return f.folder == _selectedFolder;
+      }).toList();
+      debugPrint('\n========== TRAINING SUMMARY FILTER ==========');
+      debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
+      debugPrint('Filtered training summaries: ${filteredFeedbacks.length}');
+      for (final f in filteredFeedbacks.take(3)) {
+        debugPrint(
+          '  - ${f.name}: module="${f.module}", type="${f.type}", folder="${f.folder}"',
+        );
+      }
+      debugPrint('================================================\n');
     } else {
       // Other folders: use standard folder filtering + exclude temporary
       filteredFeedbacks = feedbackStorage
@@ -4234,7 +4284,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     }
 
     final isRangeFolder =
-        _selectedFolder == 'מטווחי ירי' || _selectedFolder == '474 Ranges';
+        _selectedFolder == 'מטווחי ירי' ||
+        _selectedFolder == '474 Ranges' ||
+        _selectedFolder == 'מטווחים 474';
 
     // Apply settlement filter for range feedbacks (legacy behavior)
     List<FeedbackModel> preFilteredFeedbacks = filteredFeedbacks;
@@ -6787,140 +6839,29 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isExporting
-                        ? null
-                        : () async {
-                            setState(() => _isExporting = true);
-                            try {
-                              final messenger = ScaffoldMessenger.of(context);
 
-                              // Check if this is a range/reporter feedback
-                              final isRangeFeedback =
-                                  (feedback.folder == 'מטווחי ירי' ||
-                                      feedback.folder == 'מטווחים 474' ||
-                                      feedback.folderKey == 'shooting_ranges' ||
-                                      feedback.folderKey == 'ranges_474') &&
-                                  feedback.id != null &&
-                                  feedback.id!.isNotEmpty;
+                // Check if this is a training summary for specialized export button
+                Builder(
+                  builder: (context) {
+                    final isTrainingSummary =
+                        feedback.folder == 'משוב סיכום אימון 474' ||
+                        feedback.module == 'training_summary';
 
-                              if (isRangeFeedback) {
-                                // Use reporter comparison export for range feedbacks
-                                try {
-                                  // Fetch full document data from Firestore
-                                  final doc = await FirebaseFirestore.instance
-                                      .collection('feedbacks')
-                                      .doc(feedback.id)
-                                      .get();
-
-                                  if (!doc.exists || doc.data() == null) {
-                                    throw Exception('לא נמצאו נתוני משוב');
-                                  }
-
-                                  final feedbackData = doc.data()!;
-
-                                  // Check if this feedback has trainee comparison data
-                                  final hasComparisonData =
-                                      feedbackData['stations'] != null &&
-                                      feedbackData['trainees'] != null;
-
-                                  if (hasComparisonData) {
-                                    await FeedbackExportService.exportReporterComparisonToGoogleSheets(
-                                      feedbackData: feedbackData,
-                                      fileNamePrefix: 'reporter_comparison',
-                                    );
-                                  } else {
-                                    // Fallback to standard export if no comparison data
-                                    final keys = [
-                                      'id',
-                                      'role',
-                                      'name',
-                                      'exercise',
-                                      'scores',
-                                      'notes',
-                                      'criteriaList',
-                                      'createdAt',
-                                      'instructorName',
-                                      'instructorRole',
-                                      'commandText',
-                                      'commandStatus',
-                                      'folder',
-                                      'scenario',
-                                      'settlement',
-                                      'attendeesCount',
-                                    ];
-                                    final headers = [
-                                      'ID',
-                                      'תפקיד',
-                                      'שם',
-                                      'תרגיל',
-                                      'ציונים',
-                                      'הערות',
-                                      'קריטריונים',
-                                      'תאריך יצירה',
-                                      'מדריך',
-                                      'תפקיד מדריך',
-                                      'טקסט פקודה',
-                                      'סטטוס פקודה',
-                                      'תיקייה',
-                                      'תרחיש',
-                                      'יישוב',
-                                      'מספר נוכחים',
-                                    ];
-                                    await FeedbackExportService.exportWithSchema(
-                                      keys: keys,
-                                      headers: headers,
-                                      feedbacks: [feedback],
-                                      fileNamePrefix: 'feedback_single',
-                                    );
-                                  }
-
-                                  if (!mounted) return;
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('הקובץ נוצר בהצלחה!'),
-                                      backgroundColor: Colors.green,
-                                      duration: Duration(seconds: 3),
-                                    ),
+                    if (isTrainingSummary) {
+                      // Dedicated training summary export button
+                      return SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isExporting
+                              ? null
+                              : () async {
+                                  final messenger = ScaffoldMessenger.of(
+                                    context,
                                   );
-                                } catch (e) {
-                                  if (!mounted) return;
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text('שגיאה בייצוא: $e'),
-                                      backgroundColor: Colors.red,
-                                      duration: const Duration(seconds: 5),
-                                    ),
-                                  );
-                                }
-                              } else {
-                                // Check if this is a training summary feedback
-                                final isTrainingSummary =
-                                    feedback.folder == 'משוב סיכום אימון 474' ||
-                                    feedback.module == 'training_summary';
-
-                                debugPrint('🔍 Export Logic Debug:');
-                                debugPrint(
-                                  '   feedback.folder: "${feedback.folder}"',
-                                );
-                                debugPrint(
-                                  '   feedback.module: "${feedback.module}"',
-                                );
-                                debugPrint('   feedback.id: "${feedback.id}"');
-                                debugPrint(
-                                  '   isTrainingSummary: $isTrainingSummary',
-                                );
-
-                                if (isTrainingSummary) {
-                                  if (isTrainingSummary) {
-                                    // TRAINING SUMMARY export - dedicated structure
+                                  setState(() => _isExporting = true);
+                                  try {
                                     if (feedback.id == null ||
                                         feedback.id!.isEmpty) {
-                                      debugPrint(
-                                        '⚠️ Training summary missing ID, cannot export',
-                                      );
                                       if (!mounted) return;
                                       messenger.showSnackBar(
                                         const SnackBar(
@@ -6933,68 +6874,22 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       return;
                                     }
 
-                                    try {
-                                      debugPrint(
-                                        '📊 Exporting training summary details',
-                                      );
-                                      debugPrint(
-                                        '   Screen: פרטי משוב סיכום אימון',
-                                      );
-                                      debugPrint(
-                                        '   Feedback ID: ${feedback.id}',
-                                      );
+                                    // Fetch full document from Firestore to get all training data
+                                    final doc = await FirebaseFirestore.instance
+                                        .collection('feedbacks')
+                                        .doc(feedback.id)
+                                        .get();
 
-                                      // Fetch full document from Firestore to get all training data
-                                      final doc = await FirebaseFirestore
-                                          .instance
-                                          .collection('feedbacks')
-                                          .doc(feedback.id)
-                                          .get();
-
-                                      if (!doc.exists || doc.data() == null) {
-                                        throw Exception('לא נמצאו נתוני משוב');
-                                      }
-
-                                      await FeedbackExportService.exportTrainingSummaryDetails(
-                                        feedbackData: doc.data()!,
-                                        fileNamePrefix:
-                                            'סיכום_אימון_${feedback.settlement}',
-                                      );
-
-                                      if (!mounted) return;
-                                      messenger.showSnackBar(
-                                        const SnackBar(
-                                          content: Text('הקובץ נוצר בהצלחה!'),
-                                          backgroundColor: Colors.green,
-                                          duration: Duration(seconds: 3),
-                                        ),
-                                      );
-                                    } catch (e) {
-                                      debugPrint('❌ Export error: $e');
-                                      if (!mounted) return;
-                                      messenger.showSnackBar(
-                                        SnackBar(
-                                          content: Text('שגיאה בייצוא: $e'),
-                                          backgroundColor: Colors.red,
-                                          duration: const Duration(seconds: 5),
-                                        ),
+                                    if (!doc.exists || doc.data() == null) {
+                                      throw Exception(
+                                        'לא נמצאו נתוני סיכום אימון',
                                       );
                                     }
-                                  }
-                                } else {
-                                  // STANDARD feedback export
-                                  try {
-                                    debugPrint(
-                                      '📊 Exporting single feedback details',
-                                    );
-                                    debugPrint('   Screen: פרטי משוב');
-                                    debugPrint(
-                                      '   Feedback: ${feedback.name} (${feedback.exercise})',
-                                    );
 
-                                    await FeedbackExportService.exportSingleFeedbackDetails(
-                                      feedback: feedback,
-                                      fileNamePrefix: 'משוב_${feedback.name}',
+                                    await FeedbackExportService.exportTrainingSummaryDetails(
+                                      feedbackData: doc.data()!,
+                                      fileNamePrefix:
+                                          'סיכום_אימון_${feedback.settlement}',
                                     );
 
                                     if (!mounted) return;
@@ -7006,45 +6901,229 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       ),
                                     );
                                   } catch (e) {
-                                    debugPrint('❌ Export error: $e');
+                                    debugPrint(
+                                      '❌ Training summary export error: $e',
+                                    );
                                     if (!mounted) return;
                                     messenger.showSnackBar(
                                       SnackBar(
-                                        content: Text('שגיאה בייצוא: $e'),
+                                        content: Text(
+                                          'שגיאה בייצוא סיכום האימון: $e',
+                                        ),
                                         backgroundColor: Colors.red,
                                         duration: const Duration(seconds: 5),
                                       ),
                                     );
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isExporting = false);
+                                    }
                                   }
-                                }
-                              }
-                            } finally {
-                              if (mounted) {
-                                setState(() => _isExporting = false);
-                              }
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.green,
-                    ),
-                    icon: _isExporting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                        : const Icon(Icons.download),
-                    label: Text(
-                      _isExporting ? 'מייצא...' : 'ייצוא לקובץ מקומי',
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                  ),
+                                },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Colors.deepOrange,
+                          ),
+                          icon: _isExporting
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(Icons.download),
+                          label: Text(
+                            _isExporting
+                                ? 'מייצא...'
+                                : 'ייצוא פרטי סיכום האימון',
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                      );
+                    } else {
+                      // Standard export button for non-training summaries
+                      return SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isExporting
+                              ? null
+                              : () async {
+                                  setState(() => _isExporting = true);
+                                  try {
+                                    final messenger = ScaffoldMessenger.of(
+                                      context,
+                                    );
+
+                                    // Check if this is a range/reporter feedback
+                                    final isRangeFeedback =
+                                        (feedback.folder == 'מטווחי ירי' ||
+                                            feedback.folder == 'מטווחים 474' ||
+                                            feedback.folderKey ==
+                                                'shooting_ranges' ||
+                                            feedback.folderKey ==
+                                                'ranges_474') &&
+                                        feedback.id != null &&
+                                        feedback.id!.isNotEmpty;
+
+                                    if (isRangeFeedback) {
+                                      // Use reporter comparison export for range feedbacks
+                                      try {
+                                        // Fetch full document data from Firestore
+                                        final doc = await FirebaseFirestore
+                                            .instance
+                                            .collection('feedbacks')
+                                            .doc(feedback.id)
+                                            .get();
+
+                                        if (!doc.exists || doc.data() == null) {
+                                          throw Exception(
+                                            'לא נמצאו נתוני משוב',
+                                          );
+                                        }
+
+                                        final feedbackData = doc.data()!;
+
+                                        // Check if this feedback has trainee comparison data
+                                        final hasComparisonData =
+                                            feedbackData['stations'] != null &&
+                                            feedbackData['trainees'] != null;
+
+                                        if (hasComparisonData) {
+                                          await FeedbackExportService.exportReporterComparisonToGoogleSheets(
+                                            feedbackData: feedbackData,
+                                            fileNamePrefix:
+                                                'reporter_comparison',
+                                          );
+                                        } else {
+                                          // Fallback to standard export if no comparison data
+                                          final keys = [
+                                            'id',
+                                            'role',
+                                            'name',
+                                            'exercise',
+                                            'scores',
+                                            'notes',
+                                            'criteriaList',
+                                            'createdAt',
+                                            'instructorName',
+                                            'instructorRole',
+                                            'commandText',
+                                            'commandStatus',
+                                            'folder',
+                                            'scenario',
+                                            'settlement',
+                                            'attendeesCount',
+                                          ];
+                                          final headers = [
+                                            'ID',
+                                            'תפקיד',
+                                            'שם',
+                                            'תרגיל',
+                                            'ציונים',
+                                            'הערות',
+                                            'קריטריונים',
+                                            'תאריך יצירה',
+                                            'מדריך',
+                                            'תפקיד מדריך',
+                                            'טקסט פקודה',
+                                            'סטטוס פקודה',
+                                            'תיקייה',
+                                            'תרחיש',
+                                            'יישוב',
+                                            'מספר נוכחים',
+                                          ];
+                                          await FeedbackExportService.exportWithSchema(
+                                            keys: keys,
+                                            headers: headers,
+                                            feedbacks: [feedback],
+                                            fileNamePrefix: 'feedback_single',
+                                          );
+                                        }
+
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          const SnackBar(
+                                            content: Text('הקובץ נוצר בהצלחה!'),
+                                            backgroundColor: Colors.green,
+                                            duration: Duration(seconds: 3),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text('שגיאה בייצוא: $e'),
+                                            backgroundColor: Colors.red,
+                                            duration: const Duration(
+                                              seconds: 5,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } else {
+                                      // STANDARD feedback export
+                                      try {
+                                        await FeedbackExportService.exportSingleFeedbackDetails(
+                                          feedback: feedback,
+                                          fileNamePrefix:
+                                              'משוב_${feedback.name}',
+                                        );
+
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          const SnackBar(
+                                            content: Text('הקובץ נוצר בהצלחה!'),
+                                            backgroundColor: Colors.green,
+                                            duration: Duration(seconds: 3),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text('שגיאה בייצוא: $e'),
+                                            backgroundColor: Colors.red,
+                                            duration: const Duration(
+                                              seconds: 5,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isExporting = false);
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Colors.green,
+                          ),
+                          icon: _isExporting
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(Icons.download),
+                          label: Text(
+                            _isExporting ? 'מייצא...' : 'ייצוא לקובץ מקומי',
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                      );
+                    }
+                  },
                 ),
               ],
             ],
