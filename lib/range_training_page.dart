@@ -1372,59 +1372,24 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('FOLDER_RESOLVE: uiFolderValue="$uiFolderValue"');
       debugPrint('FOLDER_RESOLVE: loadedFolderKey="$loadedFolderKey"');
       debugPrint('FOLDER_RESOLVE: loadedFolderLabel="$loadedFolderLabel"');
+      debugPrint('FOLDER_RESOLVE: rangeFolder="$rangeFolder"');
+      debugPrint(
+        'FOLDER_RESOLVE: Is loading from draft? ${loadedFolderKey != null && loadedFolderKey!.isNotEmpty}',
+      );
 
-      // ✅ CRITICAL: Compute resolvedFolderKey = selectedFolderKey ?? draft.folderKey
-      String? resolvedFolderKey;
+      // ✅ FIX: ALWAYS prioritize loaded folder values from draft to prevent folder switching bug
+      // When user loads a draft and returns to it, the folder should remain exactly as saved
       if (loadedFolderKey != null && loadedFolderKey!.isNotEmpty) {
-        resolvedFolderKey = loadedFolderKey;
-        debugPrint(
-          'FOLDER_RESOLVE: ✅ Using draft folderKey: $resolvedFolderKey',
-        );
-      } else if (widget.mode == 'surprise') {
-        resolvedFolderKey = 'surprise_drills';
-        debugPrint('FOLDER_RESOLVE: ✅ Using hardcoded surprise_drills');
-      } else if (uiFolderValue == 'מטווחים 474') {
-        resolvedFolderKey = 'ranges_474';
-        debugPrint('FOLDER_RESOLVE: ✅ Computed from UI: ranges_474');
-      } else if (uiFolderValue == 'מטווחי ירי') {
-        resolvedFolderKey = 'shooting_ranges';
-        debugPrint('FOLDER_RESOLVE: ✅ Computed from UI: shooting_ranges');
-      }
-
-      // ✅ CRITICAL VALIDATION: Block save if resolvedFolderKey is missing
-      if (resolvedFolderKey == null || resolvedFolderKey.isEmpty) {
-        debugPrint(
-          '❌❌❌ FINAL SAVE BLOCKED: resolvedFolderKey is null/empty ❌❌❌',
-        );
-        debugPrint('   uiFolderValue: $uiFolderValue');
-        debugPrint('   loadedFolderKey: $loadedFolderKey');
-        debugPrint('   mode: ${widget.mode}');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'FINAL SAVE BLOCKED: missing folderKey\n'
-              'UI: $uiFolderValue | Draft: $loadedFolderKey',
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        setState(() => _isSaving = false);
-        return;
-      }
-
-      debugPrint('✅ FOLDER_RESOLVE: resolvedFolderKey = $resolvedFolderKey');
-
-      // Check if folder fields were loaded from draft
-      if (loadedFolderKey != null && loadedFolderKey!.isNotEmpty) {
-        // ✅ REUSE LOADED VALUES - Don't recompute to avoid bugs
+        // ✅ CRITICAL: Use draft folder values - DO NOT recompute from UI
         folderKey = loadedFolderKey!;
         folderLabel =
             loadedFolderLabel ?? folderKey; // Fallback to key if label missing
         folderId = folderKey; // Use folderKey as folderId
         debugPrint(
-          'FOLDER_RESOLVE: ✅ Using LOADED folder fields: folderKey=$folderKey folderLabel=$folderLabel',
+          'FOLDER_RESOLVE: ✅ Using LOADED folder fields from draft: folderKey=$folderKey folderLabel=$folderLabel',
+        );
+        debugPrint(
+          'FOLDER_RESOLVE: ✅ DRAFT FOLDER PRESERVED - no UI recomputation',
         );
       } else {
         // ✅ COMPUTE FROM UI SELECTION (new feedback, not from draft)
@@ -1784,7 +1749,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('FINAL SAVE OK -> folderKey=$resolvedFolderKey'),
+              content: Text('FINAL SAVE OK -> folderKey=$folderKey'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
             ),
@@ -1866,16 +1831,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // SHOOTING RANGES: Save to dedicated collection
         collectionPath = 'feedbacks';
 
-        // Determine target folder - EXACT selection only, no fallbacks
-        String targetFolder;
-        if (rangeFolder == 'מטווחים 474') {
-          targetFolder = 'מטווחים 474';
-        } else if (rangeFolder == 'מטווחי ירי') {
-          targetFolder = 'מטווחי ירי';
-        } else {
-          // Should never reach here due to validation
-          throw Exception('Invalid folder selection for save: $rangeFolder');
-        }
+        // Determine target folder - Use resolved folder values from above
+        // ✅ FIX: ALWAYS use the already resolved folderLabel (consistent with folder resolution logic)
+        String targetFolder = folderLabel;
+        debugPrint(
+          'FINAL_SAVE: ✅ Using resolved folderLabel as targetFolder: $targetFolder',
+        );
 
         // 🔍 DEBUG: Log final save flags before write (Range)
         final rangeTypeDebug = _rangeType == 'קצרים'
@@ -1898,7 +1859,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'exercise': 'מטווחים',
           'folder': targetFolder, // ✅ Final folder (not temp)
           'folderCategory':
-              rangeFolder, // Store chosen folder for filtering/export
+              folderLabel, // ✅ FIX: Always use resolved folderLabel
           'folderKey': folderKey,
           'folderLabel': folderLabel,
           'folderId': folderId,
@@ -2056,6 +2017,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         }
 
         debugPrint('\n========== FIRESTORE WRITE START ==========');
+        debugPrint('📄 DOCUMENT DATA TO SAVE:');
+        debugPrint('   folder: ${rangeData['folder']}');
+        debugPrint('   folderCategory: ${rangeData['folderCategory']}');
+        debugPrint('   folderKey: ${rangeData['folderKey']}');
+        debugPrint('   folderLabel: ${rangeData['folderLabel']}');
+        debugPrint('   folderId: ${rangeData['folderId']}');
+        debugPrint('   module: ${rangeData['module']}');
+        debugPrint('   type: ${rangeData['type']}');
+        debugPrint('   feedbackType: ${rangeData['feedbackType']}');
+        debugPrint('   isTemporary: ${rangeData['isTemporary']}');
+        debugPrint('   isDraft: ${rangeData['isDraft']}');
+        debugPrint('   status: ${rangeData['status']}');
 
         final collRef = FirebaseFirestore.instance.collection(collectionPath);
 
@@ -2091,6 +2064,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'WRITE: ✅ Final document saved at path=${finalDocRef.path}',
           );
           debugPrint('🆔 SAVED DOCUMENT ID: ${finalDocRef.id}');
+          debugPrint('📂 SAVED TO COLLECTION: $collectionPath');
+          debugPrint('📁 SAVED FOLDER DATA:');
+          debugPrint('   -> folder: ${rangeData['folder']}');
+          debugPrint('   -> folderKey: ${rangeData['folderKey']}');
+          debugPrint('   -> folderLabel: ${rangeData['folderLabel']}');
+          debugPrint('   -> module: ${rangeData['module']}');
+          debugPrint('   -> type: ${rangeData['type']}');
+          debugPrint('   -> status: ${rangeData['status']}');
 
           // 🔍 DEBUG: Verify final save flags after write (Range)
           debugPrint(
@@ -2119,7 +2100,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('FINAL SAVE OK -> folderKey=$resolvedFolderKey'),
+              content: Text('FINAL SAVE OK -> folderKey=$folderKey'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
             ),
@@ -2249,24 +2230,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       if (!mounted) return;
 
-      // ✅ DELETE TEMPORARY DRAFT after successful final save (range feedback only)
-      if (widget.mode != 'surprise' &&
-          _editingFeedbackId != null &&
-          _editingFeedbackId!.isNotEmpty) {
-        try {
-          debugPrint(
-            '🗑️ CLEANUP: Deleting temporary draft draftId=$_editingFeedbackId',
-          );
-          await FirebaseFirestore.instance
-              .collection('feedbacks')
-              .doc(_editingFeedbackId!)
-              .delete();
-          debugPrint('✅ CLEANUP: Temporary draft deleted successfully');
-        } catch (deleteError) {
-          // Log but don't block navigation - draft cleanup is not critical
-          debugPrint('⚠️ CLEANUP: Failed to delete draft: $deleteError');
-        }
-      }
+      // ✅ NO CLEANUP NEEDED: Document updated in-place from draft to final
+      // Both Range and Surprise modes now work consistently - same document updated
+      debugPrint(
+        '🔄 CONSISTENCY: Document updated in-place, no deletion needed',
+      );
 
       // Navigate back to appropriate feedbacks list
       // Since we're using nested navigation, just pop back
@@ -2403,16 +2371,31 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       String draftFolderKey;
       String draftFolderLabel;
-      if (rangeFolder == 'מטווחים 474' || rangeFolder == '474 Ranges') {
-        draftFolderKey = 'ranges_474';
-        draftFolderLabel = 'מטווחים 474';
-      } else if (rangeFolder == 'מטווחי ירי' ||
-          rangeFolder == 'Shooting Ranges') {
-        draftFolderKey = 'shooting_ranges';
-        draftFolderLabel = 'מטווחי ירי';
+
+      // ✅ DRAFT SAVE FIX: Use loaded folder values if available (from existing draft)
+      // This prevents folder switching when user returns to edit an existing draft
+      if (loadedFolderKey != null && loadedFolderKey!.isNotEmpty) {
+        draftFolderKey = loadedFolderKey!;
+        draftFolderLabel = loadedFolderLabel ?? loadedFolderKey!;
+        debugPrint(
+          'DRAFT_SAVE: ✅ Using LOADED folder: key=$draftFolderKey label=$draftFolderLabel',
+        );
       } else {
-        draftFolderKey = 'shooting_ranges';
-        draftFolderLabel = 'מטווחי ירי';
+        // ✅ NEW DRAFT: Use UI selection to determine folder
+        if (rangeFolder == 'מטווחים 474' || rangeFolder == '474 Ranges') {
+          draftFolderKey = 'ranges_474';
+          draftFolderLabel = 'מטווחים 474';
+        } else if (rangeFolder == 'מטווחי ירי' ||
+            rangeFolder == 'Shooting Ranges') {
+          draftFolderKey = 'shooting_ranges';
+          draftFolderLabel = 'מטווחי ירי';
+        } else {
+          draftFolderKey = 'shooting_ranges';
+          draftFolderLabel = 'מטווחי ירי';
+        }
+        debugPrint(
+          'DRAFT_SAVE: ✅ Using UI folder: key=$draftFolderKey label=$draftFolderLabel',
+        );
       }
 
       String resolvedInstructorName = instructorName;
