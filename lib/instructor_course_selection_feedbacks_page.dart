@@ -650,8 +650,17 @@ class _InstructorCourseSelectionFeedbacksPageState
     );
   }
 
+  /// Count feedbacks in feedbackStorage by category folder name
+  int _countFeedbacksInCategory(String folderName) {
+    return feedbackStorage.where((f) => f.folder == folderName).length;
+  }
+
   Widget _buildCategoryButtons() {
     final isAdmin = currentUser?.role == 'Admin';
+    final suitableCount = _countFeedbacksInCategory('מתאימים לקורס מדריכים');
+    final notSuitableCount = _countFeedbacksInCategory(
+      'לא מתאימים לקורס מדריכים',
+    );
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -718,18 +727,39 @@ class _InstructorCourseSelectionFeedbacksPageState
                   ),
                   elevation: 4,
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle, size: 32),
-                    SizedBox(width: 16),
-                    Text(
-                      'מתאימים לקורס מדריכים',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                    const Icon(Icons.check_circle, size: 32),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        'מתאימים לקורס מדריכים',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$suitableCount',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                   ],
                 ),
               ),
@@ -750,18 +780,39 @@ class _InstructorCourseSelectionFeedbacksPageState
                   ),
                   elevation: 4,
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.cancel, size: 32),
-                    SizedBox(width: 16),
-                    Text(
-                      'לא מתאימים לקורס מדריכים',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                    const Icon(Icons.cancel, size: 32),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        'לא מתאימים לקורס מדריכים',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$notSuitableCount',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                   ],
                 ),
               ),

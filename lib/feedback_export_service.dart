@@ -1955,7 +1955,7 @@ class FeedbackExportService {
       sheet.isRTL = true; // RTL mode for Hebrew text
       excel.delete('Sheet1');
 
-      // Headers
+      // Headers (without "רשימת נוכחים" column)
       final headers = [
         'תאריך',
         'מדריך',
@@ -1963,7 +1963,6 @@ class FeedbackExportService {
         'יישוב',
         'סוג אימון',
         'מספר נוכחים',
-        'רשימת נוכחים',
         'סיכום',
       ];
 
@@ -2005,14 +2004,13 @@ class FeedbackExportService {
       final attendeesCount =
           (feedbackData['attendeesCount'] as num?)?.toInt() ?? 0;
 
-      // Join attendees list
+      // Get attendees list
       final attendeesList =
           (feedbackData['attendees'] as List?)?.cast<String>() ?? [];
-      final attendeesStr = attendeesList.join(', ');
 
       final summary = (feedbackData['summary'] ?? '').toString();
 
-      // Write data row
+      // Write main data row (row 1)
       final rowData = [
         dateStr,
         instructorName,
@@ -2020,7 +2018,6 @@ class FeedbackExportService {
         settlement,
         trainingType,
         attendeesCount.toString(),
-        attendeesStr,
         summary,
       ];
 
@@ -2031,13 +2028,28 @@ class FeedbackExportService {
         cell.value = TextCellValue(rowData[i]);
       }
 
+      // Row 2: Empty row
+      // Row 3: "רשימת נוכחים:" label
+      final labelCell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3),
+      );
+      labelCell.value = TextCellValue('רשימת נוכחים:');
+      labelCell.cellStyle = CellStyle(bold: true, fontSize: 11);
+
+      // Rows 4+: Each attendee on a separate row
+      for (var i = 0; i < attendeesList.length; i++) {
+        final attendeeCell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4 + i),
+        );
+        attendeeCell.value = TextCellValue(attendeesList[i]);
+      }
+
       // Auto-size columns
       for (var i = 0; i < headers.length; i++) {
         sheet.setColumnWidth(i, 20);
       }
-      // Make comments column wider
-      sheet.setColumnWidth(6, 40); // רשימת נוכחים
-      sheet.setColumnWidth(7, 50); // סיכום
+      // Make summary column wider
+      sheet.setColumnWidth(6, 50); // סיכום
 
       debugPrint('   Headers: ${headers.join(", ")}');
       debugPrint('   Data row written');

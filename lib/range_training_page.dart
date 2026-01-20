@@ -2033,8 +2033,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final collRef = FirebaseFirestore.instance.collection(collectionPath);
 
         try {
-          // ✅ FIX: ALWAYS create NEW document for FINAL SAVE (never reuse draftId)
-          // Only update if explicitly editing an existing FINAL feedback
+          // ✅ FIX: Use EXISTING draft document if available from autosave
+          // This prevents duplicate feedbacks (one temp, one final)
           DocumentReference finalDocRef;
 
           // Check if we're editing an existing FINAL (non-draft) feedback
@@ -2043,18 +2043,38 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ? widget.feedbackId
               : null;
 
+          // ✅ NEW LOGIC: Check if we have a draft ID from autosave
+          final String? autosavedDraftId = _editingFeedbackId;
+
           if (existingFinalId != null) {
             // EDIT mode: update existing final feedback
             finalDocRef = collRef.doc(existingFinalId);
             debugPrint(
-              'WRITE: EDIT MODE - Updating feedback id=$existingFinalId',
+              'WRITE: EDIT MODE - Updating existing final feedback id=$existingFinalId',
             );
+            debugPrint('WRITE: ✅ No duplicate - updating same document');
             await finalDocRef.set(rangeData);
+          } else if (autosavedDraftId != null && autosavedDraftId.isNotEmpty) {
+            // ✅ AUTOSAVE DRAFT EXISTS: Convert draft to final by updating same document
+            finalDocRef = collRef.doc(autosavedDraftId);
+            debugPrint(
+              'WRITE: DRAFT→FINAL - Converting autosaved draft id=$autosavedDraftId to final',
+            );
+            debugPrint(
+              'WRITE: ✅ No duplicate - updating autosaved draft to final status',
+            );
+            await finalDocRef.set(
+              rangeData,
+            ); // Overwrites temp fields with final fields
+            debugPrint('🆔 DRAFT CONVERTED TO FINAL: docId=$autosavedDraftId');
           } else {
-            // CREATE mode: generate new auto-ID
+            // CREATE mode: generate new auto-ID (only if NO draft and NOT editing)
             finalDocRef = collRef.doc(); // Firestore auto-ID
             final docId = finalDocRef.id;
             debugPrint('WRITE: CREATE MODE - New auto-ID: $docId');
+            debugPrint(
+              'WRITE: ⚠️ No autosaved draft found - creating new document',
+            );
             await finalDocRef.set(rangeData);
             debugPrint('🆔 NEW FEEDBACK CREATED: docId=$docId');
           }
@@ -2571,6 +2591,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('✅ DRAFT_SAVE: Verification PASSED');
       debugPrint('DRAFT_SAVE: Draft saved at ${docRef.path}');
       debugPrint('DRAFT_SAVE: traineeRows.length=${traineeRows.length}');
+
+      // ✅ CRITICAL: Store draftId in _editingFeedbackId after FIRST save
+      // This ensures subsequent _saveFinalFeedback() UPDATES same doc instead of creating new one
+      if (_editingFeedbackId == null || _editingFeedbackId != draftId) {
+        _editingFeedbackId = draftId;
+        debugPrint('DRAFT_SAVE: ✅ _editingFeedbackId set to "$draftId"');
+        debugPrint(
+          'DRAFT_SAVE: Next final save will UPDATE this doc, not create new',
+        );
+      }
+
       debugPrint('========== ✅ DRAFT_SAVE END ==========');
 
       // Auto-save notification removed - saves silently in background
