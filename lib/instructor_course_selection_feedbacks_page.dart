@@ -31,6 +31,20 @@ class _InstructorCourseSelectionFeedbacksPageState
   DateTime? _filterDateTo;
 
   @override
+  void initState() {
+    super.initState();
+    // Schedule rebuild after feedbackStorage loads from main.dart
+    // This ensures category button counts update from 0 to actual values
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          // Trigger rebuild to update counts
+        });
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _filterNameController.dispose();
     _filterNumberController.dispose();
@@ -651,16 +665,8 @@ class _InstructorCourseSelectionFeedbacksPageState
   }
 
   /// Count feedbacks in feedbackStorage by category folder name
-  int _countFeedbacksInCategory(String folderName) {
-    return feedbackStorage.where((f) => f.folder == folderName).length;
-  }
-
   Widget _buildCategoryButtons() {
     final isAdmin = currentUser?.role == 'Admin';
-    final suitableCount = _countFeedbacksInCategory('מתאימים לקורס מדריכים');
-    final notSuitableCount = _countFeedbacksInCategory(
-      'לא מתאימים לקורס מדריכים',
-    );
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -715,107 +721,141 @@ class _InstructorCourseSelectionFeedbacksPageState
             ],
 
             // כפתור ירוק - מתאימים
-            SizedBox(
-              height: 80,
-              child: ElevatedButton(
-                onPressed: () => _loadFeedbacks('suitable'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade700,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            FutureBuilder<int>(
+              future: FirebaseFirestore.instance
+                  .collection('instructor_course_evaluations')
+                  .where('status', isEqualTo: 'final')
+                  .where('isSuitable', isEqualTo: true)
+                  .count()
+                  .get()
+                  .timeout(const Duration(seconds: 5))
+                  .then((snapshot) => snapshot.count ?? 0)
+                  .catchError((e) {
+                    debugPrint('⚠️ Failed to count suitable feedbacks: $e');
+                    return 0;
+                  }),
+              builder: (context, snapshot) {
+                final suitableCount = snapshot.data ?? 0;
+                return SizedBox(
+                  height: 80,
+                  child: ElevatedButton(
+                    onPressed: () => _loadFeedbacks('suitable'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.check_circle, size: 32),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            'מתאימים לקורס מדריכים',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '$suitableCount',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
                   ),
-                  elevation: 4,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.check_circle, size: 32),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        'מתאימים לקורס מדריכים',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '$suitableCount',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
-              ),
+                );
+              },
             ),
 
             const SizedBox(height: 24),
 
             // כפתור אדום - לא מתאימים
-            SizedBox(
-              height: 80,
-              child: ElevatedButton(
-                onPressed: () => _loadFeedbacks('not_suitable'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            FutureBuilder<int>(
+              future: FirebaseFirestore.instance
+                  .collection('instructor_course_evaluations')
+                  .where('status', isEqualTo: 'final')
+                  .where('isSuitable', isEqualTo: false)
+                  .count()
+                  .get()
+                  .timeout(const Duration(seconds: 5))
+                  .then((snapshot) => snapshot.count ?? 0)
+                  .catchError((e) {
+                    debugPrint('⚠️ Failed to count not suitable feedbacks: $e');
+                    return 0;
+                  }),
+              builder: (context, snapshot) {
+                final notSuitableCount = snapshot.data ?? 0;
+                return SizedBox(
+                  height: 80,
+                  child: ElevatedButton(
+                    onPressed: () => _loadFeedbacks('not_suitable'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.cancel, size: 32),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            'לא מתאימים לקורס מדריכים',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '$notSuitableCount',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
                   ),
-                  elevation: 4,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.cancel, size: 32),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        'לא מתאימים לקורס מדריכים',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '$notSuitableCount',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
-              ),
+                );
+              },
             ),
           ],
         ),

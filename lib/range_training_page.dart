@@ -3077,14 +3077,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ? 'תרגילי הפתעה'
         : (_rangeType == 'קצרים' ? 'טווח קצר' : 'טווח רחוק');
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(rangeTitle),
-        leading: const StandardBackButton(),
-      ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: SingleChildScrollView(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(rangeTitle),
+          leading: const StandardBackButton(),
+        ),
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

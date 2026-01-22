@@ -2916,6 +2916,29 @@ class FeedbackExportService {
         TextCellValue('ממוצע'),
       ];
 
+      // ========== PHASE 1.5: Add metadata header rows ==========
+      // Extract metadata from first feedback (all feedbacks from same session)
+      final firstFeedback = feedbacksData[0];
+      final settlement =
+          (firstFeedback['settlement'] ?? firstFeedback['name'] ?? '')
+              .toString();
+      final instructor = (firstFeedback['instructorName'] ?? '').toString();
+      final createdAt = firstFeedback['createdAt'];
+      String dateStr = '';
+      if (createdAt is Timestamp) {
+        final dt = createdAt.toDate();
+        dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+      }
+
+      // Add metadata header rows BEFORE table headers
+      sheet.appendRow([TextCellValue('יישוב:'), TextCellValue(settlement)]);
+      sheet.appendRow([
+        TextCellValue('מדריך ממשב:'),
+        TextCellValue(instructor),
+      ]);
+      sheet.appendRow([TextCellValue('תאריך ושעה:'), TextCellValue(dateStr)]);
+      sheet.appendRow([]); // Empty separator row for readability
+
       sheet.appendRow(headers);
       debugPrint('📝 Headers added: ${headers.length} columns');
 

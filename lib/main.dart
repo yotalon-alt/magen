@@ -157,6 +157,7 @@ class FeedbackModel {
   folderKey; // canonical key: 'ranges_474' | 'shooting_ranges' | ''
   final String folderLabel; // Hebrew display label
   final String rangeSubType; // 'טווח קצר' or 'טווח רחוק' for display
+  final String trainingType; // 'סוג אימון' for training summary
 
   const FeedbackModel({
     this.id,
@@ -182,6 +183,7 @@ class FeedbackModel {
     this.folderKey = '',
     this.folderLabel = '',
     this.rangeSubType = '',
+    this.trainingType = '',
   });
 
   static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
@@ -272,6 +274,7 @@ class FeedbackModel {
         return '';
       })(),
       rangeSubType: (m['rangeSubType'] ?? '').toString(),
+      trainingType: (m['trainingType'] ?? '').toString(),
     );
   }
 
@@ -298,6 +301,7 @@ class FeedbackModel {
     String? folderKey,
     String? folderLabel,
     String? rangeSubType,
+    String? trainingType,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -322,6 +326,7 @@ class FeedbackModel {
       folderKey: folderKey ?? this.folderKey,
       folderLabel: folderLabel ?? this.folderLabel,
       rangeSubType: rangeSubType ?? this.rangeSubType,
+      trainingType: trainingType ?? this.trainingType,
     );
   }
 
@@ -349,6 +354,7 @@ class FeedbackModel {
       'folderKey': folderKey,
       'folderLabel': folderLabel,
       'rangeSubType': rangeSubType,
+      'trainingType': trainingType,
     };
   }
 }
@@ -4136,14 +4142,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     .where((f) => f.folder == folder || f.folder.isEmpty)
                     .length;
               } else if (folder == 'מיונים לקורס מדריכים') {
-                // Special case: count feedbacks from both sub-folders
-                count = feedbackStorage
-                    .where(
-                      (f) =>
-                          f.folder == 'מתאימים לקורס מדריכים' ||
-                          f.folder == 'לא מתאימים לקורס מדריכים',
-                    )
-                    .length;
+                // Direct Firestore count - bypasses feedbackStorage loading issues
+                count = 0; // Will be loaded via FutureBuilder
               } else if (folder == 'הגמר חטיבה 474') {
                 // Special category: count all feedbacks from 4 sub-folders
                 count = feedbackStorage
@@ -4218,14 +4218,41 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             ),
                           ),
                         ),
-                        Text(
-                          '$count משובים',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blueGrey,
-                          ),
-                        ),
+                        isInstructorCourse
+                            ? FutureBuilder<int>(
+                                future: FirebaseFirestore.instance
+                                    .collection('instructor_course_evaluations')
+                                    .where('status', isEqualTo: 'final')
+                                    .count()
+                                    .get()
+                                    .timeout(const Duration(seconds: 5))
+                                    .then((snapshot) => snapshot.count ?? 0)
+                                    .catchError((e) {
+                                      debugPrint(
+                                        '⚠️ Failed to count instructor evaluations: $e',
+                                      );
+                                      return 0;
+                                    }),
+                                builder: (context, snapshot) {
+                                  final displayCount = snapshot.data ?? count;
+                                  return Text(
+                                    '$displayCount משובים',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blueGrey,
+                                    ),
+                                  );
+                                },
+                              )
+                            : Text(
+                                '$count משובים',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey,
+                                ),
+                              ),
                       ],
                     ),
                   ),
@@ -4929,6 +4956,12 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             // Original order for all other folders
                             if (f.exercise.isNotEmpty) {
                               metadataLines.add('תרגיל: ${f.exercise}');
+                            }
+                            // הוסף סוג אימון למשובי סיכום אימון 474
+                            if ((f.folder == 'משוב סיכום אימון 474' ||
+                                    f.module == 'training_summary') &&
+                                f.trainingType.isNotEmpty) {
+                              metadataLines.add('סוג אימון: ${f.trainingType}');
                             }
                             if (f.instructorName.isNotEmpty) {
                               metadataLines.add('מדריך: ${f.instructorName}');
@@ -7151,6 +7184,15 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       context,
                                     );
 
+                                    // Check if this is a surprise drill feedback
+                                    final isSurpriseDrill =
+                                        (feedback.folder ==
+                                                'משוב תרגילי הפתעה' ||
+                                            feedback.module ==
+                                                'surprise_drill') &&
+                                        feedback.id != null &&
+                                        feedback.id!.isNotEmpty;
+
                                     // Check if this is a range/reporter feedback
                                     final isRangeFeedback =
                                         (feedback.folder == 'מטווחי ירי' ||
@@ -7162,7 +7204,57 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         feedback.id != null &&
                                         feedback.id!.isNotEmpty;
 
-                                    if (isRangeFeedback) {
+                                    if (isSurpriseDrill) {
+                                      // Export surprise drills with full station/trainee data
+                                      try {
+                                        // Fetch full document data from Firestore
+                                        final doc = await FirebaseFirestore
+                                            .instance
+                                            .collection('feedbacks')
+                                            .doc(feedback.id)
+                                            .get();
+
+                                        if (!doc.exists || doc.data() == null) {
+                                          throw Exception(
+                                            'לא נמצאו נתוני משוב תרגיל הפתעה',
+                                          );
+                                        }
+
+                                        final feedbackData = doc.data()!;
+
+                                        // Call exportSurpriseDrillsToXlsx with single feedback
+                                        await FeedbackExportService.exportSurpriseDrillsToXlsx(
+                                          feedbacksData: [feedbackData],
+                                          fileNamePrefix:
+                                              'תרגיל_הפתעה_${feedback.settlement}',
+                                        );
+
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          const SnackBar(
+                                            content: Text('הקובץ נוצר בהצלחה!'),
+                                            backgroundColor: Colors.green,
+                                            duration: Duration(seconds: 3),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        debugPrint(
+                                          '❌ Surprise drill export error: $e',
+                                        );
+                                        if (!mounted) return;
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'שגיאה בייצוא תרגיל הפתעה: $e',
+                                            ),
+                                            backgroundColor: Colors.red,
+                                            duration: const Duration(
+                                              seconds: 5,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } else if (isRangeFeedback) {
                                       // Use reporter comparison export for range feedbacks
                                       try {
                                         // Fetch full document data from Firestore
@@ -11284,6 +11376,12 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                             // Original order for all other folders
                             if (f.exercise.isNotEmpty) {
                               metadataLines.add('תרגיל: ${f.exercise}');
+                            }
+                            // הוסף סוג אימון למשובי סיכום אימון 474
+                            if ((f.folder == 'משוב סיכום אימון 474' ||
+                                    f.module == 'training_summary') &&
+                                f.trainingType.isNotEmpty) {
+                              metadataLines.add('סוג אימון: ${f.trainingType}');
                             }
                             if (f.instructorName.isNotEmpty) {
                               metadataLines.add('מדריך: ${f.instructorName}');
