@@ -8669,6 +8669,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     // department aggregates (based on settlement) - total hits and bullets
     final Map<String, int> totalHitsPerSettlement = {};
     final Map<String, int> totalBulletsPerSettlement = {};
+    final Map<String, bool> isLongRangePerSettlement = {}; // ✅ Track range type
     for (final f in filtered) {
       if (f.settlement.isNotEmpty && rangeData.containsKey(f.id)) {
         final data = rangeData[f.id];
@@ -8676,11 +8677,29 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
             (data?['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         final trainees =
             (data?['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+        // ✅ Detect if this is LONG RANGE
+        final feedbackType = (data?['feedbackType'] as String?) ?? '';
+        final rangeSubType = (data?['rangeSubType'] as String?) ?? '';
+        final isLongRange =
+            feedbackType == 'range_long' ||
+            feedbackType == 'דווח רחוק' ||
+            rangeSubType == 'טווח רחוק';
+        isLongRangePerSettlement[f.settlement] = isLongRange;
+
         int feedbackTotalBullets = 0;
         for (final station in stations) {
-          feedbackTotalBullets +=
-              ((station['bulletsCount'] as num?)?.toInt() ?? 0) *
-              trainees.length;
+          if (isLongRange) {
+            // ✅ LONG RANGE: Use maxPoints instead of bulletsCount
+            feedbackTotalBullets +=
+                ((station['maxPoints'] as num?)?.toInt() ?? 0) *
+                trainees.length;
+          } else {
+            // ✅ SHORT RANGE: Keep using bulletsCount (unchanged)
+            feedbackTotalBullets +=
+                ((station['bulletsCount'] as num?)?.toInt() ?? 0) *
+                trainees.length;
+          }
         }
         totalBulletsPerSettlement[f.settlement] =
             (totalBulletsPerSettlement[f.settlement] ?? 0) +
@@ -9216,7 +9235,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -9230,6 +9249,9 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 final pct = totalBullets > 0
                     ? (totalHits / totalBullets).clamp(0.0, 1.0)
                     : 0.0;
+                // ✅ Check if this settlement is LONG RANGE
+                final isLongRange = isLongRangePerSettlement[label] ?? false;
+                final unitLabel = isLongRange ? 'נקודות' : 'כדורים';
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
                   child: Column(
@@ -9241,7 +9263,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: Colors.black87,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -9268,7 +9290,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            '$totalHits מתוך $totalBullets כדורים ($percentage%)',
+                            '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
                             style: const TextStyle(
                               color: Colors.purpleAccent,
                               fontWeight: FontWeight.bold,
@@ -9289,7 +9311,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -9298,6 +9320,8 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 builder: (ctx) {
                   final Map<String, int> totalHitsPerStation = {};
                   final Map<String, int> totalBulletsPerStation = {};
+                  final Map<String, bool> isLongRangePerStation =
+                      {}; // ✅ Track range type
                   for (final f in filtered) {
                     if (rangeData.containsKey(f.id)) {
                       final data = rangeData[f.id];
@@ -9309,13 +9333,30 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           (data?['trainees'] as List?)
                               ?.cast<Map<String, dynamic>>() ??
                           [];
+
+                      // ✅ Detect if this is LONG RANGE
+                      final feedbackType =
+                          (data?['feedbackType'] as String?) ?? '';
+                      final rangeSubType =
+                          (data?['rangeSubType'] as String?) ?? '';
+                      final isLongRange =
+                          feedbackType == 'range_long' ||
+                          feedbackType == 'דווח רחוק' ||
+                          rangeSubType == 'טווח רחוק';
+
                       for (var i = 0; i < stations.length; i++) {
                         final station = stations[i];
                         final stationName = station['name'] ?? 'מקצה ${i + 1}';
-                        final bulletsPerTrainee =
-                            (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                        isLongRangePerStation[stationName] =
+                            isLongRange; // ✅ Store type
+
+                        final stationMaxValue = isLongRange
+                            ? (station['maxPoints'] as num?)?.toInt() ??
+                                  0 // ✅ LONG: points
+                            : (station['bulletsCount'] as num?)?.toInt() ??
+                                  0; // ✅ SHORT: bullets
                         final totalBulletsForStation =
-                            trainees.length * bulletsPerTrainee;
+                            trainees.length * stationMaxValue;
                         totalBulletsPerStation[stationName] =
                             (totalBulletsPerStation[stationName] ?? 0) +
                             totalBulletsForStation;
@@ -9350,6 +9391,10 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                       final pct = totalBullets > 0
                           ? (totalHits / totalBullets).clamp(0.0, 1.0)
                           : 0.0;
+                      // ✅ Check if this station is LONG RANGE
+                      final isLongRange =
+                          isLongRangePerStation[stationName] ?? false;
+                      final unitLabel = isLongRange ? 'נקודות' : 'כדורים';
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Column(
@@ -9360,7 +9405,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                                color: Colors.black87,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -9389,7 +9434,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  '$totalHits מתוך $totalBullets כדורים ($percentage%)',
+                                  '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
                                   style: const TextStyle(
                                     color: Colors.greenAccent,
                                     fontWeight: FontWeight.bold,
@@ -11720,7 +11765,11 @@ class MaagalPatuachPage extends StatelessWidget {
                       SizedBox(height: 8),
                       Text(
                         'יצירת מגע ראשוני עם האיום, עצירתו או קיבועו.',
-                        style: TextStyle(fontSize: 16, height: 1.5),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -11748,7 +11797,11 @@ class MaagalPatuachPage extends StatelessWidget {
                       SizedBox(height: 8),
                       Text(
                         'סריקות יזומות במרחב – שלילת איומים נוספים, איתור מחבלים נוספים או אמלח.',
-                        style: TextStyle(fontSize: 16, height: 1.5),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -11776,7 +11829,11 @@ class MaagalPatuachPage extends StatelessWidget {
                       SizedBox(height: 8),
                       Text(
                         'ניקוי המרחב מאיומים, מעבר לשליטה וביטחון יחסי.',
-                        style: TextStyle(fontSize: 16, height: 1.5),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -11994,7 +12051,7 @@ class MaagalPoruzPage extends StatelessWidget {
                     horizontal: 16.0,
                   ),
                   child: Text(
-                    'מי שרואה אותי – הורג אותי | מי שלא רואה אותי – מת ממני',
+                    '"מי שרואה אותי – הורג אותי | מי שלא רואה אותי – מת ממני"',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.black,
@@ -12033,6 +12090,7 @@ class MaagalPoruzPage extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                       SizedBox(height: 8),
@@ -12041,6 +12099,7 @@ class MaagalPoruzPage extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                     ],
@@ -12098,12 +12157,17 @@ class MaagalPoruzPage extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                       SizedBox(height: 4),
                       Text(
                         'שחרור שטח שנכבש, הדיפת האויב או השמדתו, הצלת התושבים באזור זה.',
-                        style: TextStyle(fontSize: 16, height: 1.5),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
                       ),
                       SizedBox(height: 16),
                       Text(
@@ -12111,12 +12175,17 @@ class MaagalPoruzPage extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                       SizedBox(height: 4),
                       Text(
                         'פעולות מקומיות לפגיעה באויב או להצלת תושבים',
-                        style: TextStyle(fontSize: 16, height: 1.5),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
