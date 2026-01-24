@@ -1598,6 +1598,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const SurpriseDrillsStatisticsPage(),
                 settings: settings,
               );
+            case '/brigade_474_statistics':
+              return MaterialPageRoute(
+                builder: (_) => const Brigade474StatisticsPage(),
+                settings: settings,
+              );
             default:
               return MaterialPageRoute(
                 builder: (_) => StatisticsPage(key: _statisticsKey),
@@ -7594,6 +7599,31 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   child: const Text('סטטיסטיקה תרגילי הפתעה'),
                 ),
               ),
+              const SizedBox(height: 32),
+              // Button for Brigade 474 Final Statistics
+              SizedBox(
+                width: double.infinity,
+                height: 80,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pushNamed('/brigade_474_statistics');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepOrange.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    textStyle: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: const Text('סטטיסטיקת הגמר חטיבה 474'),
+                ),
+              ),
             ],
           ),
         ),
@@ -9529,6 +9559,971 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class Brigade474StatisticsPage extends StatefulWidget {
+  const Brigade474StatisticsPage({super.key});
+
+  @override
+  State<Brigade474StatisticsPage> createState() =>
+      _Brigade474StatisticsPageState();
+}
+
+class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
+  bool _isLoading = true;
+  bool _isExporting = false;
+  bool _isRefreshing = false;
+  int totalTrainees = 0;
+  int totalBulletsFired = 0;
+  int totalPointsScored = 0; // For long range
+  int totalMaxPoints = 0; // For long range
+  int totalFeedbacks = 0;
+  Map<String, int> feedbacksByType = {};
+  Set<String> uniqueSettlements = {};
+  // Per-settlement data: settlement -> {trainingType -> {count: int, trainees: Set<String>}}
+  Map<String, Map<String, Map<String, dynamic>>> settlementData = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBrigadeData();
+  }
+
+  Future<void> _loadBrigadeData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Filter all feedbacks from Brigade 474 folders (FINAL feedbacks only, exclude drafts)
+      final brigadeFeeds = feedbackStorage.where((f) {
+        // ❌ EXCLUDE temporary/draft feedbacks
+        if (f.isTemporary == true) return false;
+
+        return f.folder == 'מטווחים 474' ||
+            f.folder == '474 Ranges' ||
+            f.folder == 'מחלקות ההגנה – חטיבה 474' ||
+            f.folder == 'משוב תרגילי הפתעה' ||
+            f.folder == 'משוב סיכום אימון 474' ||
+            f.folderKey == 'ranges_474' ||
+            f.module == 'training_summary' ||
+            f.module == 'surprise_drill';
+      }).toList();
+
+      totalFeedbacks = brigadeFeeds.length;
+      final Set<String> uniqueTraineesSet = {};
+      // Track trainees per type for average calculation
+      final Map<String, Set<String>> traineesPerType = {};
+
+      for (final f in brigadeFeeds) {
+        // Count by type
+        String typeKey = f.folder;
+        if (f.folderKey == 'ranges_474' || f.folder == '474 Ranges') {
+          typeKey = 'מטווחים 474';
+        }
+        // Normalize training summary to consistent key
+        if (f.module == 'training_summary' ||
+            f.folder == 'משוב סיכום אימון 474') {
+          typeKey = 'משוב סיכום אימון 474';
+        }
+        feedbacksByType[typeKey] = (feedbacksByType[typeKey] ?? 0) + 1;
+        traineesPerType.putIfAbsent(typeKey, () => {});
+
+        // Collect settlements (skip defense platoons - they use personal names)
+        final isDefensePlatoons = f.folder == 'מחלקות ההגנה – חטיבה 474';
+        if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+          uniqueSettlements.add(f.settlement);
+        }
+
+        // Initialize settlement data structure
+        if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+          settlementData.putIfAbsent(f.settlement, () => {});
+          settlementData[f.settlement]!.putIfAbsent(
+            typeKey,
+            () => {'count': 0, 'trainees': <String>{}},
+          );
+
+          // ✅ INCREMENT COUNT ONCE - at the start of loop for this feedback
+          settlementData[f.settlement]![typeKey]!['count'] =
+              (settlementData[f.settlement]![typeKey]!['count'] as int) + 1;
+        }
+
+        // Load range data for bullets/points
+        if ((f.folder == 'מטווחים 474' ||
+                f.folder == '474 Ranges' ||
+                f.folderKey == 'ranges_474') &&
+            f.id != null &&
+            f.id!.isNotEmpty) {
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(f.id)
+                .get()
+                .timeout(const Duration(seconds: 5));
+
+            if (doc.exists) {
+              final data = doc.data()!;
+              final stations =
+                  (data['stations'] as List?)?.cast<Map<String, dynamic>>() ??
+                  [];
+              final trainees =
+                  (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
+                  [];
+
+              // Add trainee names to global, per-settlement, and per-type tracking
+              for (final t in trainees) {
+                final name = t['name'] as String? ?? '';
+                if (name.isNotEmpty) {
+                  uniqueTraineesSet.add(name);
+                  traineesPerType[typeKey]!.add(name);
+                  // Add to settlement data
+                  if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                    (settlementData[f.settlement]![typeKey]!['trainees']
+                            as Set<String>)
+                        .add(name);
+                  }
+                }
+              }
+
+              // ❌ REMOVED: Increment was here - now done once at start of loop
+
+              // Detect long range
+              final feedbackType = (data['feedbackType'] as String?) ?? '';
+              final rangeSubType = (data['rangeSubType'] as String?) ?? '';
+              final isLongRange =
+                  feedbackType == 'range_long' ||
+                  feedbackType == 'דווח רחוק' ||
+                  rangeSubType == 'טווח רחוק';
+
+              // Sum bullets fired (both short and long range)
+              for (final station in stations) {
+                // Always use bulletsCount for total bullets fired
+                final bullets = (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                totalBulletsFired += bullets * trainees.length;
+
+                // Track maxPoints only for long range statistics
+                if (isLongRange) {
+                  final maxPoints =
+                      (station['maxPoints'] as num?)?.toInt() ?? 0;
+                  totalMaxPoints += maxPoints * trainees.length;
+                }
+              }
+
+              // Sum points scored (for long range)
+              if (isLongRange) {
+                for (final trainee in trainees) {
+                  totalPointsScored +=
+                      (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error loading range data for ${f.id}: $e');
+          }
+        }
+
+        // Add trainees from training summary
+        if ((f.folder == 'משוב סיכום אימון 474' ||
+                f.module == 'training_summary') &&
+            f.id != null &&
+            f.id!.isNotEmpty) {
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(f.id)
+                .get()
+                .timeout(const Duration(seconds: 5));
+
+            if (doc.exists) {
+              final data = doc.data()!;
+              final attendees =
+                  (data['attendees'] as List?)?.cast<String>() ?? [];
+
+              // ❌ REMOVED: Increment was here - now done once at start of loop
+
+              for (final name in attendees) {
+                if (name.isNotEmpty) {
+                  uniqueTraineesSet.add(name);
+                  traineesPerType[typeKey]!.add(name);
+                  // Add to settlement data
+                  if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                    (settlementData[f.settlement]![typeKey]!['trainees']
+                            as Set<String>)
+                        .add(name);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error loading training summary for ${f.id}: $e');
+          }
+        }
+
+        // Add trainees from surprise drills
+        if ((f.folder == 'משוב תרגילי הפתעה' || f.module == 'surprise_drill') &&
+            f.id != null &&
+            f.id!.isNotEmpty) {
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(f.id)
+                .get()
+                .timeout(const Duration(seconds: 5));
+
+            if (doc.exists) {
+              final data = doc.data()!;
+              final trainees =
+                  (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
+                  [];
+
+              // ❌ REMOVED: Increment was here - now done once at start of loop
+
+              for (final t in trainees) {
+                final name = t['name'] as String? ?? '';
+                if (name.isNotEmpty) {
+                  uniqueTraineesSet.add(name);
+                  traineesPerType[typeKey]!.add(name);
+                  // Add to settlement data
+                  if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                    (settlementData[f.settlement]![typeKey]!['trainees']
+                            as Set<String>)
+                        .add(name);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error loading surprise drill for ${f.id}: $e');
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          totalTrainees = uniqueTraineesSet.length;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading brigade data: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+
+    try {
+      // Reload feedbacks from Firestore
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+
+      // Reload brigade data
+      await _loadBrigadeData();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('הנתונים עודכנו')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה ברענון: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  Future<void> _exportStatistics() async {
+    setState(() => _isExporting = true);
+
+    try {
+      final sectionsData = <String, List<Map<String, dynamic>>>{};
+
+      // Section 1: סיכום כללי
+      sectionsData['סיכום כללי'] = [
+        {'מדד': 'סה"כ חניכים', 'ערך': totalTrainees},
+        {'מדד': 'סה"כ כדורים שנורו', 'ערך': totalBulletsFired},
+        {'מדד': 'סה"כ אימונים/משובים', 'ערך': totalFeedbacks},
+        {'מדד': 'סה"כ יישובים', 'ערך': uniqueSettlements.length},
+      ];
+
+      // Section 2: פילוח לפי סוג אימון
+      final typeBreakdown = <Map<String, dynamic>>[];
+      for (final entry in feedbacksByType.entries) {
+        final type = entry.key;
+        final count = entry.value;
+        final percentage = totalFeedbacks > 0
+            ? ((count / totalFeedbacks) * 100).toStringAsFixed(1)
+            : '0.0';
+
+        // Calculate average trainees (except for defense platoons)
+        final isDefensePlatoons = type == 'מחלקות ההגנה – חטיבה 474';
+        int totalTraineesForType = 0;
+        if (!isDefensePlatoons) {
+          for (final settlementEntry in settlementData.entries) {
+            final settlementTypes = settlementEntry.value;
+            if (settlementTypes.containsKey(type)) {
+              final trainees =
+                  settlementTypes[type]!['trainees'] as Set<String>? ?? {};
+              totalTraineesForType += trainees.length;
+            }
+          }
+        }
+        final avgTrainees = !isDefensePlatoons && count > 0
+            ? (totalTraineesForType / count).toStringAsFixed(2)
+            : 'לא רלוונטי';
+
+        typeBreakdown.add({
+          'סוג אימון': type,
+          'מספר אימונים': count,
+          'אחוז': '$percentage%',
+          'ממוצע חניכים באימון': avgTrainees,
+        });
+      }
+      sectionsData['פילוח לפי סוג אימון'] = typeBreakdown;
+
+      // Section 3: פילוח לפי יישוב
+      final settlementBreakdown = <Map<String, dynamic>>[];
+      final sortedSettlements = uniqueSettlements.toList()..sort();
+      for (final settlement in sortedSettlements) {
+        final data = settlementData[settlement];
+        if (data == null || data.isEmpty) continue;
+
+        // Calculate totals for this settlement
+        int totalSettlementTrainings = 0;
+        int totalSettlementTrainees = 0;
+        final Map<String, int> typeCounts = {};
+
+        for (final typeData in data.entries) {
+          final type = typeData.key;
+          final count = (typeData.value['count'] as int?) ?? 0;
+          final trainees = (typeData.value['trainees'] as Set<String>?) ?? {};
+
+          totalSettlementTrainings += count;
+          totalSettlementTrainees += trainees.length;
+          typeCounts[type] = count;
+        }
+
+        final average = totalSettlementTrainings > 0
+            ? (totalSettlementTrainees / totalSettlementTrainings)
+                  .toStringAsFixed(2)
+            : '0.00';
+
+        // Build type breakdown string
+        final typeBreakdownStr = typeCounts.entries
+            .map((e) => '${e.key}: ${e.value}')
+            .join(', ');
+
+        settlementBreakdown.add({
+          'יישוב': settlement,
+          'סה"כ אימונים': totalSettlementTrainings,
+          'פירוט לפי סוג': typeBreakdownStr,
+          'סה"כ חניכים ייחודיים': totalSettlementTrainees,
+          'ממוצע חניכים לאימון': average,
+        });
+      }
+      sectionsData['פילוח לפי יישוב'] = settlementBreakdown;
+
+      // Export to Google Sheets
+      await FeedbackExportService.exportStatisticsToGoogleSheets(
+        tabName: 'סטטיסטיקת הגמר חטיבה 474',
+        sections: sectionsData,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ יוצא בהצלחה!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = currentUser?.role == 'Admin';
+    if (!isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('אין הרשאה'),
+          leading: const StandardBackButton(),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.block, size: 64, color: Colors.red),
+              SizedBox(height: 16),
+              Text('דף זה מיועד למנהלים בלבד', style: TextStyle(fontSize: 18)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('סטטיסטיקת הגמר חטיבה 474'),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'רענן נתונים',
+              onPressed: _isRefreshing ? null : _refreshData,
+            ),
+            IconButton(
+              icon: _isExporting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.download),
+              tooltip: 'ייצוא',
+              onPressed: _isExporting ? null : _exportStatistics,
+            ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('טוען נתונים...'),
+                  ],
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: ListView(
+                  children: [
+                    // Main summary card
+                    Card(
+                      color: Colors.deepOrange.shade700,
+                      elevation: 8,
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          children: [
+                            const Text(
+                              '📊 סיכום כללי - הגמר חטיבה 474',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            _buildSummaryRow(
+                              '👥 חניכים',
+                              '$totalTrainees',
+                              Colors.greenAccent,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryRow(
+                              '🎯 סה"כ כדורים שנורו',
+                              '$totalBulletsFired',
+                              Colors.orangeAccent,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryRow(
+                              '📋 סה"כ אימונים/משובים',
+                              '$totalFeedbacks',
+                              Colors.lightBlueAccent,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryRow(
+                              '🏘️ סה"כ יישובים',
+                              '${uniqueSettlements.length}',
+                              Colors.purpleAccent,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Breakdown by type
+                    const Text(
+                      'פילוח לפי סוג אימון',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...feedbacksByType.entries.map((entry) {
+                      final type = entry.key;
+                      final count = entry.value;
+                      final percentage = totalFeedbacks > 0
+                          ? ((count / totalFeedbacks) * 100).toStringAsFixed(1)
+                          : '0.0';
+                      final pct = totalFeedbacks > 0
+                          ? (count / totalFeedbacks)
+                          : 0.0;
+
+                      // Check if this is defense platoons (personal names, not settlements)
+                      final isDefensePlatoons =
+                          type == 'מחלקות ההגנה – חטיבה 474';
+
+                      // Calculate average trainees (only for non-defense types)
+                      int totalTraineesForType = 0;
+                      if (!isDefensePlatoons) {
+                        // Count unique trainees across all settlements for this type
+                        for (final settlementEntry in settlementData.entries) {
+                          final settlementTypes = settlementEntry.value;
+                          if (settlementTypes.containsKey(type)) {
+                            final trainees =
+                                settlementTypes[type]!['trainees']
+                                    as Set<String>? ??
+                                {};
+                            totalTraineesForType += trainees.length;
+                          }
+                        }
+                      }
+                      final avgTrainees = !isDefensePlatoons && count > 0
+                          ? (totalTraineesForType / count).toStringAsFixed(2)
+                          : null;
+
+                      IconData icon;
+                      Color color;
+                      switch (type) {
+                        case 'מטווחים 474':
+                          icon = Icons.gps_fixed;
+                          color = Colors.deepOrange;
+                          break;
+                        case 'מחלקות ההגנה – חטיבה 474':
+                          icon = Icons.shield;
+                          color = Colors.blue;
+                          break;
+                        case 'משוב תרגילי הפתעה':
+                          icon = Icons.flash_on;
+                          color = Colors.amber;
+                          break;
+                        case 'משוב סיכום אימון 474':
+                          icon = Icons.assessment;
+                          color = Colors.green;
+                          break;
+                        default:
+                          icon = Icons.info;
+                          color = Colors.grey;
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Card(
+                          color: Colors.blueGrey.shade800,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(icon, color: color, size: 28),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        type,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$count',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Container(
+                                        height: 12,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white24,
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: FractionallySizedBox(
+                                          widthFactor: pct.clamp(0.0, 1.0),
+                                          alignment: Alignment.centerRight,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: color,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      '$percentage%',
+                                      style: TextStyle(
+                                        color: color,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Show average trainees (only for non-defense platoons)
+                                if (avgTrainees != null) ...[
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.people,
+                                        color: Colors.lightBlueAccent,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'ממוצע חניכים באימון: $avgTrainees',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.lightBlueAccent,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 16),
+
+                    // Settlements detailed breakdown
+                    const Text(
+                      'פילוח לפי יישוב',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Sort settlements alphabetically
+                    ...(uniqueSettlements.toList()..sort()).map((settlement) {
+                      final data = settlementData[settlement];
+                      if (data == null || data.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+
+                      // Calculate total trainees and trainings for this settlement
+                      int totalSettlementTrainings = 0;
+                      int totalSettlementTrainees = 0;
+
+                      for (final typeData in data.values) {
+                        totalSettlementTrainings +=
+                            (typeData['count'] as int?) ?? 0;
+                        totalSettlementTrainees +=
+                            ((typeData['trainees'] as Set<String>?) ?? {})
+                                .length;
+                      }
+
+                      // Calculate average
+                      final average = totalSettlementTrainings > 0
+                          ? (totalSettlementTrainees / totalSettlementTrainings)
+                          : 0.0;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Card(
+                          color: Colors.blueGrey.shade700,
+                          elevation: 4,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Settlement header
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.location_on,
+                                      color: Colors.orangeAccent,
+                                      size: 24,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      settlement,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orangeAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Training types breakdown (only show if exists)
+                                if (data.containsKey('מטווחים 474') &&
+                                    data['מטווחים 474']!['count'] > 0) ...[
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        '🎯 מטווחים:',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${data['מטווחים 474']!['count']} אימונים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const Text(
+                                        ' | ',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                      Text(
+                                        '${(data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.greenAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+
+                                if (data.containsKey('משוב תרגילי הפתעה') &&
+                                    data['משוב תרגילי הפתעה']!['count'] >
+                                        0) ...[
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        '⚡ תרגילי הפתעה:',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${data['משוב תרגילי הפתעה']!['count']} אימונים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const Text(
+                                        ' | ',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                      Text(
+                                        '${(data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.greenAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+
+                                if (data.containsKey(
+                                      'מחלקות ההגנה – חטיבה 474',
+                                    ) &&
+                                    data['מחלקות ההגנה – חטיבה 474']!['count'] >
+                                        0) ...[
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        '🛡️ מחלקות הגנה:',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${data['מחלקות ההגנה – חטיבה 474']!['count']} אימונים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      // No trainees count for defense platoons (personal names)
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+
+                                if (data.containsKey('משוב סיכום אימון 474') &&
+                                    data['משוב סיכום אימון 474']!['count'] >
+                                        0) ...[
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        '📋 סיכום אימון:',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${data['משוב סיכום אימון 474']!['count']} אימונים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const Text(
+                                        ' | ',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                      Text(
+                                        '${(data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.greenAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+
+                                // Divider before average
+                                const Divider(
+                                  color: Colors.white30,
+                                  thickness: 1,
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Average trainees per training
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.analytics,
+                                      color: Colors.lightBlueAccent,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'ממוצע:',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '${average.toStringAsFixed(2)} חניכים באימון',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.lightBlueAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, Color valueColor) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+            color: valueColor,
+          ),
+        ),
+      ],
     );
   }
 }
