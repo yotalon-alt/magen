@@ -192,6 +192,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   int attendeesCount = 0;
   late TextEditingController _attendeesCountController;
 
+  // מספר מדריכים ורשימת מדריכים
+  int instructorsCount = 0;
+  late TextEditingController _instructorsCountController;
+  final Map<String, TextEditingController> _instructorNameControllers = {};
+
   late String _rangeType;
   String? rangeSubType; // "טווח קצר" or "טווח רחוק" for display label
 
@@ -263,6 +268,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _settlementDisplayText = selectedSettlement ?? '';
     _attendeesCountController = TextEditingController(
       text: attendeesCount.toString(),
+    );
+    _instructorsCountController = TextEditingController(
+      text: instructorsCount.toString(),
     );
     _manualStageController = TextEditingController();
     // מקצה ברירת מחדל אחד
@@ -414,6 +422,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return _focusNodes[key]!;
   }
 
+  /// אוסף את רשימת שמות המדריכים מהבקרים (מסנן ריקים)
+  List<String> _collectInstructorNames() {
+    final List<String> validInstructors = [];
+    for (int i = 0; i < instructorsCount; i++) {
+      final controller = _instructorNameControllers['instructor_$i'];
+      final name = controller?.text.trim() ?? '';
+      if (name.isNotEmpty) {
+        validInstructors.add(name);
+      }
+    }
+    return validInstructors;
+  }
+
   /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 700ms of inactivity
   void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
@@ -434,7 +455,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   void dispose() {
     _autoSaveTimer?.cancel();
     _attendeesCountController.dispose();
+    _instructorsCountController.dispose();
     _manualStageController.dispose();
+    // Dispose instructor name controllers
+    for (final controller in _instructorNameControllers.values) {
+      controller.dispose();
+    }
+    _instructorNameControllers.clear();
     // ✅ Dispose all controllers and focus nodes
     for (final controller in _textControllers.values) {
       controller.dispose();
@@ -1634,6 +1661,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'folderLabel': folderLabel,
         'folderId': folderId,
         'attendeesCount': attendeesCount,
+        'instructorsCount': instructorsCount, // מספר מדריכים
+        'instructors': _collectInstructorNames(), // רשימת מדריכים
         'stations': stationsData,
         'trainees': traineesData,
         'status': 'final',
@@ -2497,6 +2526,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'settlementName': settlementName,
         'rangeFolder': rangeFolder ?? '',
         'attendeesCount': attendeesCount,
+        'instructorsCount': instructorsCount, // מספר מדריכים
+        'instructors': _collectInstructorNames(), // רשימת מדריכים
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
         'selectedShortRangeStage': selectedShortRangeStage,
@@ -2674,6 +2705,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final rawFolderLabel =
           data['folderLabel'] as String?; // ✅ Load folder label
       final rawAttendeesCount = data['attendeesCount'] as num?;
+      final rawInstructorsCount =
+          data['instructorsCount'] as num?; // מספר מדריכים
+      final rawInstructors = data['instructors'] as List?; // רשימת מדריכים
       final rawSelectedShortRangeStage =
           data['selectedShortRangeStage'] as String?;
       final rawManualStageName = data['manualStageName'] as String?;
@@ -2903,6 +2937,33 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   : (selectedSettlement ?? ''));
         attendeesCount = rawAttendeesCount?.toInt() ?? attendeesCount;
         _attendeesCountController.text = attendeesCount.toString();
+
+        // טען נתוני מדריכים
+        instructorsCount = rawInstructorsCount?.toInt() ?? instructorsCount;
+        _instructorsCountController.text = instructorsCount.toString();
+
+        // טען שמות מדריכים לבקרים
+        if (rawInstructors != null) {
+          // נקה בקרים קיימים
+          for (final controller in _instructorNameControllers.values) {
+            controller.dispose();
+          }
+          _instructorNameControllers.clear();
+
+          // צור בקרים חדשים עם השמות הטעונים
+          for (
+            int i = 0;
+            i < rawInstructors.length && i < instructorsCount;
+            i++
+          ) {
+            final instructorName = rawInstructors[i]?.toString() ?? '';
+            final controllerKey = 'instructor_$i';
+            _instructorNameControllers[controllerKey] = TextEditingController(
+              text: instructorName,
+            );
+          }
+        }
+
         instructorName = data['instructorName'] as String? ?? instructorName;
 
         // ✅ Restore Short Range multi-stage list
@@ -3249,6 +3310,142 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 enabled: false,
               ),
               const SizedBox(height: 16),
+
+              // מספר מדריכים באימון
+              TextField(
+                controller: _instructorsCountController,
+                decoration: const InputDecoration(
+                  labelText: 'מספר מדריכים באימון',
+                  border: OutlineInputBorder(),
+                  hintText: 'הזן מספר מדריכים (אופציונלי)',
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (v) {
+                  final count = int.tryParse(v) ?? 0;
+                  setState(() {
+                    instructorsCount = count;
+                  });
+                  _scheduleAutoSave();
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // טבלת מדריכים (displayed when count > 0)
+              if (instructorsCount > 0) ...[
+                const Text(
+                  'מדריכים',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  color: Colors.blueGrey.shade800,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Table header
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade700,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: const [
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  'מספר',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'שם',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Instructors rows
+                        ...List.generate(instructorsCount, (index) {
+                          final controllerKey = 'instructor_$index';
+                          if (!_instructorNameControllers.containsKey(
+                            controllerKey,
+                          )) {
+                            _instructorNameControllers[controllerKey] =
+                                TextEditingController();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Row(
+                              children: [
+                                // Number column
+                                Container(
+                                  width: 60,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.purpleAccent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Name column
+                                Expanded(
+                                  child: TextField(
+                                    controller:
+                                        _instructorNameControllers[controllerKey],
+                                    decoration: const InputDecoration(
+                                      hintText: 'שם מדריך',
+                                      border: OutlineInputBorder(),
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 14,
+                                    ),
+                                    onChanged: (_) => _scheduleAutoSave(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // כמות נוכחים
               TextField(

@@ -1959,6 +1959,7 @@ class FeedbackExportService {
       final headers = [
         'תאריך',
         'מדריך',
+        'מדריכים נוספים',
         'תיקייה',
         'יישוב',
         'סוג אימון',
@@ -2008,12 +2009,20 @@ class FeedbackExportService {
       final attendeesList =
           (feedbackData['attendees'] as List?)?.cast<String>() ?? [];
 
+      // Get additional instructors list
+      final instructorsList =
+          (feedbackData['instructors'] as List?)?.cast<String>() ?? [];
+      final additionalInstructors = instructorsList
+          .where((name) => name.isNotEmpty && name != instructorName)
+          .join(', ');
+
       final summary = (feedbackData['summary'] ?? '').toString();
 
       // Write main data row (row 1)
       final rowData = [
         dateStr,
         instructorName,
+        additionalInstructors.isNotEmpty ? additionalInstructors : '-',
         folder,
         settlement,
         trainingType,
@@ -2930,12 +2939,25 @@ class FeedbackExportService {
         dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
       }
 
+      // Get additional instructors list
+      final instructorsList =
+          (firstFeedback['instructors'] as List?)?.cast<String>() ?? [];
+      final additionalInstructors = instructorsList
+          .where((name) => name.isNotEmpty && name != instructor)
+          .join(', ');
+
       // Add metadata header rows BEFORE table headers
       sheet.appendRow([TextCellValue('יישוב:'), TextCellValue(settlement)]);
       sheet.appendRow([
         TextCellValue('מדריך ממשב:'),
         TextCellValue(instructor),
       ]);
+      if (additionalInstructors.isNotEmpty) {
+        sheet.appendRow([
+          TextCellValue('מדריכים נוספים:'),
+          TextCellValue(additionalInstructors),
+        ]);
+      }
       sheet.appendRow([TextCellValue('תאריך ושעה:'), TextCellValue(dateStr)]);
       sheet.appendRow([]); // Empty separator row for readability
 
@@ -3268,6 +3290,12 @@ class FeedbackExportService {
                     feedbackData['createdByName'] ??
                     '')
                 .toString();
+        // Get additional instructors list
+        final instructorsList =
+            (feedbackData['instructors'] as List?)?.cast<String>() ?? [];
+        final additionalInstructors = instructorsList
+            .where((name) => name.isNotEmpty && name != instructorName)
+            .join(', ');
         final rangeType = (feedbackData['rangeType'] ?? '').toString();
         final attendeesCount =
             (feedbackData['attendeesCount'] as num?)?.toInt() ?? 0;
@@ -3275,6 +3303,11 @@ class FeedbackExportService {
         sheet.appendRow([TextCellValue('מטווחים 474')]);
         sheet.appendRow([TextCellValue('תאריך: $dateStr')]);
         sheet.appendRow([TextCellValue('מדריך: $instructorName')]);
+        if (additionalInstructors.isNotEmpty) {
+          sheet.appendRow([
+            TextCellValue('מדריכים נוספים: $additionalInstructors'),
+          ]);
+        }
         sheet.appendRow([TextCellValue('יישוב: $settlement')]);
         sheet.appendRow([TextCellValue('סוג: $rangeType')]);
         sheet.appendRow([TextCellValue('מספר חניכים: $attendeesCount')]);

@@ -3096,8 +3096,12 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   String trainingType = '';
   String summary = '';
   int attendeesCount = 0;
+  int instructorsCount = 0; // מספר מדריכים
   late TextEditingController _attendeesCountController;
+  late TextEditingController _instructorsCountController; // בקר מספר מדריכים
   final Map<String, TextEditingController> _attendeeNameControllers = {};
+  final Map<String, TextEditingController> _instructorNameControllers =
+      {}; // בקרים לשמות מדריכים
   bool _isSaving = false;
 
   @override
@@ -3110,12 +3114,19 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _attendeesCountController = TextEditingController(
       text: attendeesCount.toString(),
     );
+    _instructorsCountController = TextEditingController(
+      text: instructorsCount.toString(),
+    );
   }
 
   @override
   void dispose() {
     _attendeesCountController.dispose();
+    _instructorsCountController.dispose();
     for (final controller in _attendeeNameControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _instructorNameControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -3129,6 +3140,18 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       _attendeeNameControllers[key] = TextEditingController(text: initialValue);
     }
     return _attendeeNameControllers[key]!;
+  }
+
+  TextEditingController _getInstructorController(
+    String key,
+    String initialValue,
+  ) {
+    if (!_instructorNameControllers.containsKey(key)) {
+      _instructorNameControllers[key] = TextEditingController(
+        text: initialValue,
+      );
+    }
+    return _instructorNameControllers[key]!;
   }
 
   void _updateAttendeesCount(int count) {
@@ -3206,12 +3229,24 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         resolvedInstructorName = await resolveUserHebrewName(uid);
       }
 
+      // Filter out empty instructors and collect names
+      final List<String> validInstructors = [];
+      for (int i = 0; i < instructorsCount; i++) {
+        final controller = _instructorNameControllers['instructor_$i'];
+        final name = controller?.text.trim() ?? '';
+        if (name.isNotEmpty) {
+          validInstructors.add(name);
+        }
+      }
+
       final Map<String, dynamic> doc = {
         'folder': folder,
         'settlement': selectedSettlement,
         'trainingType': trainingType,
         'attendees': validAttendees,
         'attendeesCount': validAttendees.length,
+        'instructorsCount': validInstructors.length,
+        'instructors': validInstructors,
         'summary': summary,
         'instructorName': resolvedInstructorName,
         'instructorRole': instructorRoleDisplay,
@@ -3357,7 +3392,141 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 12),
 
-              // 5. כמות נוכחים
+              // 6. מספר מדריכים
+              const Text(
+                'מספר מדריכים באימון',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _instructorsCountController,
+                decoration: const InputDecoration(
+                  labelText: 'מספר מדריכים',
+                  hintText: 'הזן מספר מדריכים (אופציונלי)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  final count = int.tryParse(v) ?? 0;
+                  setState(() {
+                    instructorsCount = count;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // 7. Instructors table (displayed when count > 0)
+              if (instructorsCount > 0) ...[
+                const Text(
+                  'מדריכים',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  color: Colors.blueGrey.shade800,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Table header
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade700,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: const [
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  'מספר',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'שם',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Instructors rows
+                        ...List.generate(instructorsCount, (index) {
+                          final controllerKey = 'instructor_$index';
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Row(
+                              children: [
+                                // Number column
+                                Container(
+                                  width: 60,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.purpleAccent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Name column
+                                Expanded(
+                                  child: TextField(
+                                    controller: _getInstructorController(
+                                      controllerKey,
+                                      '',
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'שם מדריך',
+                                      border: OutlineInputBorder(),
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // 8. כמות נוכחים
               const Text(
                 'כמות נוכחים',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -3377,7 +3546,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 12),
 
-              // 6. Attendees table (displayed when count > 0)
+              // 9. Attendees table (displayed when count > 0)
               if (attendeesCount > 0) ...[
                 const Text(
                   'נוכחים',
@@ -3488,7 +3657,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                 const SizedBox(height: 12),
               ],
 
-              // 8. Summary (free text, multiline)
+              // 10. Summary (free text, multiline)
               const Text(
                 'סיכום האימון',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -3506,7 +3675,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 20),
 
-              // 9. Save button
+              // 11. Save button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -5395,6 +5564,88 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
                     ),
               const SizedBox(height: 8),
+              // Additional instructors for range/training feedbacks
+              if ((feedback.module == 'training_summary' ||
+                      feedback.module == 'surprise_drill' ||
+                      feedback.module == 'shooting_ranges' ||
+                      feedback.folderKey == 'ranges_474' ||
+                      feedback.folderKey == 'shooting_ranges') &&
+                  feedback.id != null &&
+                  feedback.id!.isNotEmpty)
+                FutureBuilder<DocumentSnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('feedbacks')
+                      .doc(feedback.id)
+                      .get()
+                      .timeout(const Duration(seconds: 3)),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || !snapshot.data!.exists) {
+                      return const SizedBox.shrink();
+                    }
+
+                    final data = snapshot.data!.data() as Map<String, dynamic>?;
+                    if (data == null) return const SizedBox.shrink();
+
+                    final additionalInstructors =
+                        (data['instructors'] as List?)?.cast<String>() ?? [];
+
+                    // Filter out main instructor from the list
+                    final filteredInstructors = additionalInstructors
+                        .where(
+                          (name) =>
+                              name.isNotEmpty &&
+                              name != feedback.instructorName &&
+                              name != resolvedInstructorName,
+                        )
+                        .toList();
+
+                    if (filteredInstructors.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'מדריכים נוספים:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        ...filteredInstructors.map(
+                          (name) => Padding(
+                            padding: const EdgeInsets.only(
+                              right: 12.0,
+                              bottom: 2.0,
+                            ),
+                            child: Row(
+                              children: [
+                                const Text(
+                                  '• ',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    );
+                  },
+                ),
               Text('תאריך: $date'),
               const SizedBox(height: 8),
               Text('תרגיל: ${feedback.exercise}'),
@@ -9584,6 +9835,8 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   Set<String> uniqueSettlements = {};
   // Per-settlement data: settlement -> {trainingType -> {count: int, trainees: Set<String>}}
   Map<String, Map<String, Map<String, dynamic>>> settlementData = {};
+  // Per-instructor data: instructorName -> {typeKey -> count}
+  Map<String, Map<String, int>> instructorData = {};
 
   @override
   void initState() {
@@ -9628,6 +9881,14 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         }
         feedbacksByType[typeKey] = (feedbacksByType[typeKey] ?? 0) + 1;
         traineesPerType.putIfAbsent(typeKey, () => {});
+
+        // Collect instructor data
+        final instructorName = f.instructorName;
+        if (instructorName.isNotEmpty) {
+          instructorData.putIfAbsent(instructorName, () => {});
+          instructorData[instructorName]![typeKey] =
+              (instructorData[instructorName]![typeKey] ?? 0) + 1;
+        }
 
         // Collect settlements (skip defense platoons - they use personal names)
         final isDefensePlatoons = f.folder == 'מחלקות ההגנה – חטיבה 474';
@@ -10244,6 +10505,144 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                         ),
                       );
                     }),
+
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 16),
+
+                    // Instructor breakdown
+                    const Text(
+                      'פילוח לפי מדריך',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...(instructorData.entries.toList()..sort((a, b) {
+                          final totalA = a.value.values.fold(
+                            0,
+                            (acc, value) => acc + value,
+                          );
+                          final totalB = b.value.values.fold(
+                            0,
+                            (acc, value) => acc + value,
+                          );
+                          return totalB.compareTo(
+                            totalA,
+                          ); // Sort by total descending
+                        }))
+                        .map((entry) {
+                          final instructorName = entry.key;
+                          final typeCounts = entry.value;
+                          final totalInstructorTrainings = typeCounts.values
+                              .fold(0, (acc, value) => acc + value);
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Card(
+                              color: Colors.blueGrey.shade700,
+                              elevation: 4,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Instructor header
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.person,
+                                          color: Colors.lightBlueAccent,
+                                          size: 24,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            instructorName,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.lightBlueAccent,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          'סה"כ: $totalInstructorTrainings',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orangeAccent,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+
+                                    // Training types breakdown
+                                    ...typeCounts.entries.map((typeEntry) {
+                                      final type = typeEntry.key;
+                                      final count = typeEntry.value;
+
+                                      IconData icon;
+                                      Color color;
+                                      switch (type) {
+                                        case 'מטווחים 474':
+                                          icon = Icons.gps_fixed;
+                                          color = Colors.deepOrange;
+                                          break;
+                                        case 'מחלקות ההגנה – חטיבה 474':
+                                          icon = Icons.shield;
+                                          color = Colors.blue;
+                                          break;
+                                        case 'משוב תרגילי הפתעה':
+                                          icon = Icons.flash_on;
+                                          color = Colors.amber;
+                                          break;
+                                        case 'משוב סיכום אימון 474':
+                                          icon = Icons.assessment;
+                                          color = Colors.green;
+                                          break;
+                                        default:
+                                          icon = Icons.info;
+                                          color = Colors.grey;
+                                      }
+
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8.0,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(icon, color: color, size: 20),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                type,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              '$count אימונים',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: color,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
 
                     const SizedBox(height: 16),
                     const Divider(),
