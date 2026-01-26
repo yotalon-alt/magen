@@ -131,6 +131,33 @@ const List<String> golanSettlements = <String>[
   'עין קינייה',
 ];
 
+// רשימת מדריכים חטיבה 474
+const List<String> brigade474Instructors = <String>[
+  'יותם אלון',
+  'לירון מוסרי',
+  'דוד בן צבי',
+  'חן לוי',
+  'יוגב נגרקר',
+  'דוד נוביק',
+  'ניר בר',
+  'ואסים דאבוס',
+  'יגל שוורץ',
+  'מהרטו ביאגדלין',
+  'יוסי גן ואר',
+  'יוסי זוסמן',
+  'בועז בן חורין',
+  'אורי כי טוב',
+  'נתנאל אינדיג',
+  'נתנאל עמיחי',
+  'דותן יוסף',
+  'מעוז אביב',
+  'דוד גליקמן',
+  'גל זבידאן',
+  'איתן לוי',
+  'חנן גלר',
+  'תיירי לסקרט',
+];
+
 // Feedback model used throughout the app
 class FeedbackModel {
   final String? id;
@@ -3492,27 +3519,81 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                // Name column
+                                // Name column - Autocomplete with suggestions
                                 Expanded(
-                                  child: TextField(
-                                    controller: _getInstructorController(
-                                      controllerKey,
-                                      '',
-                                    ),
-                                    decoration: const InputDecoration(
-                                      hintText: 'שם מדריך',
-                                      border: OutlineInputBorder(),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 14,
-                                      ),
-                                    ),
-                                    style: const TextStyle(
-                                      color: Colors.black87,
-                                      fontSize: 14,
-                                    ),
+                                  child: Autocomplete<String>(
+                                    optionsBuilder:
+                                        (TextEditingValue textEditingValue) {
+                                          if (textEditingValue.text.isEmpty) {
+                                            return brigade474Instructors;
+                                          }
+                                          return brigade474Instructors.where((
+                                            name,
+                                          ) {
+                                            return name.contains(
+                                              textEditingValue.text,
+                                            );
+                                          });
+                                        },
+                                    onSelected: (String selection) {
+                                      setState(() {
+                                        _getInstructorController(
+                                          controllerKey,
+                                          '',
+                                        ).text = selection;
+                                      });
+                                    },
+                                    fieldViewBuilder:
+                                        (
+                                          context,
+                                          controller,
+                                          focusNode,
+                                          onFieldSubmitted,
+                                        ) {
+                                          // Sync with instructor controller
+                                          final instructorController =
+                                              _getInstructorController(
+                                                controllerKey,
+                                                '',
+                                              );
+                                          if (controller.text.isEmpty &&
+                                              instructorController
+                                                  .text
+                                                  .isNotEmpty) {
+                                            controller.text =
+                                                instructorController.text;
+                                          }
+                                          // Update instructor controller when autocomplete changes
+                                          controller.addListener(() {
+                                            instructorController.text =
+                                                controller.text;
+                                          });
+
+                                          return TextField(
+                                            controller: controller,
+                                            focusNode: focusNode,
+                                            decoration: const InputDecoration(
+                                              hintText: 'בחר או הקלד שם מדריך',
+                                              labelText: 'שם מדריך',
+                                              border: OutlineInputBorder(),
+                                              filled: true,
+                                              fillColor: Colors.white,
+                                              contentPadding:
+                                                  EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 14,
+                                                  ),
+                                              suffixIcon: Icon(
+                                                Icons.arrow_drop_down,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            style: const TextStyle(
+                                              color: Colors.black87,
+                                              fontSize: 14,
+                                            ),
+                                          );
+                                        },
                                   ),
                                 ),
                               ],

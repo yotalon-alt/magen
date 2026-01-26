@@ -3414,26 +3414,79 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                // Name column
+                                // Name column - Autocomplete with suggestions
                                 Expanded(
-                                  child: TextField(
-                                    controller:
-                                        _instructorNameControllers[controllerKey],
-                                    decoration: const InputDecoration(
-                                      hintText: 'שם מדריך',
-                                      border: OutlineInputBorder(),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 14,
-                                      ),
-                                    ),
-                                    style: const TextStyle(
-                                      color: Colors.black87,
-                                      fontSize: 14,
-                                    ),
-                                    onChanged: (_) => _scheduleAutoSave(),
+                                  child: Autocomplete<String>(
+                                    optionsBuilder:
+                                        (TextEditingValue textEditingValue) {
+                                          if (textEditingValue.text.isEmpty) {
+                                            return brigade474Instructors;
+                                          }
+                                          return brigade474Instructors.where((
+                                            name,
+                                          ) {
+                                            return name.contains(
+                                              textEditingValue.text,
+                                            );
+                                          });
+                                        },
+                                    onSelected: (String selection) {
+                                      setState(() {
+                                        _instructorNameControllers[controllerKey]!
+                                                .text =
+                                            selection;
+                                      });
+                                      _scheduleAutoSave();
+                                    },
+                                    fieldViewBuilder:
+                                        (
+                                          context,
+                                          controller,
+                                          focusNode,
+                                          onFieldSubmitted,
+                                        ) {
+                                          // Sync with instructor controller
+                                          final instructorController =
+                                              _instructorNameControllers[controllerKey]!;
+                                          if (controller.text.isEmpty &&
+                                              instructorController
+                                                  .text
+                                                  .isNotEmpty) {
+                                            controller.text =
+                                                instructorController.text;
+                                          }
+                                          // Update instructor controller when autocomplete changes
+                                          controller.addListener(() {
+                                            instructorController.text =
+                                                controller.text;
+                                            _scheduleAutoSave();
+                                          });
+
+                                          return TextField(
+                                            controller: controller,
+                                            focusNode: focusNode,
+                                            decoration: const InputDecoration(
+                                              hintText: 'בחר או הקלד שם מדריך',
+                                              labelText: 'שם מדריך',
+                                              border: OutlineInputBorder(),
+                                              filled: true,
+                                              fillColor: Colors.white,
+                                              contentPadding:
+                                                  EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 14,
+                                                  ),
+                                              suffixIcon: Icon(
+                                                Icons.arrow_drop_down,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            style: const TextStyle(
+                                              color: Colors.black87,
+                                              fontSize: 14,
+                                            ),
+                                          );
+                                        },
                                   ),
                                 ),
                               ],
