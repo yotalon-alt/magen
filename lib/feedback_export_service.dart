@@ -3423,7 +3423,13 @@ class FeedbackExportService {
         int totalRowsAdded = 0;
 
         for (final trainee in trainees) {
-          final traineeName = (trainee['name'] ?? '').toString();
+          final traineeName = (trainee['name'] ?? '').toString().trim();
+
+          // ✅ FIX: Skip empty trainee names to avoid blank rows in export
+          if (traineeName.isEmpty) {
+            debugPrint('   ⚠️ Skipping trainee with empty name');
+            continue;
+          }
 
           // Extract hits map
           final hitsMap =
