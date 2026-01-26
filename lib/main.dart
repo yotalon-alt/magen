@@ -12106,6 +12106,16 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   final Set<String> _selectedFeedbackIds = {};
   bool _isExporting = false;
 
+  /// Helper: Get Hebrew display label for folder (handles internal values like '474 Ranges')
+  String _getDisplayLabel(String internalValue) {
+    final config = _feedbackFoldersConfig.firstWhere(
+      (c) => (c['internalValue'] ?? c['title']) == internalValue,
+      orElse: () => {'title': internalValue},
+    );
+    return (config['displayLabel'] ?? config['title'] ?? internalValue)
+        as String;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -12465,7 +12475,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_selectedFolder),
+          title: Text(_getDisplayLabel(_selectedFolder)),
           leading: const StandardBackButton(),
           actions: [
             if ((_selectedFolder == 'מטווחים 474' ||

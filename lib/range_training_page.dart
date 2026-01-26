@@ -1617,8 +1617,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           };
         }).toList();
       } else {
-        // Surprise: Use existing stations list
-        stationsData = stations.map((s) => s.toJson()).toList();
+        // Surprise: Build stations from principles list with FIXED maxPoints = 10
+        // ✅ FIX: maxPoints for surprise drills is ALWAYS 10 per principle (not from trainee data)
+        stationsData = stations.map((s) {
+          final json = s.toJson();
+          // Force maxPoints to 10 for all surprise drill principles
+          json['maxPoints'] = _surpriseMaxPointsPerPrinciple; // Always 10
+          return json;
+        }).toList();
       }
 
       final Map<String, dynamic> baseData = {
@@ -1717,8 +1723,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         final collRef = FirebaseFirestore.instance.collection(collectionPath);
 
         try {
-          // ✅ FIX: ALWAYS create NEW document for FINAL SAVE (never reuse draftId)
-          // Only update if explicitly editing an existing FINAL feedback
+          // ✅ FIX: Use EXISTING draft document if available from autosave
+          // This prevents duplicate feedbacks (one temp, one final)
           DocumentReference finalDocRef;
 
           // Check if we're editing an existing FINAL (non-draft) feedback
@@ -1727,18 +1733,38 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ? widget.feedbackId
               : null;
 
+          // ✅ NEW LOGIC: Check if we have a draft ID from autosave
+          final String? autosavedDraftId = _editingFeedbackId;
+
           if (existingFinalId != null) {
             // EDIT mode: update existing final feedback
             finalDocRef = collRef.doc(existingFinalId);
             debugPrint(
-              'WRITE: EDIT MODE - Updating feedback id=$existingFinalId',
+              'WRITE: EDIT MODE - Updating existing final feedback id=$existingFinalId',
             );
+            debugPrint('WRITE: ✅ No duplicate - updating same document');
             await finalDocRef.set(surpriseData);
+          } else if (autosavedDraftId != null && autosavedDraftId.isNotEmpty) {
+            // ✅ AUTOSAVE DRAFT EXISTS: Convert draft to final by updating same document
+            finalDocRef = collRef.doc(autosavedDraftId);
+            debugPrint(
+              'WRITE: DRAFT→FINAL - Converting autosaved draft id=$autosavedDraftId to final',
+            );
+            debugPrint(
+              'WRITE: ✅ No duplicate - updating autosaved draft to final status',
+            );
+            await finalDocRef.set(
+              surpriseData,
+            ); // Overwrites temp fields with final fields
+            debugPrint('🆔 DRAFT CONVERTED TO FINAL: docId=$autosavedDraftId');
           } else {
-            // CREATE mode: generate new auto-ID
+            // CREATE mode: generate new auto-ID (only if NO draft and NOT editing)
             finalDocRef = collRef.doc(); // Firestore auto-ID
             final docId = finalDocRef.id;
             debugPrint('WRITE: CREATE MODE - New auto-ID: $docId');
+            debugPrint(
+              'WRITE: ⚠️ No autosaved draft found - creating new document',
+            );
             await finalDocRef.set(surpriseData);
             debugPrint('🆔 NEW FEEDBACK CREATED: docId=$docId');
           }
@@ -2478,7 +2504,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           stationsData = stations.map((s) => s.toJson()).toList();
         }
       } else {
-        stationsData = stations.map((s) => s.toJson()).toList();
+        // Surprise mode: Build stations with FIXED maxPoints = 10 for each principle
+        stationsData = stations.map((s) {
+          final json = s.toJson();
+          json['maxPoints'] = _surpriseMaxPointsPerPrinciple; // Always 10
+          return json;
+        }).toList();
       }
 
       // PATCH LOGIC: Only update changed fields for Short/Long Range
