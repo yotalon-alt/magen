@@ -9928,6 +9928,17 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   Future<void> _loadBrigadeData() async {
     setState(() => _isLoading = true);
 
+    // ✅ RESET all counters and maps before loading to prevent duplicates
+    totalFeedbacks = 0;
+    totalTrainees = 0;
+    totalBulletsFired = 0;
+    totalPointsScored = 0;
+    totalMaxPoints = 0;
+    feedbacksByType = {};
+    uniqueSettlements = {};
+    settlementData = {};
+    instructorData = {};
+
     try {
       // Filter all feedbacks from Brigade 474 folders (FINAL feedbacks only, exclude drafts)
       final brigadeFeeds = feedbackStorage.where((f) {

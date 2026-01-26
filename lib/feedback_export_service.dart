@@ -1298,13 +1298,40 @@ class FeedbackExportService {
             ).format(DateTime.tryParse(createdAt) ?? DateTime.now())
           : DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
-      // Extract stations (drills) and trainees
-      final stations =
-          (feedbackData['stations'] as List?)?.cast<Map<String, dynamic>>() ??
-          [];
-      final trainees =
-          (feedbackData['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
-          [];
+      // Extract stations (drills) and trainees - SAFE extraction to avoid cast issues
+      final rawStations = feedbackData['stations'];
+      final List<Map<String, dynamic>> stations = [];
+      if (rawStations is List) {
+        for (final s in rawStations) {
+          if (s is Map) {
+            stations.add(Map<String, dynamic>.from(s));
+          }
+        }
+      }
+
+      final rawTrainees = feedbackData['trainees'];
+      final List<Map<String, dynamic>> trainees = [];
+      debugPrint('🔍 rawTrainees type: ${rawTrainees.runtimeType}');
+      debugPrint(
+        '🔍 rawTrainees length: ${rawTrainees is List ? rawTrainees.length : "not a list"}',
+      );
+      if (rawTrainees is List) {
+        for (int i = 0; i < rawTrainees.length; i++) {
+          final t = rawTrainees[i];
+          debugPrint(
+            '🔍 trainee[$i] type: ${t.runtimeType}, isMap: ${t is Map}',
+          );
+          if (t is Map) {
+            final traineeMap = Map<String, dynamic>.from(t);
+            debugPrint('🔍 trainee[$i] name: ${traineeMap['name']}');
+            trainees.add(traineeMap);
+          }
+        }
+      }
+
+      debugPrint(
+        '📊 Export: ${stations.length} stations, ${trainees.length} trainees',
+      );
 
       if (stations.isEmpty || trainees.isEmpty) {
         throw Exception('אין נתוני מקצים או חניכים לייצוא');
@@ -1631,7 +1658,8 @@ class FeedbackExportService {
       }
 
       // NEW: Add summary row at the bottom
-      final summaryRowIndex = 3 + trainees.length;
+      // FIXED: Use nextRowIndex + trainees.length instead of hardcoded 3
+      final summaryRowIndex = nextRowIndex + trainees.length;
 
       // First column: "סה״כ פגיעות (כל החניכים)"
       cell = sheet.cell(
