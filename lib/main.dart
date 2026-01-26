@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -4287,84 +4286,6 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           appBar: AppBar(
             title: const Text('משובים - תיקיות'),
             actions: [
-              // כפתור ייצוא משובים - רק לאדמין
-              if (isAdmin)
-                IconButton(
-                  icon: const Icon(Icons.download),
-                  onPressed: () async {
-                    try {
-                      // Page defines the export schema (folders overview uses global schema)
-                      final keys = [
-                        'id',
-                        'role',
-                        'name',
-                        'exercise',
-                        'scores',
-                        'notes',
-                        'criteriaList',
-                        'createdAt',
-                        'instructorName',
-                        'instructorRole',
-                        'commandText',
-                        'commandStatus',
-                        'folder',
-                        'scenario',
-                        'settlement',
-                        'attendeesCount',
-                      ];
-                      final headers = [
-                        'ID',
-                        'תפקיד',
-                        'שם',
-                        'תרגיל',
-                        'ציונים',
-                        'הערות',
-                        'קריטריונים',
-                        'תאריך יצירה',
-                        'מדריך',
-                        'תפקיד מדריך',
-                        'טקסט פקודה',
-                        'סטטוס פקודה',
-                        'תיקייה',
-                        'תרחיש',
-                        'יישוב',
-                        'מספר נוכחים',
-                      ];
-
-                      final messenger = ScaffoldMessenger.of(context);
-                      try {
-                        await FeedbackExportService.exportWithSchema(
-                          keys: keys,
-                          headers: headers,
-                          feedbacks: feedbackStorage,
-                          fileNamePrefix: 'feedbacks_all',
-                        );
-
-                        if (!mounted) return;
-                        final message = kIsWeb
-                            ? 'הקובץ הורד בהצלחה'
-                            : 'הקובץ נשמר בהורדות';
-                        messenger.showSnackBar(
-                          SnackBar(content: Text(message)),
-                        );
-                      } catch (e) {
-                        if (!mounted) return;
-                        messenger.showSnackBar(
-                          SnackBar(content: Text('שגיאה בייצוא: $e')),
-                        );
-                      }
-                    } catch (e) {
-                      // outer catch (should never reach here)
-                    }
-                  },
-                  tooltip: 'ייצוא נתונים',
-                ),
-              if (isAdmin)
-                IconButton(
-                  icon: const Icon(Icons.history),
-                  onPressed: _showRecentRangeSaves,
-                  tooltip: 'Recent range saves',
-                ),
               IconButton(
                 icon: _isRefreshing
                     ? const SizedBox(
@@ -11944,8 +11865,43 @@ class _StatisticsExportDialogState extends State<StatisticsExportDialog> {
 /* ================== BRIGADE 474 FINAL - INTERMEDIATE FOLDERS SCREEN ================== */
 
 /// Intermediate screen showing 4 sub-folders of "הגמר חטיבה 474"
-class Brigade474FinalFoldersPage extends StatelessWidget {
+class Brigade474FinalFoldersPage extends StatefulWidget {
   const Brigade474FinalFoldersPage({super.key});
+
+  @override
+  State<Brigade474FinalFoldersPage> createState() =>
+      _Brigade474FinalFoldersPageState();
+}
+
+class _Brigade474FinalFoldersPageState
+    extends State<Brigade474FinalFoldersPage> {
+  bool _isRefreshing = false;
+
+  Future<void> _refreshFeedbacks() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      debugPrint('🔄 Manual refresh triggered for הגמר חטיבה 474');
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('רשימת המשובים עודכנה')));
+    } catch (e) {
+      debugPrint('❌ Refresh error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('שגיאה בטעינת משובים')));
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -11983,6 +11939,22 @@ class Brigade474FinalFoldersPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('הגמר חטיבה 474'),
           leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refreshFeedbacks,
+              tooltip: 'רענן רשימה',
+            ),
+          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
