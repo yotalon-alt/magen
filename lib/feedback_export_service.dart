@@ -1284,6 +1284,12 @@ class FeedbackExportService {
           feedbackData['createdByName']?.toString() ??
           feedbackData['instructorName']?.toString() ??
           '';
+      // Get additional instructors list
+      final instructorsList =
+          (feedbackData['instructors'] as List?)?.cast<String>() ?? [];
+      final additionalInstructors = instructorsList
+          .where((name) => name.isNotEmpty && name != createdByName)
+          .join(', ');
       final feedbackDate = createdAt is Timestamp
           ? DateFormat('dd/MM/yyyy HH:mm').format(createdAt.toDate())
           : createdAt is String
@@ -1339,9 +1345,29 @@ class FeedbackExportService {
       cell.value = TextCellValue(createdByName);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
-      // Row 1: Headers - "יישוב", "שם", then drill names (with time for בוחן רמה)
+      // Row 0.5: Additional instructors if exist
+      int nextRowIndex = 1;
+      if (additionalInstructors.isNotEmpty) {
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 1),
+        );
+        cell.value = TextCellValue('מדריכים נוספים');
+        cell.cellStyle = CellStyle(
+          horizontalAlign: HorizontalAlign.Right,
+          bold: true,
+        );
+
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 1),
+        );
+        cell.value = TextCellValue(additionalInstructors);
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+        nextRowIndex = 2;
+      }
+
+      // Headers row - "יישוב", "שם", then drill names (with time for בוחן רמה)
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1),
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: nextRowIndex),
       );
       cell.value = TextCellValue('יישוב');
       cell.cellStyle = CellStyle(
@@ -1350,7 +1376,7 @@ class FeedbackExportService {
       );
 
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 1),
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: nextRowIndex),
       );
       cell.value = TextCellValue('שם');
       cell.cellStyle = CellStyle(
@@ -1362,7 +1388,7 @@ class FeedbackExportService {
       final List<Map<String, dynamic>> stationColumns = [];
       int currentColumn = 2;
 
-      // Add drill names to row 1 (columns C onward)
+      // Add drill names to headers row (columns C onward)
       // For בוחן רמה stations, add both hits and time columns
       for (var si = 0; si < stations.length; si++) {
         final station = stations[si];
@@ -1371,7 +1397,10 @@ class FeedbackExportService {
 
         // Hits column
         cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: currentColumn, rowIndex: 1),
+          CellIndex.indexByColumnRow(
+            columnIndex: currentColumn,
+            rowIndex: nextRowIndex,
+          ),
         );
         cell.value = TextCellValue(stationName);
         cell.cellStyle = CellStyle(
@@ -1390,7 +1419,10 @@ class FeedbackExportService {
         // Time column for בוחן רמה
         if (isLevelTester) {
           cell = sheet.cell(
-            CellIndex.indexByColumnRow(columnIndex: currentColumn, rowIndex: 1),
+            CellIndex.indexByColumnRow(
+              columnIndex: currentColumn,
+              rowIndex: nextRowIndex,
+            ),
           );
           cell.value = TextCellValue('$stationName - זמן');
           cell.cellStyle = CellStyle(
@@ -1411,7 +1443,7 @@ class FeedbackExportService {
       cell = sheet.cell(
         CellIndex.indexByColumnRow(
           columnIndex: totalHitsColumnIndex,
-          rowIndex: 1,
+          rowIndex: nextRowIndex,
         ),
       );
       cell.value = TextCellValue('סה״כ פגיעות חניך');
@@ -1421,7 +1453,10 @@ class FeedbackExportService {
       );
 
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: avgColumnIndex, rowIndex: 1),
+        CellIndex.indexByColumnRow(
+          columnIndex: avgColumnIndex,
+          rowIndex: nextRowIndex,
+        ),
       );
       cell.value = TextCellValue('ממוצע חניך');
       cell.cellStyle = CellStyle(
@@ -1429,16 +1464,18 @@ class FeedbackExportService {
         bold: true,
       );
 
-      // Row 2: "כדורים לחניך" - bullets per trainee for each drill
-      // Columns A and B are empty in row 2
+      nextRowIndex++; // Move to next row for bullets row
+
+      // Bullets per trainee row - bullets per trainee for each drill
+      // Columns A and B are empty in this row
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2),
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: nextRowIndex),
       );
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2),
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: nextRowIndex),
       );
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
@@ -1455,7 +1492,10 @@ class FeedbackExportService {
 
         // Bullets in hits column
         cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: hitsColumn, rowIndex: 2),
+          CellIndex.indexByColumnRow(
+            columnIndex: hitsColumn,
+            rowIndex: nextRowIndex,
+          ),
         );
         cell.value = IntCellValue(bulletsCount);
         cell.cellStyle = CellStyle(
@@ -1467,14 +1507,19 @@ class FeedbackExportService {
         if (hasTime) {
           final timeColumn = stationCol['timeColumn'] as int;
           cell = sheet.cell(
-            CellIndex.indexByColumnRow(columnIndex: timeColumn, rowIndex: 2),
+            CellIndex.indexByColumnRow(
+              columnIndex: timeColumn,
+              rowIndex: nextRowIndex,
+            ),
           );
           cell.value = TextCellValue('');
           cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
         }
       }
 
-      // Rows 4+: Trainee data (row 0 = metadata, row 1 = headers, row 2 = bullets, row 3+ = data)
+      nextRowIndex++; // Move to data rows
+
+      // Trainee data rows
       int overallTotalHits = 0; // Track overall total for summary row
 
       for (var ti = 0; ti < trainees.length; ti++) {
@@ -1484,9 +1529,7 @@ class FeedbackExportService {
         final timeValuesMap =
             trainee['timeValues'] as Map<String, dynamic>? ?? {};
 
-        final rowIndex =
-            ti +
-            3; // Row 0 = metadata, Row 1 = headers, Row 2 = bullets, data starts at row 3
+        final rowIndex = nextRowIndex + ti;
 
         // Column A: Settlement
         cell = sheet.cell(

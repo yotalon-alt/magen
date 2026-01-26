@@ -9909,6 +9909,34 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
               (settlementData[f.settlement]![typeKey]!['count'] as int) + 1;
         }
 
+        // ✅ ONCE PER FEEDBACK: Load additional instructors from Firestore (if feedback has ID)
+        if (f.id != null && f.id!.isNotEmpty) {
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(f.id)
+                .get()
+                .timeout(const Duration(seconds: 5));
+
+            if (doc.exists) {
+              final data = doc.data()!;
+              // Add additional instructors to instructor data (ONCE per feedback)
+              final additionalInstructors =
+                  (data['instructors'] as List?)?.cast<String>() ?? [];
+              for (final additionalInstructor in additionalInstructors) {
+                if (additionalInstructor.isNotEmpty &&
+                    additionalInstructor != instructorName) {
+                  instructorData.putIfAbsent(additionalInstructor, () => {});
+                  instructorData[additionalInstructor]![typeKey] =
+                      (instructorData[additionalInstructor]![typeKey] ?? 0) + 1;
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error loading additional instructors for ${f.id}: $e');
+          }
+        }
+
         // Load range data for bullets/points
         if ((f.folder == 'מטווחים 474' ||
                 f.folder == '474 Ranges' ||
@@ -10191,6 +10219,37 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         });
       }
       sectionsData['פילוח לפי יישוב'] = settlementBreakdown;
+
+      // Section 4: פילוח לפי מדריך
+      final instructorBreakdown = <Map<String, dynamic>>[];
+      // Sort instructors by total trainings (descending)
+      final sortedInstructors = instructorData.entries.toList()
+        ..sort((a, b) {
+          final totalA = a.value.values.fold(0, (acc, val) => acc + val);
+          final totalB = b.value.values.fold(0, (acc, val) => acc + val);
+          return totalB.compareTo(totalA);
+        });
+
+      for (final entry in sortedInstructors) {
+        final instructorName = entry.key;
+        final typeCounts = entry.value;
+        final totalInstructorTrainings = typeCounts.values.fold(
+          0,
+          (acc, val) => acc + val,
+        );
+
+        // Build type breakdown string
+        final typeBreakdownStr = typeCounts.entries
+            .map((e) => '${e.key}: ${e.value}')
+            .join(', ');
+
+        instructorBreakdown.add({
+          'מדריך': instructorName,
+          'סה"כ אימונים': totalInstructorTrainings,
+          'פירוט לפי סוג': typeBreakdownStr,
+        });
+      }
+      sectionsData['פילוח לפי מדריך'] = instructorBreakdown;
 
       // Export to Google Sheets
       await FeedbackExportService.exportStatisticsToGoogleSheets(
