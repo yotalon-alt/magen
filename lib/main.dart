@@ -10001,18 +10001,19 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
               (settlementData[f.settlement]![typeKey]!['count'] as int) + 1;
         }
 
-        // ✅ ONCE PER FEEDBACK: Load additional instructors from Firestore (if feedback has ID)
+        // ✅ SINGLE Firestore read per feedback - load all data at once
         if (f.id != null && f.id!.isNotEmpty) {
           try {
             final doc = await FirebaseFirestore.instance
                 .collection('feedbacks')
                 .doc(f.id)
                 .get()
-                .timeout(const Duration(seconds: 5));
+                .timeout(const Duration(seconds: 8));
 
             if (doc.exists) {
               final data = doc.data()!;
-              // Add additional instructors to instructor data (ONCE per feedback)
+
+              // 1. Add additional instructors (for all feedback types)
               final additionalInstructors =
                   (data['instructors'] as List?)?.cast<String>() ?? [];
               for (final additionalInstructor in additionalInstructors) {
@@ -10023,158 +10024,112 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                       (instructorData[additionalInstructor]![typeKey] ?? 0) + 1;
                 }
               }
-            }
-          } catch (e) {
-            debugPrint('Error loading additional instructors for ${f.id}: $e');
-          }
-        }
 
-        // Load range data for bullets/points
-        if ((f.folder == 'מטווחים 474' ||
-                f.folder == '474 Ranges' ||
-                f.folderKey == 'ranges_474') &&
-            f.id != null &&
-            f.id!.isNotEmpty) {
-          try {
-            final doc = await FirebaseFirestore.instance
-                .collection('feedbacks')
-                .doc(f.id)
-                .get()
-                .timeout(const Duration(seconds: 5));
+              // 2. Process based on feedback type
+              final isRanges474 =
+                  f.folder == 'מטווחים 474' ||
+                  f.folder == '474 Ranges' ||
+                  f.folderKey == 'ranges_474';
+              final isTrainingSummary =
+                  f.folder == 'משוב סיכום אימון 474' ||
+                  f.module == 'training_summary';
+              final isSurpriseDrill =
+                  f.folder == 'משוב תרגילי הפתעה' ||
+                  f.module == 'surprise_drill';
 
-            if (doc.exists) {
-              final data = doc.data()!;
-              final stations =
-                  (data['stations'] as List?)?.cast<Map<String, dynamic>>() ??
-                  [];
-              final trainees =
-                  (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
-                  [];
+              // 2a. מטווחים 474 - load trainees from trainees array
+              if (isRanges474) {
+                final stations =
+                    (data['stations'] as List?)?.cast<Map<String, dynamic>>() ??
+                    [];
+                final trainees =
+                    (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
+                    [];
 
-              // Add trainee names to global, per-settlement, and per-type tracking
-              for (final t in trainees) {
-                final name = t['name'] as String? ?? '';
-                if (name.isNotEmpty) {
-                  uniqueTraineesSet.add(name);
-                  traineesPerType[typeKey]!.add(name);
-                  // Add to settlement data
-                  if (f.settlement.isNotEmpty && !isDefensePlatoons) {
-                    (settlementData[f.settlement]![typeKey]!['trainees']
-                            as Set<String>)
-                        .add(name);
+                // Add trainee names
+                for (final t in trainees) {
+                  final name = t['name'] as String? ?? '';
+                  if (name.isNotEmpty) {
+                    uniqueTraineesSet.add(name);
+                    traineesPerType[typeKey]!.add(name);
+                    if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                      (settlementData[f.settlement]![typeKey]!['trainees']
+                              as Set<String>)
+                          .add(name);
+                    }
                   }
                 }
-              }
 
-              // ❌ REMOVED: Increment was here - now done once at start of loop
+                // Detect long range
+                final feedbackType = (data['feedbackType'] as String?) ?? '';
+                final rangeSubType = (data['rangeSubType'] as String?) ?? '';
+                final isLongRange =
+                    feedbackType == 'range_long' ||
+                    feedbackType == 'דווח רחוק' ||
+                    rangeSubType == 'טווח רחוק';
 
-              // Detect long range
-              final feedbackType = (data['feedbackType'] as String?) ?? '';
-              final rangeSubType = (data['rangeSubType'] as String?) ?? '';
-              final isLongRange =
-                  feedbackType == 'range_long' ||
-                  feedbackType == 'דווח רחוק' ||
-                  rangeSubType == 'טווח רחוק';
+                // Sum bullets fired
+                for (final station in stations) {
+                  final bullets =
+                      (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                  totalBulletsFired += bullets * trainees.length;
 
-              // Sum bullets fired (both short and long range)
-              for (final station in stations) {
-                // Always use bulletsCount for total bullets fired
-                final bullets = (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                totalBulletsFired += bullets * trainees.length;
+                  if (isLongRange) {
+                    final maxPoints =
+                        (station['maxPoints'] as num?)?.toInt() ?? 0;
+                    totalMaxPoints += maxPoints * trainees.length;
+                  }
+                }
 
-                // Track maxPoints only for long range statistics
+                // Sum points scored (for long range)
                 if (isLongRange) {
-                  final maxPoints =
-                      (station['maxPoints'] as num?)?.toInt() ?? 0;
-                  totalMaxPoints += maxPoints * trainees.length;
+                  for (final trainee in trainees) {
+                    totalPointsScored +=
+                        (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                  }
                 }
               }
 
-              // Sum points scored (for long range)
-              if (isLongRange) {
-                for (final trainee in trainees) {
-                  totalPointsScored +=
-                      (trainee['totalHits'] as num?)?.toInt() ?? 0;
+              // 2b. סיכום אימון - load attendees
+              if (isTrainingSummary) {
+                final attendees =
+                    (data['attendees'] as List?)?.cast<String>() ?? [];
+
+                for (final name in attendees) {
+                  if (name.isNotEmpty) {
+                    uniqueTraineesSet.add(name);
+                    traineesPerType[typeKey]!.add(name);
+                    if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                      (settlementData[f.settlement]![typeKey]!['trainees']
+                              as Set<String>)
+                          .add(name);
+                    }
+                  }
                 }
               }
-            }
-          } catch (e) {
-            debugPrint('Error loading range data for ${f.id}: $e');
-          }
-        }
 
-        // Add trainees from training summary
-        if ((f.folder == 'משוב סיכום אימון 474' ||
-                f.module == 'training_summary') &&
-            f.id != null &&
-            f.id!.isNotEmpty) {
-          try {
-            final doc = await FirebaseFirestore.instance
-                .collection('feedbacks')
-                .doc(f.id)
-                .get()
-                .timeout(const Duration(seconds: 5));
+              // 2c. תרגילי הפתעה - load trainees
+              if (isSurpriseDrill) {
+                final trainees =
+                    (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
+                    [];
 
-            if (doc.exists) {
-              final data = doc.data()!;
-              final attendees =
-                  (data['attendees'] as List?)?.cast<String>() ?? [];
-
-              // ❌ REMOVED: Increment was here - now done once at start of loop
-
-              for (final name in attendees) {
-                if (name.isNotEmpty) {
-                  uniqueTraineesSet.add(name);
-                  traineesPerType[typeKey]!.add(name);
-                  // Add to settlement data
-                  if (f.settlement.isNotEmpty && !isDefensePlatoons) {
-                    (settlementData[f.settlement]![typeKey]!['trainees']
-                            as Set<String>)
-                        .add(name);
+                for (final t in trainees) {
+                  final name = t['name'] as String? ?? '';
+                  if (name.isNotEmpty) {
+                    uniqueTraineesSet.add(name);
+                    traineesPerType[typeKey]!.add(name);
+                    if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                      (settlementData[f.settlement]![typeKey]!['trainees']
+                              as Set<String>)
+                          .add(name);
+                    }
                   }
                 }
               }
             }
           } catch (e) {
-            debugPrint('Error loading training summary for ${f.id}: $e');
-          }
-        }
-
-        // Add trainees from surprise drills
-        if ((f.folder == 'משוב תרגילי הפתעה' || f.module == 'surprise_drill') &&
-            f.id != null &&
-            f.id!.isNotEmpty) {
-          try {
-            final doc = await FirebaseFirestore.instance
-                .collection('feedbacks')
-                .doc(f.id)
-                .get()
-                .timeout(const Duration(seconds: 5));
-
-            if (doc.exists) {
-              final data = doc.data()!;
-              final trainees =
-                  (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
-                  [];
-
-              // ❌ REMOVED: Increment was here - now done once at start of loop
-
-              for (final t in trainees) {
-                final name = t['name'] as String? ?? '';
-                if (name.isNotEmpty) {
-                  uniqueTraineesSet.add(name);
-                  traineesPerType[typeKey]!.add(name);
-                  // Add to settlement data
-                  if (f.settlement.isNotEmpty && !isDefensePlatoons) {
-                    (settlementData[f.settlement]![typeKey]!['trainees']
-                            as Set<String>)
-                        .add(name);
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            debugPrint('Error loading surprise drill for ${f.id}: $e');
+            debugPrint('Error loading feedback data for ${f.id}: $e');
           }
         }
       }
