@@ -841,33 +841,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return total;
   }
 
-  // ===== SURPRISE DRILLS DYNAMIC MAXPOINTS CALCULATION =====
-  // For each principle, maxPoints = highest score among all trainees
-  // Returns map: principleIndex -> maxPoints
-  Map<int, int> _getDynamicMaxPointsPerPrinciple() {
-    if (widget.mode != 'surprise') return {};
-
-    final Map<int, int> maxPointsMap = {};
-
-    // Iterate through all trainees to find max score per principle
-    for (final trainee in traineeRows) {
-      trainee.values.forEach((principleIndex, points) {
-        if (points > 0) {
-          final currentMax = maxPointsMap[principleIndex] ?? 0;
-          if (points > currentMax) {
-            maxPointsMap[principleIndex] = points;
-          }
-        }
-      });
-    }
-
-    return maxPointsMap;
-  }
+  // ===== SURPRISE DRILLS FIXED MAXPOINTS =====
+  // For Surprise Drills, maxPoints is ALWAYS 10 for each principle
+  static const int _surpriseMaxPointsPerPrinciple = 10;
 
   // Get maxPoints for a specific principle (Surprise Drills)
+  // Always returns 10 for surprise mode
   int _getMaxPointsForPrinciple(int principleIndex) {
-    final maxPointsMap = _getDynamicMaxPointsPerPrinciple();
-    return maxPointsMap[principleIndex] ?? 0;
+    if (widget.mode != 'surprise') return 0;
+    return _surpriseMaxPointsPerPrinciple;
   }
 
   // ✅ SURPRISE DRILLS: Calculate average score (0-10) from filled principle scores
