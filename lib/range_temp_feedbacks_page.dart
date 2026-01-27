@@ -316,8 +316,16 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                   final feedback = _tempFeedbacks[i];
                   final id = feedback['id'] as String;
                   final rangeType = feedback['rangeType'] as String? ?? 'קצרים';
-                  final settlement =
-                      feedback['settlement'] as String? ?? 'לא צוין';
+                  // ✅ FIX: Try both settlement and settlementName fields
+                  final settlementField =
+                      feedback['settlement'] as String? ?? '';
+                  final settlementNameField =
+                      feedback['settlementName'] as String? ?? '';
+                  final settlement = settlementField.isNotEmpty
+                      ? settlementField
+                      : (settlementNameField.isNotEmpty
+                            ? settlementNameField
+                            : 'לא צוין');
                   final instructorName =
                       feedback['instructorName'] as String? ?? '';
                   final attendeesCount =

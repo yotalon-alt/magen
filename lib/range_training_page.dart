@@ -232,6 +232,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   bool _isSaving = false;
   // הייצוא יתבצע מדף המשובים בלבד
 
+  // ✅ SUMMARY FIELD: For instructor to write training summary
+  String trainingSummary = '';
+  late TextEditingController _trainingSummaryController;
+
   // ✅ AUTOSAVE TIMER: Debounced autosave (700ms delay)
   Timer? _autoSaveTimer;
 
@@ -273,6 +277,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       text: instructorsCount.toString(),
     );
     _manualStageController = TextEditingController();
+    _trainingSummaryController = TextEditingController();
     // מקצה ברירת מחדל אחד
     stations.add(RangeStation(name: '', bulletsCount: 0));
     _rangeType = widget.rangeType;
@@ -457,6 +462,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
     _manualStageController.dispose();
+    _trainingSummaryController.dispose();
     // Dispose instructor name controllers
     for (final controller in _instructorNameControllers.values) {
       controller.dispose();
@@ -1653,6 +1659,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'instructors': _collectInstructorNames(), // רשימת מדריכים
         'stations': stationsData,
         'trainees': traineesData,
+        'summary': trainingSummary, // ✅ סיכום האימון מהמדריך
         'status': 'final',
       };
 
@@ -2535,7 +2542,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByUid': uid,
         'rangeType': _rangeType,
         'rangeSubType': rangeSubType,
-        'settlement': selectedSettlement ?? '',
+        // ✅ FIX: Use correct settlement value based on folder type
+        // For מטווחים 474: use selectedSettlement (dropdown)
+        // For מטווחי ירי: use settlementName (free text)
+        'settlement': (rangeFolder == 'מטווחי ירי' && settlementName.isNotEmpty)
+            ? settlementName
+            : (selectedSettlement ?? ''),
         'settlementName': settlementName,
         'rangeFolder': rangeFolder ?? '',
         'attendeesCount': attendeesCount,
@@ -2545,6 +2557,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdAt': FieldValue.serverTimestamp(),
         'selectedShortRangeStage': selectedShortRangeStage,
         'manualStageName': manualStageName,
+        'summary': trainingSummary, // ✅ סיכום האימון מהמדריך
       };
 
       // 🔍 DEBUG: Log temp save flags before write
@@ -3083,6 +3096,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // ✅ Replace traineeRows with loaded data (NO default empty rows)
         traineeRows = loadedRows;
 
+        // ✅ Load summary text from draft
+        final loadedSummary = data['summary'] as String? ?? '';
+        trainingSummary = loadedSummary;
+        _trainingSummaryController.text = loadedSummary;
+
         // Replace stations with loaded data
         stations = loadedStations.isNotEmpty ? loadedStations : stations;
 
@@ -3185,7 +3203,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   items: const [
                     DropdownMenuItem(
                       value: 'משוב תרגילי הפתעה',
-                      child: Text('משוב תרגילי הפתעה'),
+                      child: Text('תרגילי הפתעה 474'),
                     ),
                   ],
                   onChanged: null, // Read-only, only one option
@@ -4097,6 +4115,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 // טבלה דינמית
                 _buildTraineesTable(),
 
+                const SizedBox(height: 24),
+
+                // ✅ סיכום האימון - שדה טקסט חופשי למדריך
+                const Text(
+                  'סיכום האימון',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _trainingSummaryController,
+                  decoration: const InputDecoration(
+                    labelText: 'סיכום',
+                    hintText: 'תאר את האימון, נקודות חשובות, הערות...',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 4,
+                  onChanged: (v) {
+                    setState(() => trainingSummary = v);
+                  },
+                ),
                 const SizedBox(height: 24),
 
                 // Finalize Save button

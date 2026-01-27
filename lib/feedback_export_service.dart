@@ -1759,6 +1759,38 @@ class FeedbackExportService {
       cell.value = TextCellValue('');
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
+      // ========== ADD TRAINING SUMMARY TEXT ==========
+      final trainingSummary = (feedbackData['summary'] ?? '').toString().trim();
+      if (trainingSummary.isNotEmpty) {
+        final summaryLabelRowIndex = bulletsRowIndex + 2; // Skip one empty row
+        final summaryTextRowIndex = bulletsRowIndex + 3;
+
+        // Label row
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: 0,
+            rowIndex: summaryLabelRowIndex,
+          ),
+        );
+        cell.value = TextCellValue('סיכום האימון:');
+        cell.cellStyle = CellStyle(
+          horizontalAlign: HorizontalAlign.Right,
+          bold: true,
+        );
+
+        // Summary text row
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: 0,
+            rowIndex: summaryTextRowIndex,
+          ),
+        );
+        cell.value = TextCellValue(trainingSummary);
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+        debugPrint('✅ Added training summary text to export');
+      }
+
       // Encode and export
       final fileBytes = excel.encode();
       if (fileBytes == null) {
@@ -3245,6 +3277,18 @@ class FeedbackExportService {
       debugPrint('   Total rows added: $totalRowsAdded');
       debugPrint('   Drill columns: $orderedDrillNames');
 
+      // ========== ADD TRAINING SUMMARY TEXT ==========
+      // Add summary from first feedback (all feedbacks from same session)
+      final trainingSummary = (firstFeedback['summary'] ?? '')
+          .toString()
+          .trim();
+      if (trainingSummary.isNotEmpty) {
+        sheet.appendRow([]); // Empty separator
+        sheet.appendRow([TextCellValue('סיכום האימון:')]);
+        sheet.appendRow([TextCellValue(trainingSummary)]);
+        debugPrint('   ✅ Added training summary text');
+      }
+
       // Save and export
       final fileBytes = excel.encode();
       if (fileBytes == null) {
@@ -3533,6 +3577,17 @@ class FeedbackExportService {
           TextCellValue('$grandPercentage%'),
         ];
         sheet.appendRow(summaryRow);
+
+        // ========== ADD TRAINING SUMMARY TEXT ==========
+        final trainingSummary = (feedbackData['summary'] ?? '')
+            .toString()
+            .trim();
+        if (trainingSummary.isNotEmpty) {
+          sheet.appendRow([TextCellValue('')]); // Empty separator
+          sheet.appendRow([TextCellValue('סיכום האימון:')]);
+          sheet.appendRow([TextCellValue(trainingSummary)]);
+          debugPrint('   ✅ Added training summary text');
+        }
       }
 
       debugPrint('\n📊 EXPORT SUMMARY:');

@@ -60,14 +60,17 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
   },
   {
     'title': 'מחלקות ההגנה – חטיבה 474',
+    'displayLabel': 'מחלקות הגנה 474',
     'isHidden': true,
   }, // ✅ MOVED: Now part of הגמר חטיבה 474
   {
     'title': 'משוב תרגילי הפתעה',
+    'displayLabel': 'תרגילי הפתעה 474',
     'isHidden': true,
   }, // ✅ MOVED: Now part of הגמר חטיבה 474
   {
     'title': 'משוב סיכום אימון 474',
+    'displayLabel': 'סיכום אימון 474',
     'isHidden': true,
   }, // ✅ MOVED: Now part of הגמר חטיבה 474
   {'title': 'מיונים – כללי', 'isHidden': true}, // ✅ SOFT DELETE: Hidden from UI
@@ -2750,6 +2753,16 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                     ];
                   }
 
+                  // Display name mapping (internal value -> display label)
+                  String getDisplayName(String internalValue) {
+                    switch (internalValue) {
+                      case 'מחלקות ההגנה – חטיבה 474':
+                        return 'מחלקות הגנה 474';
+                      default:
+                        return internalValue;
+                    }
+                  }
+
                   return DropdownButtonFormField<String>(
                     initialValue: selectedFolder,
                     hint: const Text('בחר תיקייה (חובה)'),
@@ -2761,7 +2774,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                         .map(
                           (folder) => DropdownMenuItem(
                             value: folder,
-                            child: Text(folder),
+                            child: Text(getDisplayName(folder)),
                           ),
                         )
                         .toList(),
@@ -3118,6 +3131,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   String instructorNameDisplay = '';
   String instructorRoleDisplay = '';
   final String folder = 'משוב סיכום אימון 474';
+  final String folderDisplayName = 'סיכום אימון 474'; // Display name only
   String selectedSettlement = '';
   String trainingType = '';
   String summary = '';
@@ -3331,7 +3345,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('סיכום אימון'),
+          title: const Text('סיכום אימון 474'),
           leading: const StandardBackButton(),
         ),
         body: Padding(
@@ -3369,7 +3383,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 8),
               TextFormField(
-                initialValue: folder,
+                initialValue: folderDisplayName,
                 enabled: false,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
@@ -5537,6 +5551,21 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         feedback.folder == '474 Ranges' ||
         feedback.folderKey == 'ranges_474';
 
+    // Check if this is a special feedback type that should NOT show command box
+    final isRangeFeedback =
+        is474Ranges ||
+        feedback.folder == 'מטווחי ירי' ||
+        feedback.folderKey == 'shooting_ranges' ||
+        feedback.module == 'shooting_ranges';
+    final isSurpriseDrill =
+        feedback.folder == 'משוב תרגילי הפתעה' ||
+        feedback.module == 'surprise_drill';
+    final isTrainingSummary =
+        feedback.folder == 'משוב סיכום אימון 474' ||
+        feedback.module == 'training_summary';
+    final hideCommandBox =
+        isRangeFeedback || isSurpriseDrill || isTrainingSummary;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -6198,6 +6227,46 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   ),
                                 ),
                               ],
+
+                              // ✅ הצגת סיכום האימון לתרגילי הפתעה
+                              Builder(
+                                builder: (context) {
+                                  final summary =
+                                      (data['summary'] as String?) ?? '';
+                                  if (summary.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'סיכום האימון',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Card(
+                                        color: Colors.blueGrey.shade700,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12.0),
+                                          child: Text(
+                                            summary,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              height: 1.5,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
                             ],
                           );
                         },
@@ -6470,6 +6539,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         style: TextStyle(
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
+                                          color: Colors.white,
                                         ),
                                       ),
                                       const SizedBox(height: 12),
@@ -6532,6 +6602,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   children: [
                                                     const Text(
                                                       'סך פגיעות/כדורים',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                      ),
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
@@ -6550,6 +6623,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   children: [
                                                     const Text(
                                                       'אחוז פגיעה כללי',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                      ),
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
@@ -6578,6 +6654,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -6657,6 +6734,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 16,
+                                              color: Colors.white,
                                             ),
                                           ),
                                           const SizedBox(height: 8),
@@ -6770,6 +6848,46 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   ),
                                 );
                               }),
+
+                              // ✅ הצגת סיכום האימון למטווחים 474
+                              Builder(
+                                builder: (context) {
+                                  final summary =
+                                      (data['summary'] as String?) ?? '';
+                                  if (summary.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'סיכום האימון',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Card(
+                                        color: Colors.blueGrey.shade700,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12.0),
+                                          child: Text(
+                                            summary,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              height: 1.5,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
                             ],
                           );
                         },
@@ -6876,6 +6994,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         style: TextStyle(
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
+                                          color: Colors.white,
                                         ),
                                       ),
                                       const SizedBox(height: 12),
@@ -6917,6 +7036,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   children: [
                                                     const Text(
                                                       'סך פגיעות/כדורים',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                      ),
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
@@ -6935,6 +7057,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   children: [
                                                     const Text(
                                                       'אחוז פגיעה כללי',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                      ),
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
@@ -6963,6 +7088,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -7059,6 +7185,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 16,
+                                              color: Colors.white,
                                             ),
                                           ),
                                           const SizedBox(height: 8),
@@ -7159,6 +7286,46 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   ),
                                 );
                               }),
+
+                              // ✅ הצגת סיכום האימון למטווחי ירי
+                              Builder(
+                                builder: (context) {
+                                  final summary =
+                                      (data['summary'] as String?) ?? '';
+                                  if (summary.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'סיכום האימון',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Card(
+                                        color: Colors.blueGrey.shade700,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12.0),
+                                          child: Text(
+                                            summary,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              height: 1.5,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
                             ],
                           );
                         },
@@ -7206,8 +7373,8 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       ),
                     ],
               const SizedBox(height: 12),
-              // Command box (visible to Admin + Instructors)
-              if (canViewCommand) ...[
+              // Command box (visible to Admin + Instructors, HIDDEN for ranges/surprise drills/training summary)
+              if (canViewCommand && !hideCommandBox) ...[
                 const SizedBox(height: 12),
                 Card(
                   color: Colors.blueGrey.shade800,
@@ -8432,6 +8599,19 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                       'משובים – כללי',
                                       'מחלקות ההגנה – חטיבה 474',
                                     ];
+
+                                    // Display name mapping
+                                    String getDisplayName(
+                                      String internalValue,
+                                    ) {
+                                      switch (internalValue) {
+                                        case 'מחלקות ההגנה – חטיבה 474':
+                                          return 'מחלקות הגנה 474';
+                                        default:
+                                          return internalValue;
+                                      }
+                                    }
+
                                     final items = folders;
                                     final value = items.contains(selectedFolder)
                                         ? selectedFolder
@@ -8450,7 +8630,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                           .map(
                                             (i) => DropdownMenuItem(
                                               value: i,
-                                              child: Text(i),
+                                              child: Text(getDisplayName(i)),
                                             ),
                                           )
                                           .toList(),
@@ -9840,6 +10020,20 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   // Per-instructor data: instructorName -> {typeKey -> count}
   Map<String, Map<String, int>> instructorData = {};
 
+  /// Helper: Convert internal type key to display name
+  String _getTypeDisplayName(String typeKey) {
+    switch (typeKey) {
+      case 'מחלקות ההגנה – חטיבה 474':
+        return 'מחלקות הגנה 474';
+      case 'משוב תרגילי הפתעה':
+        return 'תרגילי הפתעה 474';
+      case 'משוב סיכום אימון 474':
+        return 'סיכום אימון 474';
+      default:
+        return typeKey;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -10449,7 +10643,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        type,
+                                        _getTypeDisplayName(type),
                                         style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
@@ -10645,7 +10839,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
-                                                type,
+                                                _getTypeDisplayName(type),
                                                 style: const TextStyle(
                                                   fontSize: 15,
                                                   color: Colors.white,
@@ -11467,6 +11661,19 @@ class _SurpriseDrillsStatisticsPageState
                                       'הכל',
                                       'משוב תרגילי הפתעה',
                                     ];
+
+                                    // Display name mapping
+                                    String getDisplayName(
+                                      String internalValue,
+                                    ) {
+                                      switch (internalValue) {
+                                        case 'משוב תרגילי הפתעה':
+                                          return 'תרגילי הפתעה 474';
+                                        default:
+                                          return internalValue;
+                                      }
+                                    }
+
                                     final items = folders;
                                     final value = items.contains(selectedFolder)
                                         ? selectedFolder
@@ -11485,7 +11692,7 @@ class _SurpriseDrillsStatisticsPageState
                                           .map(
                                             (i) => DropdownMenuItem(
                                               value: i,
-                                              child: Text(i),
+                                              child: Text(getDisplayName(i)),
                                             ),
                                           )
                                           .toList(),
@@ -11914,19 +12121,19 @@ class _Brigade474FinalFoldersPageState
         'color': Colors.deepOrange,
       },
       {
-        'title': 'מחלקות ההגנה – חטיבה 474',
+        'title': 'מחלקות הגנה 474',
         'internalValue': 'מחלקות ההגנה – חטיבה 474',
         'icon': Icons.shield,
         'color': Colors.blue,
       },
       {
-        'title': 'משוב תרגילי הפתעה',
+        'title': 'תרגילי הפתעה 474',
         'internalValue': 'משוב תרגילי הפתעה',
         'icon': Icons.flash_on,
         'color': Colors.amber,
       },
       {
-        'title': 'משוב סיכום אימון 474',
+        'title': 'סיכום אימון 474',
         'internalValue': 'משוב סיכום אימון 474',
         'icon': Icons.assessment,
         'color': Colors.green,
