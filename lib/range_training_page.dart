@@ -189,6 +189,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       false; // Track if "Manual Location" is selected for Surprise Drills
   String manualLocationText =
       ''; // Store manual location text for Surprise Drills
+  // ✅ NEW: Folder selection for Surprise Drills (474 or כללי)
+  String? surpriseDrillsFolder; // No default - user must select
   int attendeesCount = 0;
   late TextEditingController _attendeesCountController;
 
@@ -1409,11 +1411,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       } else {
         // ✅ COMPUTE FROM UI SELECTION (new feedback, not from draft)
 
-        // SURPRISE DRILL: Hardcoded folder - no user selection needed
+        // SURPRISE DRILL: Use surpriseDrillsFolder selection
         if (widget.mode == 'surprise') {
-          folderKey = 'surprise_drills';
-          folderLabel = 'משוב תרגילי הפתעה';
-          folderId = 'surprise_drills';
+          if (surpriseDrillsFolder == 'תרגילי הפתעה כללי') {
+            folderKey = 'surprise_drills_general';
+            folderLabel = 'תרגילי הפתעה כללי';
+            folderId = 'surprise_drills_general';
+          } else {
+            folderKey = 'surprise_drills';
+            folderLabel = 'משוב תרגילי הפתעה';
+            folderId = 'surprise_drills';
+          }
         }
         // Exact matching only - no fallbacks to ensure user selection is respected
         else if (uiFolderValue == 'מטווחים 474') {
@@ -1692,11 +1700,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'finalizedAt':
               FieldValue.serverTimestamp(), // ✅ FINAL SAVE: Track when finalized
           'exercise': 'תרגילי הפתעה',
-          'folder': 'משוב תרגילי הפתעה', // ✅ Final folder (not temp)
+          'folder': surpriseDrillsFolder, // ✅ Use selected folder (474 or כללי)
           // ✅ CRITICAL: Override folderKey/folderLabel to prevent range filter matching
-          'folderKey': 'surprise_drills', // NOT ranges_474 or shooting_ranges
-          'folderLabel': 'משוב תרגילי הפתעה',
-          'folderId': 'surprise_drills',
+          'folderKey': surpriseDrillsFolder == 'תרגילי הפתעה כללי'
+              ? 'surprise_drills_general'
+              : 'surprise_drills', // NOT ranges_474 or shooting_ranges
+          'folderLabel': surpriseDrillsFolder,
+          'folderId': surpriseDrillsFolder == 'תרגילי הפתעה כללי'
+              ? 'surprise_drills_general'
+              : 'surprise_drills',
           'feedbackType': saveType,
           'rangeMode': widget.mode,
           'name': finalSettlement,
@@ -1713,7 +1725,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('SAVE: module=surprise_drill');
         debugPrint('SAVE: type=surprise_exercise');
         debugPrint('SAVE: isTemporary=false');
-        debugPrint('SAVE: folder=משוב תרגילי הפתעה');
+        debugPrint('SAVE: folder=$surpriseDrillsFolder');
 
         // Diagnostic: log canonical folder info & payload keys
         debugPrint('SAVE_DEBUG: uiFolderValue=$uiFolderValue');
@@ -2444,6 +2456,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint(
           'DRAFT_SAVE: ✅ Using LOADED folder: key=$draftFolderKey label=$draftFolderLabel',
         );
+      } else if (widget.mode == 'surprise') {
+        // ✅ SURPRISE DRILLS: Use surpriseDrillsFolder selection
+        if (surpriseDrillsFolder == 'תרגילי הפתעה כללי') {
+          draftFolderKey = 'surprise_drills_general';
+          draftFolderLabel = 'תרגילי הפתעה כללי';
+        } else {
+          draftFolderKey = 'surprise_drills';
+          draftFolderLabel = 'משוב תרגילי הפתעה';
+        }
+        debugPrint(
+          'DRAFT_SAVE: ✅ Using SURPRISE folder: key=$draftFolderKey label=$draftFolderLabel',
+        );
       } else {
         // ✅ NEW DRAFT: Use UI selection to determine folder
         if (rangeFolder == 'מטווחים 474' || rangeFolder == '474 Ranges') {
@@ -2542,12 +2566,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'createdByUid': uid,
         'rangeType': _rangeType,
         'rangeSubType': rangeSubType,
-        // ✅ FIX: Use correct settlement value based on folder type
-        // For מטווחים 474: use selectedSettlement (dropdown)
-        // For מטווחי ירי: use settlementName (free text)
-        'settlement': (rangeFolder == 'מטווחי ירי' && settlementName.isNotEmpty)
+        // ✅ FIX: Settlement value based on mode
+        // For surprise drills: use settlementName (user input)
+        // For 474 ranges: use selectedSettlement (dropdown)
+        // For general ranges: use settlementName (free text)
+        'settlement': widget.mode == 'surprise'
             ? settlementName
-            : (selectedSettlement ?? ''),
+            : ((rangeFolder == 'מטווחי ירי' && settlementName.isNotEmpty)
+                  ? settlementName
+                  : (selectedSettlement ?? '')),
         'settlementName': settlementName,
         'rangeFolder': rangeFolder ?? '',
         'attendeesCount': attendeesCount,
@@ -2930,23 +2957,39 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         selectedSettlement = rawSettlement ?? selectedSettlement;
         settlementName = rawSettlementName ?? settlementName;
 
-        // ✅ FIX: Restore rangeFolder UI value from folderKey/folderLabel (for dropdown display)
-        // Priority: Use folderKey to determine correct UI value, fallback to rawRangeFolder
-        if (rawFolderKey != null && rawFolderKey.isNotEmpty) {
-          if (rawFolderKey == 'ranges_474') {
-            rangeFolder = 'מטווחים 474';
-          } else if (rawFolderKey == 'shooting_ranges') {
-            rangeFolder = 'מטווחי ירי';
-          } else {
-            // Unknown folderKey, use folderLabel or rawRangeFolder as fallback
-            rangeFolder = rawFolderLabel ?? rawRangeFolder;
+        // ✅ FIX: Restore rangeFolder/surpriseDrillsFolder UI value from folderKey/folderLabel
+        if (widget.mode == 'surprise') {
+          // ✅ SURPRISE DRILLS: Restore surpriseDrillsFolder from folderKey
+          if (rawFolderKey == 'surprise_drills_general') {
+            surpriseDrillsFolder = 'תרגילי הפתעה כללי';
+          } else if (rawFolderKey == 'surprise_drills') {
+            surpriseDrillsFolder = 'משוב תרגילי הפתעה';
+          } else if (rawFolderLabel != null && rawFolderLabel.isNotEmpty) {
+            // Fallback to folderLabel for backwards compatibility
+            surpriseDrillsFolder = rawFolderLabel;
           }
-        } else if (rawFolderLabel != null && rawFolderLabel.isNotEmpty) {
-          // Fallback to folderLabel if folderKey is missing
-          rangeFolder = rawFolderLabel;
+          debugPrint(
+            'DRAFT_LOAD: ✅ Restored surpriseDrillsFolder=$surpriseDrillsFolder from folderKey=$rawFolderKey',
+          );
         } else {
-          // Last resort: use rawRangeFolder (may be null)
-          rangeFolder = rawRangeFolder ?? rangeFolder;
+          // ✅ RANGE MODES: Restore rangeFolder from folderKey/folderLabel
+          // Priority: Use folderKey to determine correct UI value, fallback to rawRangeFolder
+          if (rawFolderKey != null && rawFolderKey.isNotEmpty) {
+            if (rawFolderKey == 'ranges_474') {
+              rangeFolder = 'מטווחים 474';
+            } else if (rawFolderKey == 'shooting_ranges') {
+              rangeFolder = 'מטווחי ירי';
+            } else {
+              // Unknown folderKey, use folderLabel or rawRangeFolder as fallback
+              rangeFolder = rawFolderLabel ?? rawRangeFolder;
+            }
+          } else if (rawFolderLabel != null && rawFolderLabel.isNotEmpty) {
+            // Fallback to folderLabel if folderKey is missing
+            rangeFolder = rawFolderLabel;
+          } else {
+            // Last resort: use rawRangeFolder (may be null)
+            rangeFolder = rawRangeFolder ?? rangeFolder;
+          }
         }
 
         loadedFolderKey =
@@ -3195,9 +3238,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               // Folder selection for Surprise Drills (required field)
               if (widget.mode == 'surprise') ...[
                 DropdownButtonFormField<String>(
-                  initialValue: 'משוב תרגילי הפתעה',
+                  key: ValueKey('surprise_folder_$surpriseDrillsFolder'),
+                  initialValue: surpriseDrillsFolder,
+                  hint: const Text('בחר תיקייה'),
                   decoration: const InputDecoration(
-                    labelText: 'בחירת תיקייה',
+                    labelText: 'תיקייה',
                     border: OutlineInputBorder(),
                   ),
                   items: const [
@@ -3205,8 +3250,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       value: 'משוב תרגילי הפתעה',
                       child: Text('תרגילי הפתעה 474'),
                     ),
+                    DropdownMenuItem(
+                      value: 'תרגילי הפתעה כללי',
+                      child: Text('תרגילי הפתעה כללי'),
+                    ),
                   ],
-                  onChanged: null, // Read-only, only one option
+                  onChanged: (value) {
+                    setState(() {
+                      surpriseDrillsFolder = value;
+                      // Reset settlement when folder changes
+                      settlementName = '';
+                      selectedSettlement = null;
+                      _settlementDisplayText = '';
+                      isManualLocation = false;
+                      manualLocationText = '';
+                    });
+                    _scheduleAutoSave();
+                  },
                 ),
                 const SizedBox(height: 16),
               ],
@@ -3246,47 +3306,72 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
               // Settlement/Location Field - Different behavior for Surprise vs Range modes
               if (widget.mode == 'surprise') ...[
-                // SURPRISE DRILLS: Dropdown with settlements + Manual Location option
-                TextField(
-                  controller: TextEditingController(
-                    text: _settlementDisplayText,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'יישוב',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.arrow_drop_down),
-                  ),
-                  readOnly: true,
-                  onTap: _openSettlementSelectorSheet,
-                ),
-                const SizedBox(height: 16),
-
-                // Manual Location text field (shown when Manual Location is selected)
-                if (isManualLocation) ...[
+                // SURPRISE DRILLS: Different behavior based on folder selection
+                if (surpriseDrillsFolder == 'תרגילי הפתעה כללי') ...[
+                  // תרגילי הפתעה כללי: Free text input for settlement
                   TextField(
-                    controller: TextEditingController(text: manualLocationText)
+                    controller: TextEditingController(text: settlementName)
                       ..selection = TextSelection.collapsed(
-                        offset: manualLocationText.length,
+                        offset: settlementName.length,
                       ),
                     decoration: const InputDecoration(
-                      labelText: 'יישוב ידני',
+                      labelText: 'יישוב',
                       border: OutlineInputBorder(),
                       hintText: 'הזן שם יישוב',
-                      prefixIcon: Icon(
-                        Icons.edit_location_alt,
-                        color: Colors.orangeAccent,
-                      ),
                     ),
                     onChanged: (value) {
                       setState(() {
-                        manualLocationText = value;
-                        settlementName =
-                            value; // Store in settlementName for save
+                        settlementName = value;
+                        _settlementDisplayText = value;
                       });
                       _scheduleAutoSave();
                     },
                   ),
                   const SizedBox(height: 16),
+                ] else ...[
+                  // תרגילי הפתעה 474: Dropdown with settlements + Manual Location option
+                  TextField(
+                    controller: TextEditingController(
+                      text: _settlementDisplayText,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'יישוב',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.arrow_drop_down),
+                    ),
+                    readOnly: true,
+                    onTap: _openSettlementSelectorSheet,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Manual Location text field (shown when Manual Location is selected)
+                  if (isManualLocation) ...[
+                    TextField(
+                      controller:
+                          TextEditingController(text: manualLocationText)
+                            ..selection = TextSelection.collapsed(
+                              offset: manualLocationText.length,
+                            ),
+                      decoration: const InputDecoration(
+                        labelText: 'יישוב ידני',
+                        border: OutlineInputBorder(),
+                        hintText: 'הזן שם יישוב',
+                        prefixIcon: Icon(
+                          Icons.edit_location_alt,
+                          color: Colors.orangeAccent,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          manualLocationText = value;
+                          settlementName =
+                              value; // Store in settlementName for save
+                        });
+                        _scheduleAutoSave();
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ],
               ] else ...[
                 // RANGE MODE: Conditional based on folder

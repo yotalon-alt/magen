@@ -51,6 +51,14 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
   {'title': 'מיונים לקורס מדריכים', 'isHidden': false},
   {'title': 'מטווחי ירי', 'isHidden': false},
   {'title': 'משובים – כללי', 'isHidden': false},
+  {
+    'title': 'תרגילי הפתעה כללי',
+    'isHidden': false,
+  }, // ✨ NEW: General surprise drills
+  {
+    'title': 'סיכום אימון כללי',
+    'isHidden': false,
+  }, // ✨ NEW: General training summary
   // Hidden folders - accessible ONLY through 'הגמר חטיבה 474'
   {
     'title': 'מטווחים 474',
@@ -3130,8 +3138,7 @@ class TrainingSummaryFormPage extends StatefulWidget {
 class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   String instructorNameDisplay = '';
   String instructorRoleDisplay = '';
-  final String folder = 'משוב סיכום אימון 474';
-  final String folderDisplayName = 'סיכום אימון 474'; // Display name only
+  String? trainingSummaryFolder; // No default - user must select
   String selectedSettlement = '';
   String trainingType = '';
   String summary = '';
@@ -3215,6 +3222,14 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       return;
     }
 
+    if (trainingSummaryFolder == null || trainingSummaryFolder!.isEmpty) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא בחר תיקייה')));
+      return;
+    }
+
     if (selectedSettlement.isEmpty) {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(
@@ -3279,8 +3294,20 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         }
       }
 
+      // ✅ Map folder selection to canonical keys for filtering
+      String folderKey;
+      String folderLabel = trainingSummaryFolder ?? '';
+
+      if (trainingSummaryFolder == 'סיכום אימון כללי') {
+        folderKey = 'training_summary_general';
+      } else {
+        folderKey = 'training_summary_474';
+      }
+
       final Map<String, dynamic> doc = {
-        'folder': folder,
+        'folder': trainingSummaryFolder,
+        'folderKey': folderKey, // ✅ Add canonical key for filtering
+        'folderLabel': folderLabel, // ✅ Add label for display
         'settlement': selectedSettlement,
         'trainingType': trainingType,
         'attendees': validAttendees,
@@ -3376,44 +3403,73 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               const Divider(),
               const SizedBox(height: 12),
 
-              // 2. Folder (read-only, disabled)
+              // 2. Folder selection (dropdown)
               const Text(
                 'תיקייה',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              TextFormField(
-                initialValue: folderDisplayName,
-                enabled: false,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Color(0xFFE0E0E0),
-                ),
-                style: const TextStyle(fontSize: 16, color: Colors.black87),
+              DropdownButtonFormField<String>(
+                key: ValueKey('training_folder_$trainingSummaryFolder'),
+                initialValue: trainingSummaryFolder,
+                hint: const Text('בחר תיקייה'),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'משוב סיכום אימון 474',
+                    child: Text('סיכום אימון 474'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'סיכום אימון כללי',
+                    child: Text('סיכום אימון כללי'),
+                  ),
+                ],
+                onChanged: (v) => setState(() {
+                  trainingSummaryFolder = v;
+                  // Reset settlement when folder changes
+                  selectedSettlement = '';
+                }),
               ),
               const SizedBox(height: 12),
 
-              // 3. Settlement dropdown
+              // 3. Settlement - conditional based on folder
               const Text(
                 'יישוב',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: selectedSettlement.isNotEmpty
-                    ? selectedSettlement
-                    : null,
-                hint: const Text('בחר יישוב'),
-                decoration: const InputDecoration(
-                  labelText: 'בחר יישוב',
-                  border: OutlineInputBorder(),
+              if (trainingSummaryFolder == 'סיכום אימון כללי') ...[
+                // General folder: free text input
+                TextField(
+                  controller: TextEditingController(text: selectedSettlement)
+                    ..selection = TextSelection.collapsed(
+                      offset: selectedSettlement.length,
+                    ),
+                  decoration: const InputDecoration(
+                    labelText: 'יישוב',
+                    border: OutlineInputBorder(),
+                    hintText: 'הזן שם יישוב',
+                  ),
+                  onChanged: (v) => setState(() => selectedSettlement = v),
                 ),
-                items: golanSettlements
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: (v) => setState(() => selectedSettlement = v ?? ''),
-              ),
+              ] else ...[
+                // 474 folder: dropdown from Golan settlements
+                DropdownButtonFormField<String>(
+                  initialValue: selectedSettlement.isNotEmpty
+                      ? selectedSettlement
+                      : null,
+                  hint: const Text('בחר יישוב'),
+                  decoration: const InputDecoration(
+                    labelText: 'בחר יישוב',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: golanSettlements
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) =>
+                      setState(() => selectedSettlement = v ?? ''),
+                ),
+              ],
               const SizedBox(height: 12),
 
               // 4. Training type (free text)
@@ -4118,8 +4174,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           feedbacksData: validData,
           fileNamePrefix: 'shooting_ranges_selected',
         );
-      } else if (_selectedFolder == 'משוב תרגילי הפתעה') {
-        // Export surprise drills
+      } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+          _selectedFolder == 'תרגילי הפתעה כללי') {
+        // Export surprise drills (both 474 and general)
         await FeedbackExportService.exportSurpriseDrillsToXlsx(
           feedbacksData: validData,
           fileNamePrefix: 'surprise_drills_selected',
@@ -4469,10 +4526,16 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           )
           .toList();
     } else if (_selectedFolder == 'משוב תרגילי הפתעה') {
-      // SURPRISE DRILLS: Include BOTH new schema AND legacy docs
+      // SURPRISE DRILLS 474: Include BOTH new schema AND legacy docs
       filteredFeedbacks = feedbackStorage.where((f) {
         // Exclude temporary drafts
         if (f.isTemporary == true) return false;
+
+        // Exclude general surprise drills
+        if (f.folder == 'תרגילי הפתעה כללי' ||
+            f.folderKey == 'surprise_drills_general') {
+          return false;
+        }
 
         // NEW SCHEMA: Has module field populated
         if (f.module.isNotEmpty) {
@@ -4483,10 +4546,10 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         return f.folder == _selectedFolder;
       }).toList();
       debugPrint(
-        '\n========== SURPRISE DRILLS FILTER (BACKWARD-COMPATIBLE) ==========',
+        '\n========== SURPRISE DRILLS 474 FILTER (BACKWARD-COMPATIBLE) ==========',
       );
       debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
-      debugPrint('Filtered surprise drills: ${filteredFeedbacks.length}');
+      debugPrint('Filtered surprise drills 474: ${filteredFeedbacks.length}');
       final legacyCount = filteredFeedbacks
           .where((f) => f.module.isEmpty)
           .length;
@@ -4500,6 +4563,24 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           '  - ${f.name}: module="${f.module}", type="${f.type}", folder="${f.folder}", isTemp=${f.isTemporary}',
         );
       }
+      debugPrint(
+        '================================================================\n',
+      );
+    } else if (_selectedFolder == 'תרגילי הפתעה כללי') {
+      // SURPRISE DRILLS GENERAL: Filter by folder name
+      filteredFeedbacks = feedbackStorage.where((f) {
+        // Exclude temporary drafts
+        if (f.isTemporary == true) return false;
+
+        // Match by folder name or folderKey
+        return f.folder == 'תרגילי הפתעה כללי' ||
+            f.folderKey == 'surprise_drills_general';
+      }).toList();
+      debugPrint('\n========== SURPRISE DRILLS GENERAL FILTER ==========');
+      debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
+      debugPrint(
+        'Filtered surprise drills general: ${filteredFeedbacks.length}',
+      );
       debugPrint(
         '================================================================\n',
       );
@@ -4663,7 +4744,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     _selectedFolder == 'מטווחי ירי' ||
                     _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                     _selectedFolder == 'משובים – כללי' ||
-                    _selectedFolder == 'משוב תרגילי הפתעה') &&
+                    _selectedFolder == 'משוב תרגילי הפתעה' ||
+                    _selectedFolder == 'תרגילי הפתעה כללי') &&
                 isAdmin &&
                 finalFilteredFeedbacks.isNotEmpty)
               IconButton(
@@ -4727,7 +4809,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           _selectedFolder == 'מטווחי ירי' ||
                           _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                           _selectedFolder == 'משובים – כללי' ||
-                          _selectedFolder == 'משוב תרגילי הפתעה'))
+                          _selectedFolder == 'משוב תרגילי הפתעה' ||
+                          _selectedFolder == 'תרגילי הפתעה כללי'))
                     Container(
                       color: Colors.blueGrey.shade700,
                       padding: const EdgeInsets.symmetric(
@@ -5190,7 +5273,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               _selectedFolder == 'מטווחי ירי' ||
                               _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                               _selectedFolder == 'משובים – כללי' ||
-                              _selectedFolder == 'משוב תרגילי הפתעה';
+                              _selectedFolder == 'משוב תרגילי הפתעה' ||
+                              _selectedFolder == 'תרגילי הפתעה כללי';
 
                           return FeedbackListTileCard(
                             title: title,
@@ -12506,7 +12590,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
           feedbacksData: validData,
           fileNamePrefix: 'shooting_ranges_selected',
         );
-      } else if (_selectedFolder == 'משוב תרגילי הפתעה') {
+      } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+          _selectedFolder == 'תרגילי הפתעה כללי') {
         await FeedbackExportService.exportSurpriseDrillsToXlsx(
           feedbacksData: validData,
           fileNamePrefix: 'surprise_drills_selected',
@@ -12608,10 +12693,21 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     } else if (_selectedFolder == 'משוב תרגילי הפתעה') {
       filteredFeedbacks = feedbackStorage.where((f) {
         if (f.isTemporary == true) return false;
+        // Exclude general surprise drills
+        if (f.folder == 'תרגילי הפתעה כללי' ||
+            f.folderKey == 'surprise_drills_general') {
+          return false;
+        }
         if (f.module.isNotEmpty) {
           return f.module == 'surprise_drill';
         }
         return f.folder == _selectedFolder;
+      }).toList();
+    } else if (_selectedFolder == 'תרגילי הפתעה כללי') {
+      filteredFeedbacks = feedbackStorage.where((f) {
+        if (f.isTemporary == true) return false;
+        return f.folder == 'תרגילי הפתעה כללי' ||
+            f.folderKey == 'surprise_drills_general';
       }).toList();
     } else if (_selectedFolder == 'מטווחי ירי') {
       filteredFeedbacks = feedbackStorage.where((f) {
@@ -12680,7 +12776,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                     _selectedFolder == 'מטווחי ירי' ||
                     _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                     _selectedFolder == 'משובים – כללי' ||
-                    _selectedFolder == 'משוב תרגילי הפתעה') &&
+                    _selectedFolder == 'משוב תרגילי הפתעה' ||
+                    _selectedFolder == 'תרגילי הפתעה כללי') &&
                 isAdmin &&
                 finalFilteredFeedbacks.isNotEmpty)
               IconButton(
