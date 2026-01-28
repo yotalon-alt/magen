@@ -4566,6 +4566,24 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       debugPrint(
         '================================================================\n',
       );
+    } else if (_selectedFolder == 'סיכום אימון כללי') {
+      // ✅ TRAINING SUMMARY GENERAL: Filter by folder name or folderKey
+      filteredFeedbacks = feedbackStorage.where((f) {
+        // Exclude temporary drafts
+        if (f.isTemporary == true) return false;
+
+        // Match by folder name or folderKey
+        return f.folder == 'סיכום אימון כללי' ||
+            f.folderKey == 'training_summary_general';
+      }).toList();
+      debugPrint('\n========== TRAINING SUMMARY GENERAL FILTER ==========');
+      debugPrint('Total feedbacks in storage: ${feedbackStorage.length}');
+      debugPrint(
+        'Filtered training summaries general: ${filteredFeedbacks.length}',
+      );
+      debugPrint(
+        '================================================================\n',
+      );
     } else if (_selectedFolder == 'תרגילי הפתעה כללי') {
       // SURPRISE DRILLS GENERAL: Filter by folder name
       filteredFeedbacks = feedbackStorage.where((f) {
@@ -4668,17 +4686,32 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         '================================================================\n',
       );
     } else if (_selectedFolder == 'משוב סיכום אימון 474') {
-      // ✅ TRAINING SUMMARY: Include ONLY training summary feedbacks
+      // ✅ TRAINING SUMMARY 474: Include ONLY 474 training summaries (exclude general)
       filteredFeedbacks = feedbackStorage.where((f) {
         // Exclude temporary drafts
         if (f.isTemporary == true) return false;
 
-        // NEW SCHEMA: Has module field populated
-        if (f.module.isNotEmpty) {
-          return f.module == 'training_summary';
+        // ❌ EXCLUDE general training summaries
+        if (f.folder == 'סיכום אימון כללי' ||
+            f.folderKey == 'training_summary_general') {
+          return false;
         }
 
-        // Legacy schema: use folder match
+        // NEW SCHEMA: Has module field populated AND is 474
+        if (f.module.isNotEmpty) {
+          // Check folderKey for 474 specifically
+          if (f.folderKey == 'training_summary_474') {
+            return true;
+          }
+          // Fallback: module is training_summary AND folder is 474
+          if (f.module == 'training_summary' &&
+              f.folder == 'משוב סיכום אימון 474') {
+            return true;
+          }
+          return false;
+        }
+
+        // Legacy schema: use folder match (only 474)
         return f.folder == _selectedFolder;
       }).toList();
       debugPrint('\n========== TRAINING SUMMARY FILTER ==========');
@@ -11316,8 +11349,10 @@ class _SurpriseDrillsStatisticsPageState
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
     return feedbackStorage.where((f) {
-      // Only surprise drills feedbacks
-      if (f.folder != 'משוב תרגילי הפתעה' && f.module != 'surprise_drill') {
+      // Only surprise drills feedbacks (both 474 and general)
+      if (f.folder != 'משוב תרגילי הפתעה' &&
+          f.folder != 'תרגילי הפתעה כללי' &&
+          f.module != 'surprise_drill') {
         return false;
       }
 
@@ -11341,8 +11376,16 @@ class _SurpriseDrillsStatisticsPageState
           f.settlement != selectedSettlement) {
         return false;
       }
-      if (selectedFolder != 'הכל' && f.folder != selectedFolder) {
-        return false;
+      // ✅ FOLDER FILTER: Support both 474 and general
+      if (selectedFolder != 'הכל') {
+        if (selectedFolder == 'משוב תרגילי הפתעה' &&
+            f.folder != 'משוב תרגילי הפתעה') {
+          return false;
+        }
+        if (selectedFolder == 'תרגילי הפתעה כללי' &&
+            f.folder != 'תרגילי הפתעה כללי') {
+          return false;
+        }
       }
       if (dateFrom != null && f.createdAt.isBefore(dateFrom!)) return false;
       if (dateTo != null && f.createdAt.isAfter(dateTo!)) return false;
@@ -11762,6 +11805,7 @@ class _SurpriseDrillsStatisticsPageState
                                     final folders = <String>[
                                       'הכל',
                                       'משוב תרגילי הפתעה',
+                                      'תרגילי הפתעה כללי',
                                     ];
 
                                     // Display name mapping
@@ -12738,11 +12782,31 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
         return f.folder == _selectedFolder || f.folder == 'מטווחים 474';
       }).toList();
     } else if (_selectedFolder == 'משוב סיכום אימון 474') {
+      // ✅ TRAINING SUMMARY 474: Include ONLY 474 training summaries (exclude general)
       filteredFeedbacks = feedbackStorage.where((f) {
         if (f.isTemporary == true) return false;
-        if (f.module.isNotEmpty) {
-          return f.module == 'training_summary';
+
+        // ❌ EXCLUDE general training summaries
+        if (f.folder == 'סיכום אימון כללי' ||
+            f.folderKey == 'training_summary_general') {
+          return false;
         }
+
+        // NEW SCHEMA: Has module field populated AND is 474
+        if (f.module.isNotEmpty) {
+          // Check folderKey for 474 specifically
+          if (f.folderKey == 'training_summary_474') {
+            return true;
+          }
+          // Fallback: module is training_summary AND folder is 474
+          if (f.module == 'training_summary' &&
+              f.folder == 'משוב סיכום אימון 474') {
+            return true;
+          }
+          return false;
+        }
+
+        // Legacy schema: use folder match (only 474)
         return f.folder == _selectedFolder;
       }).toList();
     } else {
