@@ -10013,6 +10013,8 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   int totalPointsScored = 0; // For long range
   int totalMaxPoints = 0; // For long range
   int totalFeedbacks = 0;
+  int totalMeshuvim = 0; // מחלקות ההגנה 474 only
+  int totalImunim = 0; // מטווחים 474 + תרגילי הפתעה 474 + סיכום אימון 474
   Map<String, int> feedbacksByType = {};
   Set<String> uniqueSettlements = {};
   // Per-settlement data: settlement -> {trainingType -> {count: int, trainees: Set<String>}}
@@ -10045,6 +10047,8 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
 
     // ✅ RESET all counters and maps before loading to prevent duplicates
     totalFeedbacks = 0;
+    totalMeshuvim = 0;
+    totalImunim = 0;
     totalTrainees = 0;
     totalBulletsFired = 0;
     totalPointsScored = 0;
@@ -10088,6 +10092,13 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         }
         feedbacksByType[typeKey] = (feedbacksByType[typeKey] ?? 0) + 1;
         traineesPerType.putIfAbsent(typeKey, () => {});
+
+        // Count separately: משובים (defense) vs אימונים (ranges, drills, summaries)
+        if (typeKey == 'מחלקות ההגנה – חטיבה 474') {
+          totalMeshuvim++;
+        } else {
+          totalImunim++;
+        }
 
         // Collect instructor data
         final instructorName = f.instructorName;
@@ -10301,7 +10312,8 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
       sectionsData['סיכום כללי'] = [
         {'מדד': 'סה"כ חניכים', 'ערך': totalTrainees},
         {'מדד': 'סה"כ כדורים שנורו', 'ערך': totalBulletsFired},
-        {'מדד': 'סה"כ אימונים/משובים', 'ערך': totalFeedbacks},
+        {'מדד': 'סה"כ משובים (מחלקות הגנה)', 'ערך': totalMeshuvim},
+        {'מדד': 'סה"כ אימונים', 'ערך': totalImunim},
         {'מדד': 'סה"כ יישובים', 'ערך': uniqueSettlements.length},
       ];
 
@@ -10546,9 +10558,15 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                             ),
                             const SizedBox(height: 12),
                             _buildSummaryRow(
-                              '📋 סה"כ אימונים/משובים',
-                              '$totalFeedbacks',
+                              '� סה"כ משובים (מחלקות הגנה)',
+                              '$totalMeshuvim',
                               Colors.lightBlueAccent,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryRow(
+                              '🏋️ סה"כ אימונים',
+                              '$totalImunim',
+                              Colors.cyanAccent,
                             ),
                             const SizedBox(height: 12),
                             _buildSummaryRow(
