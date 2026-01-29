@@ -63,6 +63,7 @@ class FeedbackExportService {
       }
 
       // שמירה וייצוא
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -136,6 +137,7 @@ class FeedbackExportService {
       }
 
       // שמירה וייצוא
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -519,6 +521,7 @@ class FeedbackExportService {
       debugPrint('   Wrote ${selectedFeedbacks.length} data rows');
 
       // Encode to bytes
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -750,6 +753,7 @@ class FeedbackExportService {
       }
 
       // Save and export
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -1159,6 +1163,7 @@ class FeedbackExportService {
         }
       }
 
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) throw Exception('שגיאה ביצירת קובץ XLSX');
 
@@ -1232,6 +1237,7 @@ class FeedbackExportService {
       }
 
       // Save and export
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -1792,6 +1798,7 @@ class FeedbackExportService {
       }
 
       // Encode and export
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -1996,6 +2003,7 @@ class FeedbackExportService {
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       // Encode and export
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -2168,6 +2176,7 @@ class FeedbackExportService {
       debugPrint('✅ Excel sheet created');
 
       // Save/download file
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('Failed to encode Excel file');
@@ -2392,6 +2401,7 @@ class FeedbackExportService {
       }
 
       // Encode and export
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -3290,6 +3300,7 @@ class FeedbackExportService {
       }
 
       // Save and export
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -3594,6 +3605,7 @@ class FeedbackExportService {
       debugPrint('   Total sheets created: ${excel.tables.keys.length}');
 
       // ========== SAVE AND EXPORT ==========
+      excel.delete('Sheet1'); // Remove default LTR sheet
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');

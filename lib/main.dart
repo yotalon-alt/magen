@@ -10181,14 +10181,25 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         // ❌ EXCLUDE temporary/draft feedbacks
         if (f.isTemporary == true) return false;
 
+        // ❌ EXCLUDE general folders (not 474)
+        if (f.folder == 'תרגילי הפתעה כללי' ||
+            f.folder == 'סיכום אימון כללי' ||
+            f.folder == 'משובים – כללי' ||
+            f.folder == 'מטווחי ירי' ||
+            f.folderKey == 'surprise_drills_general' ||
+            f.folderKey == 'training_summary_general' ||
+            f.folderKey == 'shooting_ranges') {
+          return false;
+        }
+
+        // ✅ INCLUDE only 474 specific folders
         return f.folder == 'מטווחים 474' ||
             f.folder == '474 Ranges' ||
             f.folder == 'מחלקות ההגנה – חטיבה 474' ||
             f.folder == 'משוב תרגילי הפתעה' ||
             f.folder == 'משוב סיכום אימון 474' ||
             f.folderKey == 'ranges_474' ||
-            f.module == 'training_summary' ||
-            f.module == 'surprise_drill';
+            f.folderKey == 'training_summary_474';
       }).toList();
 
       totalFeedbacks = brigadeFeeds.length;
