@@ -8,6 +8,17 @@ import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'main.dart'; // for feedbackStorage and FeedbackModel
 
+/// Helper function: Set RTL for all sheets in Excel workbook
+/// Must be called right before encode() for RTL to work correctly
+void _setRTLForAllSheets(Excel excel) {
+  for (final sheetName in excel.tables.keys) {
+    final sheet = excel.tables[sheetName];
+    if (sheet != null) {
+      sheet.isRTL = true;
+    }
+  }
+}
+
 /// שירות ייצוא משובים לקובץ מקומי
 /// יוצר קובץ XLSX עם כל המשובים מהאפליקציה
 class FeedbackExportService {
@@ -18,7 +29,6 @@ class FeedbackExportService {
     try {
       final excel = Excel.createExcel();
       final sheet = excel['משובים'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // כותרות
       sheet.appendRow([
@@ -62,8 +72,9 @@ class FeedbackExportService {
         ]);
       }
 
-      // שמירה וייצוא
+      // שמירה וייצוא - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -123,21 +134,22 @@ class FeedbackExportService {
       );
 
       // יצירת גיליון מתאימים עם כותרות דינמיות
+      Sheet? suitableSheet;
       if (suitableFeedbacks.isNotEmpty) {
-        final suitableSheet = excel['מתאימים'];
-        suitableSheet.isRTL = true; // Global Hebrew fix: RTL mode
+        suitableSheet = excel['מתאימים'];
         _addDynamicHeadersAndRows(suitableSheet, suitableFeedbacks);
       }
 
       // יצירת גיליון לא מתאימים עם כותרות דינמיות
+      Sheet? notSuitableSheet;
       if (notSuitableFeedbacks.isNotEmpty) {
-        final notSuitableSheet = excel['לא מתאימים'];
-        notSuitableSheet.isRTL = true; // Global Hebrew fix: RTL mode
+        notSuitableSheet = excel['לא מתאימים'];
         _addDynamicHeadersAndRows(notSuitableSheet, notSuitableFeedbacks);
       }
 
-      // שמירה וייצוא
+      // שמירה וייצוא - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -278,7 +290,6 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final sheet = excel[categoryName];
-      sheet.isRTL = true; // RTL mode for Hebrew
 
       debugPrint('   Created XLSX workbook with RTL sheet: $categoryName');
 
@@ -520,8 +531,9 @@ class FeedbackExportService {
 
       debugPrint('   Wrote ${selectedFeedbacks.length} data rows');
 
-      // Encode to bytes
+      // Encode to bytes - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -727,7 +739,6 @@ class FeedbackExportService {
     try {
       final excel = Excel.createExcel();
       final sheet = excel['משובים'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // Add headers based on the mapper
       final headers = mapper.values
@@ -752,8 +763,9 @@ class FeedbackExportService {
         sheet.appendRow(row);
       }
 
-      // Save and export
+      // Save and export - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -812,7 +824,6 @@ class FeedbackExportService {
       }
       final excel = Excel.createExcel();
       final sheet = excel['משובים'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // Add creation metadata columns at the beginning
       final metadataKeys = ['createdAt', 'createdByName'];
@@ -984,7 +995,6 @@ class FeedbackExportService {
           if (trainees != null && trainees.isNotEmpty) {
             final tSheetName = 'trainees_${i + 1}';
             final tSheet = excel[tSheetName];
-            tSheet.isRTL = true; // Global Hebrew fix: RTL mode
 
             // Build headers: Name, Number, per-station headers, TotalHits
             final stationNames = <String>[];
@@ -1089,7 +1099,6 @@ class FeedbackExportService {
           if (stations != null && stations.isNotEmpty) {
             final sSheetName = 'stations_${i + 1}';
             final sSheet = excel[sSheetName];
-            sSheet.isRTL = true; // Global Hebrew fix: RTL mode
             final sHeaders = [
               'מקצה',
               'כדורים',
@@ -1164,6 +1173,7 @@ class FeedbackExportService {
       }
 
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) throw Exception('שגיאה ביצירת קובץ XLSX');
 
@@ -1210,7 +1220,6 @@ class FeedbackExportService {
     try {
       final excel = Excel.createExcel();
       final sheet = excel['סטטיסטיקות'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // Add headers dynamically based on the first statistic entry
       if (statistics.isNotEmpty) {
@@ -1238,6 +1247,7 @@ class FeedbackExportService {
 
       // Save and export
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -1345,7 +1355,6 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final sheet = excel['השוואת מטווחים'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // Row 0: Creation metadata
       var cell = sheet.cell(
@@ -1799,6 +1808,7 @@ class FeedbackExportService {
 
       // Encode and export
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -1859,7 +1869,6 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final sheet = excel['משוב'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // Get only the criteria that exist in THIS feedback
       final feedbackCriteria = feedback.criteriaList;
@@ -2004,6 +2013,7 @@ class FeedbackExportService {
 
       // Encode and export
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -2063,7 +2073,6 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final Sheet sheet = excel['משוב סיכום אימון'];
-      sheet.isRTL = true; // RTL mode for Hebrew text
       excel.delete('Sheet1');
 
       // Headers (without "רשימת נוכחים" column)
@@ -2177,6 +2186,7 @@ class FeedbackExportService {
 
       // Save/download file
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('Failed to encode Excel file');
@@ -2230,7 +2240,6 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final sheet = excel['משובים'];
-      sheet.isRTL = true; // Global Hebrew fix: RTL mode
 
       // Collect all criteria that appear across all feedbacks
       final allCriteriaSet = <String>{};
@@ -2402,6 +2411,7 @@ class FeedbackExportService {
 
       // Encode and export
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -2563,8 +2573,9 @@ class FeedbackExportService {
 
         // Create or get sheet
         final sheet = excel[sheetName];
-        sheet.isRTL = true; // RTL mode for Hebrew
-        debugPrint('📋 Created sheet: $sheetName (RTL enabled)');
+        debugPrint(
+          '📋 Created sheet: $sheetName (RTL enabled via _setRTLForAllSheets)',
+        );
 
         // Define score columns in exact order shown in UI
         // These match the candidate card display order
@@ -2870,6 +2881,7 @@ class FeedbackExportService {
       }
 
       // Encode and export
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -2975,7 +2987,6 @@ class FeedbackExportService {
 
       final excel = Excel.createExcel();
       final sheet = excel['משוב תרגילי הפתעה'];
-      sheet.isRTL = true; // Hebrew RTL mode
 
       // ========== PHASE 1: Collect all unique drill names across all feedbacks ==========
       // This ensures we have columns for all drills even if different feedbacks have different drills
@@ -3301,6 +3312,7 @@ class FeedbackExportService {
 
       // Save and export
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -3404,7 +3416,6 @@ class FeedbackExportService {
         }
 
         final sheet = excel[finalSheetName];
-        sheet.isRTL = true; // Hebrew RTL mode
 
         debugPrint(
           '\n📄 Processing feedback ${feedbackIdx + 1}: sheet="$finalSheetName"',
@@ -3606,6 +3617,7 @@ class FeedbackExportService {
 
       // ========== SAVE AND EXPORT ==========
       excel.delete('Sheet1'); // Remove default LTR sheet
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
@@ -3676,7 +3688,6 @@ class FeedbackExportService {
         if (sectionData.isEmpty) continue;
 
         final sheet = excel[sectionName];
-        sheet.isRTL = true;
 
         // Extract headers from first row
         final headers = sectionData.first.keys.toList();
@@ -3702,6 +3713,7 @@ class FeedbackExportService {
       }
 
       // Export file
+      _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
