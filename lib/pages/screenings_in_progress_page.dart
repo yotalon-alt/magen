@@ -108,6 +108,64 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
     }
   }
 
+  /// Delete a draft evaluation with confirmation dialog
+  Future<void> _confirmDeleteDraft(String docId, String title) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת משוב זמני'),
+          content: Text(
+            'האם אתה בטוח שברצונך למחוק את המשוב הזמני "$title"?\n\nפעולה זו בלתי הפיכה.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('מחק'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteDraft(docId, title);
+    }
+  }
+
+  /// Actually delete the draft from Firestore
+  Future<void> _deleteDraft(String docId, String title) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .doc(docId)
+          .delete();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('המשוב הזמני "$title" נמחק בהצלחה'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Error deleting draft: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה במחיקת המשוב: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -271,18 +329,31 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
                         );
                       },
                     ),
-                    trailing: ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => InstructorCourseFeedbackPage(
-                              screeningId: doc.id,
-                            ),
-                          ),
-                        );
-                      },
-                      child: const Text('המשך מילוי'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Delete button
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          tooltip: 'מחק משוב זמני',
+                          onPressed: () => _confirmDeleteDraft(doc.id, title),
+                        ),
+                        const SizedBox(width: 8),
+                        // Continue button
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => InstructorCourseFeedbackPage(
+                                  screeningId: doc.id,
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('המשך מילוי'),
+                        ),
+                      ],
                     ),
                     onTap: () {
                       Navigator.push(
