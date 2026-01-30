@@ -205,8 +205,20 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
               itemBuilder: (ctx, i) {
                 final doc = docs[i];
                 final data = doc.data();
+                // ✅ FIX: Include candidate number in title
+                final candidateName =
+                    (data['candidateName'] as String?) ??
+                    (data['title'] as String?) ??
+                    data['candidateId'] ??
+                    '';
+                final candidateNumber = data['candidateNumber'] as int?;
+                // Build title: "שם מועמד (מס' X)" or just "שם מועמד"
                 final title =
-                    (data['title'] as String?) ?? data['candidateId'] ?? doc.id;
+                    candidateNumber != null && candidateName.isNotEmpty
+                    ? '$candidateName (מס\' $candidateNumber)'
+                    : candidateName.isNotEmpty
+                    ? candidateName
+                    : doc.id;
                 final locked = (data['isFinalLocked'] as bool?) ?? false;
                 final updatedAt = (data['updatedAt'] as Timestamp?)?.toDate();
                 final dateStr = updatedAt != null

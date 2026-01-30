@@ -916,7 +916,10 @@ class _InstructorCourseFeedbackPageState
                             color: Colors.black87,
                             fontSize: 16,
                           ),
-                          onChanged: (_) => _markFormDirty(),
+                          onChanged: (_) {
+                            _markFormDirty();
+                            _scheduleAutosave(); // ✅ Auto-save on candidate name change
+                          },
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<int>(
@@ -947,6 +950,7 @@ class _InstructorCourseFeedbackPageState
                                     _candidateNumber = newValue;
                                     _markFormDirty();
                                   });
+                                  _scheduleAutosave(); // ✅ Auto-save on candidate number change
                                 },
                         ),
                         const SizedBox(height: 12),
