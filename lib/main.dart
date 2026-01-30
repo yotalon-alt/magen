@@ -3151,6 +3151,13 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       {}; // בקרים לשמות מדריכים
   bool _isSaving = false;
 
+  // ✨ NEW: Linked feedbacks feature
+  List<FeedbackModel> _availableFeedbacks = []; // Feedbacks available to link
+  final Set<String> _selectedFeedbackIds = {}; // Selected feedback IDs to link
+  bool _isLoadingFeedbacks = false;
+  String _feedbackFilterRole = 'הכל'; // Filter by role
+  String _feedbackFilterName = ''; // Filter by name
+
   @override
   void initState() {
     super.initState();
@@ -3205,6 +3212,165 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     setState(() {
       attendeesCount = count;
     });
+  }
+
+  /// ✨ Load available personal feedbacks from same settlement and same day
+  Future<void> _loadAvailableFeedbacks() async {
+    if (selectedSettlement.isEmpty) {
+      setState(() {
+        _availableFeedbacks = [];
+        _selectedFeedbackIds.clear();
+      });
+      return;
+    }
+
+    setState(() => _isLoadingFeedbacks = true);
+
+    try {
+      // Get today's date range (start and end of day)
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+
+      debugPrint(
+        '🔍 Loading feedbacks for settlement: $selectedSettlement, date: ${startOfDay.toIso8601String()}',
+      );
+
+      // Simple query by settlement only - filter dates client-side to avoid composite index requirement
+      final query = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('settlement', isEqualTo: selectedSettlement);
+
+      debugPrint(
+        '🔍 Executing simple query for settlement: $selectedSettlement',
+      );
+
+      final snapshot = await query.get().timeout(const Duration(seconds: 15));
+
+      debugPrint('🔍 Query returned ${snapshot.docs.length} documents');
+
+      final List<FeedbackModel> feedbacks = [];
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+
+        // Filter by date (today only) - client-side
+        DateTime? createdAt;
+        final ca = data['createdAt'];
+        if (ca is Timestamp) {
+          createdAt = ca.toDate();
+        } else if (ca is String) {
+          createdAt = DateTime.tryParse(ca);
+        }
+
+        if (createdAt == null) {
+          debugPrint('  ⚠️ Doc ${doc.id} has no valid createdAt');
+          continue;
+        }
+
+        // Check if today
+        final isToday =
+            createdAt.year == now.year &&
+            createdAt.month == now.month &&
+            createdAt.day == now.day;
+
+        if (!isToday) {
+          continue;
+        }
+
+        // Only include personal feedbacks (מעגל פתוח, מעגל פרוץ, סריקות רחוב)
+        final exercise = (data['exercise'] as String?) ?? '';
+        final folder = (data['folder'] as String?) ?? '';
+        final isPersonalFeedback =
+            (exercise == 'מעגל פתוח' ||
+                exercise == 'מעגל פרוץ' ||
+                exercise == 'סריקות רחוב') &&
+            (folder == 'מחלקות ההגנה – חטיבה 474' || folder == 'משובים – כללי');
+
+        if (!isPersonalFeedback) {
+          debugPrint(
+            '  ⚠️ Doc ${doc.id} not personal feedback: exercise=$exercise, folder=$folder',
+          );
+          continue;
+        }
+
+        // Skip temporary/draft feedbacks
+        final isTemporary = (data['isTemporary'] as bool?) ?? false;
+        if (isTemporary) {
+          debugPrint('  ⚠️ Doc ${doc.id} is temporary, skipping');
+          continue;
+        }
+
+        final model = FeedbackModel.fromMap(data, id: doc.id);
+        if (model != null) {
+          feedbacks.add(model);
+          debugPrint('  ✅ Added feedback: ${model.name} (${model.exercise})');
+        }
+      }
+
+      debugPrint('✅ Found ${feedbacks.length} personal feedbacks to link');
+
+      if (mounted) {
+        setState(() {
+          _availableFeedbacks = feedbacks;
+          _isLoadingFeedbacks = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading feedbacks for linking: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאה בטעינת משובים: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _availableFeedbacks = [];
+          _isLoadingFeedbacks = false;
+        });
+      }
+    }
+  }
+
+  /// ✨ Get filtered feedbacks based on role and name filters
+  List<FeedbackModel> get _filteredAvailableFeedbacks {
+    return _availableFeedbacks.where((f) {
+      // Filter by role
+      if (_feedbackFilterRole != 'הכל' && f.role != _feedbackFilterRole) {
+        return false;
+      }
+      // Filter by name
+      if (_feedbackFilterName.isNotEmpty &&
+          !f.name.contains(_feedbackFilterName)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  /// ✨ Check if a feedback is already linked to another training summary
+  Future<String?> _checkIfFeedbackAlreadyLinked(String feedbackId) async {
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('module', isEqualTo: 'training_summary')
+          .where('linkedFeedbackIds', arrayContains: feedbackId)
+          .limit(1)
+          .get()
+          .timeout(const Duration(seconds: 5));
+
+      if (query.docs.isNotEmpty) {
+        final data = query.docs.first.data();
+        final settlement = (data['settlement'] as String?) ?? '';
+        final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+        final dateStr = createdAt != null
+            ? '${createdAt.day}/${createdAt.month}/${createdAt.year}'
+            : '';
+        return 'סיכום אימון $settlement ($dateStr)';
+      }
+    } catch (e) {
+      debugPrint('Error checking linked status: $e');
+    }
+    return null;
   }
 
   Future<void> _save() async {
@@ -3334,6 +3500,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'module': 'training_summary',
         'type': 'training_summary',
         'isTemporary': false,
+        // ✨ NEW: Linked feedbacks
+        'linkedFeedbackIds': _selectedFeedbackIds.toList(),
       };
 
       final ref = await FirebaseFirestore.instance
@@ -3825,7 +3993,244 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 20),
 
-              // 11. Save button
+              // ✨ 11. Link personal feedbacks section (only for 474 folder)
+              if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
+                  selectedSettlement.isNotEmpty) ...[
+                const Divider(thickness: 2),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.link, color: Colors.orangeAccent),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'קישור משובים אישיים',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.orangeAccent,
+                        ),
+                      ),
+                    ),
+                    // Refresh button
+                    IconButton(
+                      icon: _isLoadingFeedbacks
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh),
+                      onPressed: _isLoadingFeedbacks
+                          ? null
+                          : _loadAvailableFeedbacks,
+                      tooltip: 'רענן רשימת משובים',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'משובים מיישוב $selectedSettlement מהיום בלבד',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 12),
+
+                // Load feedbacks button if not loaded yet
+                if (_availableFeedbacks.isEmpty && !_isLoadingFeedbacks)
+                  Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _loadAvailableFeedbacks,
+                      icon: const Icon(Icons.search, color: Colors.white),
+                      label: const Text(
+                        'טען משובים זמינים',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey.shade600,
+                      ),
+                    ),
+                  ),
+
+                // Filter controls
+                if (_availableFeedbacks.isNotEmpty) ...[
+                  Card(
+                    color: Colors.blueGrey.shade800,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Filter row
+                          Row(
+                            children: [
+                              // Role filter
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _feedbackFilterRole,
+                                  decoration: const InputDecoration(
+                                    labelText: 'תפקיד',
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem(
+                                      value: 'הכל',
+                                      child: Text('הכל'),
+                                    ),
+                                    ...{
+                                      ..._availableFeedbacks
+                                          .map((f) => f.role)
+                                          .where((r) => r.isNotEmpty),
+                                    }.map(
+                                      (role) => DropdownMenuItem(
+                                        value: role,
+                                        child: Text(role),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (v) => setState(
+                                    () => _feedbackFilterRole = v ?? 'הכל',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Name filter
+                              Expanded(
+                                child: TextField(
+                                  decoration: const InputDecoration(
+                                    labelText: 'שם',
+                                    hintText: 'חפש לפי שם',
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  onChanged: (v) =>
+                                      setState(() => _feedbackFilterName = v),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // Counter
+                          Text(
+                            'נבחרו: ${_selectedFeedbackIds.length} מתוך ${_filteredAvailableFeedbacks.length} משובים',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Feedbacks list
+                  ..._filteredAvailableFeedbacks.map((feedback) {
+                    final isSelected = _selectedFeedbackIds.contains(
+                      feedback.id,
+                    );
+                    final date = feedback.createdAt;
+                    final timeStr =
+                        '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+
+                    return Card(
+                      color: isSelected
+                          ? Colors.green.shade700
+                          : Colors.blueGrey.shade700,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: CheckboxListTile(
+                        value: isSelected,
+                        onChanged: (checked) {
+                          setState(() {
+                            if (checked == true && feedback.id != null) {
+                              _selectedFeedbackIds.add(feedback.id!);
+                            } else if (feedback.id != null) {
+                              _selectedFeedbackIds.remove(feedback.id);
+                            }
+                          });
+                        },
+                        title: Text(
+                          '${feedback.role} — ${feedback.name}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'תרגיל: ${feedback.exercise}',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                            Text(
+                              'מדריך: ${feedback.instructorName} | $timeStr',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                            // Show warning if already linked
+                            FutureBuilder<String?>(
+                              future: _checkIfFeedbackAlreadyLinked(
+                                feedback.id ?? '',
+                              ),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData && snapshot.data != null) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.warning_amber,
+                                          color: Colors.amber,
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            'מקושר גם ל: ${snapshot.data}',
+                                            style: const TextStyle(
+                                              color: Colors.amber,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
+                          ],
+                        ),
+                        activeColor: Colors.green,
+                        checkColor: Colors.white,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    );
+                  }),
+
+                  if (_filteredAvailableFeedbacks.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'לא נמצאו משובים אישיים התואמים לסינון',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                ],
+
+                const SizedBox(height: 20),
+              ],
+
+              // 12. Save button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -6066,6 +6471,227 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   ),
                                 ),
                               ],
+
+                              // ✨ Linked personal feedbacks section
+                              Builder(
+                                builder: (context) {
+                                  final linkedFeedbackIds =
+                                      (data['linkedFeedbackIds'] as List?)
+                                          ?.cast<String>() ??
+                                      [];
+
+                                  if (linkedFeedbackIds.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 20),
+                                      const Divider(thickness: 2),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: const [
+                                          Icon(
+                                            Icons.link,
+                                            color: Colors.orangeAccent,
+                                            size: 24,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'משובים אישיים מקושרים',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.orangeAccent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        '${linkedFeedbackIds.length} משובים מקושרים',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+
+                                      // Load and display each linked feedback
+                                      ...linkedFeedbackIds.map((feedbackId) {
+                                        return FutureBuilder<DocumentSnapshot>(
+                                          future: FirebaseFirestore.instance
+                                              .collection('feedbacks')
+                                              .doc(feedbackId)
+                                              .get()
+                                              .timeout(
+                                                const Duration(seconds: 5),
+                                              ),
+                                          builder: (context, linkedSnapshot) {
+                                            if (!linkedSnapshot.hasData ||
+                                                !linkedSnapshot.data!.exists) {
+                                              return Card(
+                                                color: Colors.blueGrey.shade700,
+                                                margin: const EdgeInsets.only(
+                                                  bottom: 8,
+                                                ),
+                                                child: const Padding(
+                                                  padding: EdgeInsets.all(12.0),
+                                                  child: Text(
+                                                    'טוען משוב...',
+                                                    style: TextStyle(
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+
+                                            final linkedData =
+                                                linkedSnapshot.data!.data()
+                                                    as Map<String, dynamic>?;
+
+                                            if (linkedData == null) {
+                                              return const SizedBox.shrink();
+                                            }
+
+                                            final linkedFeedback =
+                                                FeedbackModel.fromMap(
+                                                  linkedData,
+                                                  id: feedbackId,
+                                                );
+
+                                            if (linkedFeedback == null) {
+                                              return const SizedBox.shrink();
+                                            }
+
+                                            // Calculate average score
+                                            final scores = linkedFeedback
+                                                .scores
+                                                .values
+                                                .where((v) => v > 0)
+                                                .toList();
+                                            final avgScore = scores.isNotEmpty
+                                                ? (scores.reduce(
+                                                            (a, b) => a + b,
+                                                          ) /
+                                                          scores.length)
+                                                      .toStringAsFixed(1)
+                                                : '-';
+
+                                            return Card(
+                                              color: Colors.blueGrey.shade700,
+                                              margin: const EdgeInsets.only(
+                                                bottom: 8,
+                                              ),
+                                              child: InkWell(
+                                                onTap: () {
+                                                  // Navigate to the linked feedback details
+                                                  Navigator.of(
+                                                    context,
+                                                  ).pushNamed(
+                                                    '/feedback_details',
+                                                    arguments: linkedFeedback,
+                                                  );
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    12.0,
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      // Avatar with score
+                                                      Container(
+                                                        width: 50,
+                                                        height: 50,
+                                                        decoration: BoxDecoration(
+                                                          color: Colors
+                                                              .orangeAccent,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                8,
+                                                              ),
+                                                        ),
+                                                        child: Center(
+                                                          child: Text(
+                                                            avgScore,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .black,
+                                                                  fontSize: 16,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      // Feedback info
+                                                      Expanded(
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              '${linkedFeedback.role} — ${linkedFeedback.name}',
+                                                              style: const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: Colors
+                                                                    .white,
+                                                                fontSize: 15,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              height: 4,
+                                                            ),
+                                                            Text(
+                                                              'תרגיל: ${linkedFeedback.exercise}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                    color: Colors
+                                                                        .white70,
+                                                                    fontSize:
+                                                                        13,
+                                                                  ),
+                                                            ),
+                                                            Text(
+                                                              'מדריך: ${linkedFeedback.instructorName}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                    color: Colors
+                                                                        .white70,
+                                                                    fontSize:
+                                                                        13,
+                                                                  ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      // Arrow icon
+                                                      const Icon(
+                                                        Icons.arrow_forward_ios,
+                                                        color: Colors.white70,
+                                                        size: 16,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      }),
+                                    ],
+                                  );
+                                },
+                              ),
                             ],
                           );
                         },
