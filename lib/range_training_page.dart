@@ -189,6 +189,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       false; // Track if "Manual Location" is selected for Surprise Drills
   String manualLocationText =
       ''; // Store manual location text for Surprise Drills
+  // ✅ NEW: Manual settlement for Range mode (מטווחים 474)
+  bool isManualSettlement = false; // Track if "יישוב ידני" is selected
+  String manualSettlementText = ''; // Store manual settlement text
   // ✅ NEW: Folder selection for Surprise Drills (474 or כללי)
   String? surpriseDrillsFolder; // No default - user must select
   int attendeesCount = 0;
@@ -444,6 +447,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 700ms of inactivity
   void _scheduleAutoSave() {
+    // 🆕 Don't autosave until settlement is entered
+    // Check: selectedSettlement (dropdown), settlementName (free text), or manualSettlementText (ידני)
+    final hasSettlement =
+        (selectedSettlement != null &&
+            selectedSettlement!.isNotEmpty &&
+            selectedSettlement != 'יישוב ידני') ||
+        settlementName.trim().isNotEmpty ||
+        manualSettlementText.trim().isNotEmpty;
+    if (!hasSettlement) {
+      debugPrint('⏸️ AUTOSAVE: Skipping - no settlement entered yet');
+      return;
+    }
+
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(milliseconds: 700), () {
       debugPrint('🔄 AUTOSAVE: Timer triggered (700ms debounce)');
@@ -453,6 +469,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   /// ✅ IMMEDIATE SAVE: Triggered when user leaves a field (focus loss)
   void _saveImmediately() {
+    // 🆕 Don't save until settlement is entered
+    // Check: selectedSettlement (dropdown), settlementName (free text), or manualSettlementText (ידני)
+    final hasSettlement =
+        (selectedSettlement != null &&
+            selectedSettlement!.isNotEmpty &&
+            selectedSettlement != 'יישוב ידני') ||
+        settlementName.trim().isNotEmpty ||
+        manualSettlementText.trim().isNotEmpty;
+    if (!hasSettlement) {
+      debugPrint('⏸️ IMMEDIATE SAVE: Skipping - no settlement entered yet');
+      return;
+    }
+
     _autoSaveTimer?.cancel(); // Cancel pending debounced save
     debugPrint('⚡ IMMEDIATE SAVE: Saving now');
     _saveTemporarily();
@@ -489,10 +518,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   void _openSettlementSelectorSheet() {
     // For Surprise Drills: show dropdown with settlements + Manual Location
+    // For Range mode: show dropdown with settlements + יישוב ידני
     final isSurpriseMode = widget.mode == 'surprise';
     final items = isSurpriseMode
         ? [...golanSettlements, 'Manual Location']
-        : golanSettlements;
+        : [...golanSettlements, 'יישוב ידני'];
 
     showModalBottomSheet(
       context: context,
@@ -538,7 +568,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final s = items[i];
-                      final isManualOption = s == 'Manual Location';
+                      final isManualOption =
+                          s == 'Manual Location' || s == 'יישוב ידני';
                       return ListTile(
                         leading: isManualOption
                             ? const Icon(
@@ -559,17 +590,26 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         ),
                         onTap: () {
                           setState(() {
-                            if (isManualOption) {
+                            if (s == 'Manual Location') {
+                              // Surprise Drills manual location
                               isManualLocation = true;
+                              isManualSettlement = false;
                               selectedSettlement = 'Manual Location';
                               _settlementDisplayText = 'Manual Location';
-                              // Don't set settlementName yet - user will type it
+                            } else if (s == 'יישוב ידני') {
+                              // Range mode manual settlement
+                              isManualSettlement = true;
+                              isManualLocation = false;
+                              selectedSettlement = 'יישוב ידני';
+                              _settlementDisplayText = 'יישוב ידני';
                             } else {
                               isManualLocation = false;
+                              isManualSettlement = false;
                               selectedSettlement = s;
                               settlementName = s;
                               _settlementDisplayText = s;
                               manualLocationText = '';
+                              manualSettlementText = '';
                             }
                           });
                           Navigator.pop(ctx);
@@ -1655,6 +1695,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             rangeSubType, // ✅ Display label for list UI (טווח קצר/טווח רחוק)
         'settlement': isManualLocation
             ? manualLocationText
+            : (isManualSettlement && manualSettlementText.isNotEmpty)
+            ? manualSettlementText
             : (settlementName.isNotEmpty ? settlementName : selectedSettlement),
         'settlementName': settlementName,
         'rangeFolder': rangeFolder,
@@ -2568,10 +2610,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'rangeSubType': rangeSubType,
         // ✅ FIX: Settlement value based on mode
         // For surprise drills: use settlementName (user input)
-        // For 474 ranges: use selectedSettlement (dropdown)
+        // For 474 ranges: use selectedSettlement (dropdown) OR manualSettlementText (manual)
         // For general ranges: use settlementName (free text)
         'settlement': widget.mode == 'surprise'
             ? settlementName
+            : (isManualSettlement && manualSettlementText.isNotEmpty)
+            ? manualSettlementText
             : ((rangeFolder == 'מטווחי ירי' && settlementName.isNotEmpty)
                   ? settlementName
                   : (selectedSettlement ?? '')),
@@ -3376,7 +3420,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ] else ...[
                 // RANGE MODE: Conditional based on folder
                 if (rangeFolder == 'מטווחים 474') ...[
-                  // Dropdown for 474 Ranges (Golan settlements)
+                  // Dropdown for 474 Ranges (Golan settlements + יישוב ידני)
                   TextField(
                     controller: TextEditingController(
                       text: _settlementDisplayText,
@@ -3390,6 +3434,34 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     onTap: _openSettlementSelectorSheet,
                   ),
                   const SizedBox(height: 16),
+
+                  // ✅ Manual Settlement text field (shown when יישוב ידני is selected)
+                  if (isManualSettlement) ...[
+                    TextField(
+                      controller:
+                          TextEditingController(text: manualSettlementText)
+                            ..selection = TextSelection.collapsed(
+                              offset: manualSettlementText.length,
+                            ),
+                      decoration: const InputDecoration(
+                        labelText: 'שם יישוב',
+                        border: OutlineInputBorder(),
+                        hintText: 'הזן שם יישוב',
+                        prefixIcon: Icon(
+                          Icons.edit_location_alt,
+                          color: Colors.orangeAccent,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          manualSettlementText = value;
+                          settlementName = value; // Store for save
+                        });
+                        _scheduleAutoSave();
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ] else if (rangeFolder == 'מטווחי ירי') ...[
                   // Free text for Shooting Ranges
                   TextField(

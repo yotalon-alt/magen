@@ -1887,6 +1887,7 @@ class FeedbackExportService {
         ...feedbackCriteria,
         'ציון ממוצע',
         'הערות',
+        'סיכום משוב',
       ];
 
       debugPrint('   Headers array: $headers');
@@ -2009,6 +2010,13 @@ class FeedbackExportService {
         }
       }
       cell.value = TextCellValue(allNotes.join('; '));
+      cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
+
+      // Summary column: סיכום משוב
+      cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: colIndex++, rowIndex: rowIndex),
+      );
+      cell.value = TextCellValue(feedback.summary);
       cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
       // Encode and export

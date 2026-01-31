@@ -195,6 +195,7 @@ class FeedbackModel {
   final String folderLabel; // Hebrew display label
   final String rangeSubType; // 'טווח קצר' or 'טווח רחוק' for display
   final String trainingType; // 'סוג אימון' for training summary
+  final String summary; // סיכום משוב
 
   const FeedbackModel({
     this.id,
@@ -221,6 +222,7 @@ class FeedbackModel {
     this.folderLabel = '',
     this.rangeSubType = '',
     this.trainingType = '',
+    this.summary = '',
   });
 
   static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
@@ -312,6 +314,7 @@ class FeedbackModel {
       })(),
       rangeSubType: (m['rangeSubType'] ?? '').toString(),
       trainingType: (m['trainingType'] ?? '').toString(),
+      summary: (m['summary'] ?? '').toString(),
     );
   }
 
@@ -339,6 +342,7 @@ class FeedbackModel {
     String? folderLabel,
     String? rangeSubType,
     String? trainingType,
+    String? summary,
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -364,6 +368,7 @@ class FeedbackModel {
       folderLabel: folderLabel ?? this.folderLabel,
       rangeSubType: rangeSubType ?? this.rangeSubType,
       trainingType: trainingType ?? this.trainingType,
+      summary: summary ?? this.summary,
     );
   }
 
@@ -392,6 +397,7 @@ class FeedbackModel {
       'folderLabel': folderLabel,
       'rangeSubType': rangeSubType,
       'trainingType': trainingType,
+      'summary': summary,
     };
   }
 }
@@ -2391,10 +2397,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   final Map<String, int> scores = {};
   final Map<String, String> notes = {};
-  // Admin command fields
-  String adminCommandText = '';
-  String adminCommandStatus = 'פתוח';
-  static const List<String> adminStatuses = ['פתוח', 'בטיפול', 'בוצע'];
+  // Feedback summary field (replaces admin command)
+  String feedbackSummary = '';
 
   // Prevent double-submission
   bool _isSaving = false;
@@ -2649,8 +2653,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'createdByUid': uid,
         'instructorName': resolvedInstructorName,
         'instructorRole': instructorRoleDisplay,
-        'commandText': adminCommandText,
-        'commandStatus': adminCommandStatus,
+        'commandText': '',
+        'commandStatus': 'פתוח',
+        'summary': feedbackSummary,
         'folder': selectedFolder ?? '',
         'folderKey': folderKey,
         'folderLabel': folderLabel,
@@ -3054,48 +3059,22 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                 );
               }),
               const SizedBox(height: 12),
-              // Admin command section
-              if (currentUser?.role == 'Admin') ...[
-                Card(
-                  color: Colors.blueGrey.shade700,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          'הנחיה פיקודית',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          decoration: const InputDecoration(
-                            labelText: 'טקסט פקודה (אופציונלי)',
-                          ),
-                          maxLines: 3,
-                          onChanged: (v) => adminCommandText = v,
-                        ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: adminCommandStatus,
-                          decoration: const InputDecoration(
-                            labelText: 'סטטוס הנחיה',
-                          ),
-                          items: adminStatuses
-                              .map(
-                                (s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)),
-                              )
-                              .toList(),
-                          onChanged: (v) => setState(
-                            () => adminCommandStatus = v ?? adminCommandStatus,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              // Feedback summary section (for all users)
+              const Text(
+                'סיכום משוב',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'סיכום',
+                  hintText: 'הזן סיכום כללי של המשוב...',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
                 ),
-              ],
+                maxLines: 4,
+                onChanged: (v) => setState(() => feedbackSummary = v),
+              ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -5779,8 +5758,6 @@ class FeedbackDetailsPage extends StatefulWidget {
 
 class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
   late FeedbackModel feedback;
-  String editCommandText = '';
-  String editCommandStatus = 'פתוח';
   String? resolvedInstructorName; // Cached resolved name
   bool isResolvingName = false;
 
@@ -5788,8 +5765,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
   void initState() {
     super.initState();
     feedback = widget.feedback;
-    editCommandText = feedback.commandText;
-    editCommandStatus = feedback.commandStatus;
     _resolveInstructorNameIfNeeded();
   }
 
@@ -5858,8 +5833,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     });
   }
 
-  bool _isEditingCommand = false;
-  bool _isSaving = false;
   bool _isExporting = false;
 
   void _showStationDetailsModal(
@@ -6018,55 +5991,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     );
   }
 
-  Future<void> _saveCommandChanges() async {
-    if (feedback.id == null || feedback.id!.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('לא ניתן לעדכן משוב ללא מזהה')));
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .doc(feedback.id)
-          .update({
-            'commandText': editCommandText,
-            'commandStatus': editCommandStatus,
-          });
-
-      setState(() {
-        feedback = feedback.copyWith(
-          commandText: editCommandText,
-          commandStatus: editCommandStatus,
-        );
-        _isEditingCommand = false;
-      });
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('הנחיה פיקודית עודכנה')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('שגיאה בעדכון: $e')));
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final date = feedback.createdAt.toLocal().toString().split('.').first;
-    final canViewCommand =
-        currentUser != null &&
-        (currentUser?.role == 'Admin' || currentUser?.role == 'Instructor');
     final isAdmin = currentUser?.role == 'Admin';
     final is474Ranges =
         feedback.folder == 'מטווחים 474' ||
@@ -8116,107 +8043,33 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       ),
                     ],
               const SizedBox(height: 12),
-              // Command box (visible to Admin + Instructors, HIDDEN for ranges/surprise drills/training summary)
-              if (canViewCommand && !hideCommandBox) ...[
+              // Summary box (visible for general feedbacks - מעגל פתוח, מעגל פרוץ, סריקות רחוב)
+              if (!hideCommandBox && feedback.summary.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Card(
                   color: Colors.blueGrey.shade800,
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0),
+                    padding: const EdgeInsets.all(12.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'הנחיה פיקודית',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            if (isAdmin)
-                              IconButton(
-                                icon: Icon(
-                                  _isEditingCommand ? Icons.close : Icons.edit,
-                                ),
-                                onPressed: _isSaving
-                                    ? null
-                                    : () {
-                                        setState(() {
-                                          _isEditingCommand =
-                                              !_isEditingCommand;
-                                          if (!_isEditingCommand) {
-                                            // Reset to original values on cancel
-                                            editCommandText =
-                                                feedback.commandText;
-                                            editCommandStatus =
-                                                feedback.commandStatus;
-                                          }
-                                        });
-                                      },
-                                tooltip: _isEditingCommand ? 'ביטול' : 'עריכה',
-                              ),
-                          ],
+                        const Text(
+                          'סיכום משוב',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.orangeAccent,
+                          ),
                         ),
                         const SizedBox(height: 8),
-                        if (_isEditingCommand) ...[
-                          TextField(
-                            controller:
-                                TextEditingController(text: editCommandText)
-                                  ..selection = TextSelection.collapsed(
-                                    offset: editCommandText.length,
-                                  ),
-                            decoration: const InputDecoration(
-                              labelText: 'טקסט הנחיה',
-                              border: OutlineInputBorder(),
-                            ),
-                            maxLines: 3,
-                            onChanged: (v) => editCommandText = v,
+                        Text(
+                          feedback.summary,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            height: 1.5,
                           ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: editCommandStatus,
-                            decoration: const InputDecoration(
-                              labelText: 'סטטוס',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: const ['פתוח', 'בטיפול', 'בוצע']
-                                .map(
-                                  (s) => DropdownMenuItem(
-                                    value: s,
-                                    child: Text(s),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(
-                              () => editCommandStatus = v ?? editCommandStatus,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: _isSaving ? null : _saveCommandChanges,
-                            child: _isSaving
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text('שמור שינויים'),
-                          ),
-                        ] else ...[
-                          Text(
-                            feedback.commandText.isNotEmpty
-                                ? feedback.commandText
-                                : '-',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'סטטוס: ${feedback.commandStatus}',
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
