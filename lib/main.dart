@@ -2232,13 +2232,13 @@ class ExercisesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final exercises = [
-      'מעגל פתוח',
-      'מעגל פרוץ',
-      'סריקות רחוב',
-      'מיונים לקורס מדריכים',
       'מטווחים',
       'תרגילי הפתעה',
+      'מעגל פתוח',
+      'סריקות רחוב',
+      'מעגל פרוץ',
       'סיכום אימון',
+      'מיונים לקורס מדריכים',
     ];
 
     return Directionality(
@@ -4273,6 +4273,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   String _filterExercise = 'הכל';
   String _filterRole = 'הכל';
   String _filterRangeType = 'הכל'; // Range type filter (short/long range)
+  String _filterInstructor = 'הכל'; // Instructor filter for range folders
+  DateTime? _filterDateFrom; // Date from filter for range folders
+  DateTime? _filterDateTo; // Date to filter for range folders
 
   // Selection mode state (for 474 ranges multi-select export)
   bool _selectionMode = false;
@@ -4655,6 +4658,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       _filterExercise = 'הכל';
       _filterRole = 'הכל';
       _filterRangeType = 'הכל';
+      _filterInstructor = 'הכל';
+      _filterDateFrom = null;
+      _filterDateTo = null;
     });
   }
 
@@ -4663,7 +4669,10 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       _filterSettlement != 'הכל' ||
       _filterExercise != 'הכל' ||
       _filterRole != 'הכל' ||
-      _filterRangeType != 'הכל';
+      _filterRangeType != 'הכל' ||
+      _filterInstructor != 'הכל' ||
+      _filterDateFrom != null ||
+      _filterDateTo != null;
 
   /// Get unique settlement options from a list of feedbacks
   List<String> _getSettlementOptions(List<FeedbackModel> feedbacks) {
@@ -4698,6 +4707,17 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     return ['הכל', ...roles];
   }
 
+  /// Get unique instructor options from a list of feedbacks
+  List<String> _getInstructorOptions(List<FeedbackModel> feedbacks) {
+    final instructors = feedbacks
+        .map((f) => f.instructorName)
+        .where((i) => i.isNotEmpty)
+        .toSet()
+        .toList();
+    instructors.sort();
+    return ['הכל', ...instructors];
+  }
+
   /// Apply filters to a list of feedbacks (AND logic)
   List<FeedbackModel> _applyFilters(List<FeedbackModel> feedbacks) {
     return feedbacks.where((f) {
@@ -4722,6 +4742,44 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       // Range type filter (for shooting ranges)
       if (_filterRangeType != 'הכל') {
         if (f.rangeSubType.isEmpty || f.rangeSubType != _filterRangeType) {
+          return false;
+        }
+      }
+      // Instructor filter
+      if (_filterInstructor != 'הכל') {
+        if (f.instructorName.isEmpty || f.instructorName != _filterInstructor) {
+          return false;
+        }
+      }
+      // Date from filter
+      if (_filterDateFrom != null) {
+        final feedbackDate = DateTime(
+          f.createdAt.year,
+          f.createdAt.month,
+          f.createdAt.day,
+        );
+        final fromDate = DateTime(
+          _filterDateFrom!.year,
+          _filterDateFrom!.month,
+          _filterDateFrom!.day,
+        );
+        if (feedbackDate.isBefore(fromDate)) {
+          return false;
+        }
+      }
+      // Date to filter
+      if (_filterDateTo != null) {
+        final feedbackDate = DateTime(
+          f.createdAt.year,
+          f.createdAt.month,
+          f.createdAt.day,
+        );
+        final toDate = DateTime(
+          _filterDateTo!.year,
+          _filterDateTo!.month,
+          _filterDateTo!.day,
+        );
+        if (feedbackDate.isAfter(toDate)) {
           return false;
         }
       }
@@ -5119,6 +5177,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         _selectedFolder == '474 Ranges' ||
         _selectedFolder == 'מטווחים 474';
 
+    final isSurpriseDrillsFolder =
+        _selectedFolder == 'משוב תרגילי הפתעה' ||
+        _selectedFolder == 'תרגילי הפתעה כללי';
+
+    final isTrainingSummaryFolder =
+        _selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי';
+
     // Apply settlement filter for range feedbacks (legacy behavior)
     List<FeedbackModel> preFilteredFeedbacks = filteredFeedbacks;
     if (isRangeFolder) {
@@ -5140,6 +5206,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     final settlementOptions = _getSettlementOptions(filteredFeedbacks);
     final exerciseOptions = _getExerciseOptions(filteredFeedbacks);
     final roleOptions = _getRoleOptions(filteredFeedbacks);
+    final instructorOptions = _getInstructorOptions(filteredFeedbacks);
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -5355,7 +5422,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'תרגיל',
+                                      isTrainingSummaryFolder
+                                          ? 'סוג אימון'
+                                          : 'תרגיל',
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
@@ -5444,8 +5513,153 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                     ),
                                   ],
                                 ),
-                              // Role filter
-                              if (roleOptions.length > 1)
+                              // Instructor filter (only for range folders)
+                              if (isRangeFolder && instructorOptions.length > 1)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מדריך',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue:
+                                            instructorOptions.contains(
+                                              _filterInstructor,
+                                            )
+                                            ? _filterInstructor
+                                            : 'הכל',
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        items: instructorOptions
+                                            .map(
+                                              (i) => DropdownMenuItem(
+                                                value: i,
+                                                child: Text(
+                                                  i,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterInstructor = v ?? 'הכל',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              // Date filters (only for range folders)
+                              if (isRangeFolder)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'תאריך',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 120,
+                                          child: ElevatedButton(
+                                            onPressed: () async {
+                                              final now = DateTime.now();
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        _filterDateFrom ?? now,
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: now,
+                                                    locale: const Locale('he'),
+                                                  );
+                                              if (picked != null) {
+                                                setState(
+                                                  () =>
+                                                      _filterDateFrom = picked,
+                                                );
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            child: Text(
+                                              _filterDateFrom == null
+                                                  ? 'מתאריך'
+                                                  : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          width: 120,
+                                          child: ElevatedButton(
+                                            onPressed: () async {
+                                              final now = DateTime.now();
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        _filterDateTo ?? now,
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: now,
+                                                    locale: const Locale('he'),
+                                                  );
+                                              if (picked != null) {
+                                                setState(
+                                                  () => _filterDateTo = picked,
+                                                );
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            child: Text(
+                                              _filterDateTo == null
+                                                  ? 'עד תאריך'
+                                                  : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              // Role filter (only for non-range and non-surprise-drills folders)
+                              if (!isRangeFolder &&
+                                  !isSurpriseDrillsFolder &&
+                                  roleOptions.length > 1)
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -12915,6 +13129,9 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   String _filterExercise = 'הכל';
   String _filterRole = 'הכל';
   String _filterRangeType = 'הכל';
+  String _filterInstructor = 'הכל'; // Instructor filter for range folders
+  DateTime? _filterDateFrom; // Date from filter for range folders
+  DateTime? _filterDateTo; // Date to filter for range folders
 
   // Selection mode state
   bool _selectionMode = false;
@@ -12944,6 +13161,9 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       _filterExercise = 'הכל';
       _filterRole = 'הכל';
       _filterRangeType = 'הכל';
+      _filterInstructor = 'הכל';
+      _filterDateFrom = null;
+      _filterDateTo = null;
     });
   }
 
@@ -12951,7 +13171,10 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       _filterSettlement != 'הכל' ||
       _filterExercise != 'הכל' ||
       _filterRole != 'הכל' ||
-      _filterRangeType != 'הכל';
+      _filterRangeType != 'הכל' ||
+      _filterInstructor != 'הכל' ||
+      _filterDateFrom != null ||
+      _filterDateTo != null;
 
   List<String> _getSettlementOptions(List<FeedbackModel> feedbacks) {
     final settlements = feedbacks
@@ -12983,6 +13206,16 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     return ['הכל', ...roles];
   }
 
+  List<String> _getInstructorOptions(List<FeedbackModel> feedbacks) {
+    final instructors = feedbacks
+        .map((f) => f.instructorName)
+        .where((i) => i.isNotEmpty)
+        .toSet()
+        .toList();
+    instructors.sort();
+    return ['הכל', ...instructors];
+  }
+
   List<FeedbackModel> _applyFilters(List<FeedbackModel> feedbacks) {
     return feedbacks.where((f) {
       if (_filterSettlement != 'הכל') {
@@ -13002,6 +13235,44 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       }
       if (_filterRangeType != 'הכל') {
         if (f.rangeSubType.isEmpty || f.rangeSubType != _filterRangeType) {
+          return false;
+        }
+      }
+      // Instructor filter
+      if (_filterInstructor != 'הכל') {
+        if (f.instructorName.isEmpty || f.instructorName != _filterInstructor) {
+          return false;
+        }
+      }
+      // Date from filter
+      if (_filterDateFrom != null) {
+        final feedbackDate = DateTime(
+          f.createdAt.year,
+          f.createdAt.month,
+          f.createdAt.day,
+        );
+        final fromDate = DateTime(
+          _filterDateFrom!.year,
+          _filterDateFrom!.month,
+          _filterDateFrom!.day,
+        );
+        if (feedbackDate.isBefore(fromDate)) {
+          return false;
+        }
+      }
+      // Date to filter
+      if (_filterDateTo != null) {
+        final feedbackDate = DateTime(
+          f.createdAt.year,
+          f.createdAt.month,
+          f.createdAt.day,
+        );
+        final toDate = DateTime(
+          _filterDateTo!.year,
+          _filterDateTo!.month,
+          _filterDateTo!.day,
+        );
+        if (feedbackDate.isAfter(toDate)) {
           return false;
         }
       }
@@ -13310,6 +13581,14 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
         _selectedFolder == '474 Ranges' ||
         _selectedFolder == 'מטווחים 474';
 
+    final isSurpriseDrillsFolder =
+        _selectedFolder == 'משוב תרגילי הפתעה' ||
+        _selectedFolder == 'תרגילי הפתעה כללי';
+
+    final isTrainingSummaryFolder =
+        _selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי';
+
     final List<FeedbackModel> finalFilteredFeedbacks = _applyFilters(
       filteredFeedbacks,
     );
@@ -13317,6 +13596,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     final settlementOptions = _getSettlementOptions(filteredFeedbacks);
     final exerciseOptions = _getExerciseOptions(filteredFeedbacks);
     final roleOptions = _getRoleOptions(filteredFeedbacks);
+    final instructorOptions = _getInstructorOptions(filteredFeedbacks);
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -13496,7 +13776,9 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'תרגיל',
+                                      isTrainingSummaryFolder
+                                          ? 'סוג אימון'
+                                          : 'תרגיל',
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
@@ -13584,7 +13866,297 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                     ),
                                   ],
                                 ),
-                              if (roleOptions.length > 1)
+                              // Instructor filter (only for range folders)
+                              if (isRangeFolder && instructorOptions.length > 1)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מדריך',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue:
+                                            instructorOptions.contains(
+                                              _filterInstructor,
+                                            )
+                                            ? _filterInstructor
+                                            : 'הכל',
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        items: instructorOptions
+                                            .map(
+                                              (i) => DropdownMenuItem(
+                                                value: i,
+                                                child: Text(
+                                                  i,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterInstructor = v ?? 'הכל',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              // Date filters (only for range folders)
+                              if (isRangeFolder)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'תאריך',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 120,
+                                          child: ElevatedButton(
+                                            onPressed: () async {
+                                              final now = DateTime.now();
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        _filterDateFrom ?? now,
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: now,
+                                                    locale: const Locale('he'),
+                                                  );
+                                              if (picked != null) {
+                                                setState(
+                                                  () =>
+                                                      _filterDateFrom = picked,
+                                                );
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            child: Text(
+                                              _filterDateFrom == null
+                                                  ? 'מתאריך'
+                                                  : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          width: 120,
+                                          child: ElevatedButton(
+                                            onPressed: () async {
+                                              final now = DateTime.now();
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        _filterDateTo ?? now,
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: now,
+                                                    locale: const Locale('he'),
+                                                  );
+                                              if (picked != null) {
+                                                setState(
+                                                  () => _filterDateTo = picked,
+                                                );
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            child: Text(
+                                              _filterDateTo == null
+                                                  ? 'עד תאריך'
+                                                  : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              // Instructor filter (for defense and general folders, including surprise drills)
+                              if (!isRangeFolder &&
+                                  instructorOptions.length > 1)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מדריך',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 200,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue:
+                                            instructorOptions.contains(
+                                              _filterInstructor,
+                                            )
+                                            ? _filterInstructor
+                                            : 'הכל',
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        items: instructorOptions
+                                            .map(
+                                              (i) => DropdownMenuItem(
+                                                value: i,
+                                                child: Text(
+                                                  i,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (v) => setState(
+                                          () => _filterInstructor = v ?? 'הכל',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              // Date filters (for defense, general folders, and surprise drills)
+                              if (!isRangeFolder)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'תאריך',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 120,
+                                          child: ElevatedButton(
+                                            onPressed: () async {
+                                              final now = DateTime.now();
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        _filterDateFrom ?? now,
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: now,
+                                                    locale: const Locale('he'),
+                                                  );
+                                              if (picked != null) {
+                                                setState(
+                                                  () =>
+                                                      _filterDateFrom = picked,
+                                                );
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            child: Text(
+                                              _filterDateFrom == null
+                                                  ? 'מתאריך'
+                                                  : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          width: 120,
+                                          child: ElevatedButton(
+                                            onPressed: () async {
+                                              final now = DateTime.now();
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        _filterDateTo ?? now,
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: now,
+                                                    locale: const Locale('he'),
+                                                  );
+                                              if (picked != null) {
+                                                setState(
+                                                  () => _filterDateTo = picked,
+                                                );
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                            child: Text(
+                                              _filterDateTo == null
+                                                  ? 'עד תאריך'
+                                                  : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              // Role filter (only for non-range and non-surprise-drills folders)
+                              if (!isRangeFolder &&
+                                  !isSurpriseDrillsFolder &&
+                                  roleOptions.length > 1)
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
