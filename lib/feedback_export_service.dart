@@ -2071,6 +2071,7 @@ class FeedbackExportService {
   /// Export training summary feedback to Excel/Google Sheets
   /// Dedicated structure for "משוב סיכום אימון 474"
   /// Headers: תאריך, מדריך, תיקייה, יישוב, סוג אימון, מספר נוכחים, רשימת נוכחים, סיכום
+  /// NEW: Second sheet with linked personal feedbacks if linkedFeedbackIds exists
   static Future<void> exportTrainingSummaryDetails({
     required Map<String, dynamic> feedbackData,
     required String fileNamePrefix,
@@ -2080,7 +2081,7 @@ class FeedbackExportService {
       debugPrint('   fileNamePrefix: $fileNamePrefix');
 
       final excel = Excel.createExcel();
-      final Sheet sheet = excel['משוב סיכום אימון'];
+      final Sheet sheet = excel['סיכום אימון'];
       excel.delete('Sheet1');
 
       // Headers (without "רשימת נוכחים" column)
@@ -2186,14 +2187,170 @@ class FeedbackExportService {
         sheet.setColumnWidth(i, 20);
       }
       // Make summary column wider
-      sheet.setColumnWidth(6, 50); // סיכום
+      sheet.setColumnWidth(7, 50); // סיכום
 
       debugPrint('   Headers: ${headers.join(", ")}');
       debugPrint('   Data row written');
-      debugPrint('✅ Excel sheet created');
+      debugPrint('✅ Excel sheet 1 (סיכום אימון) created');
+
+      // ✨ NEW: Create second sheet with linked feedbacks if exists
+      final linkedFeedbackIds =
+          (feedbackData['linkedFeedbackIds'] as List?)?.cast<String>() ?? [];
+
+      if (linkedFeedbackIds.isNotEmpty) {
+        debugPrint(
+          '\n📋 Found ${linkedFeedbackIds.length} linked feedbacks, loading...',
+        );
+
+        // Create second sheet for linked feedbacks
+        final Sheet linkedSheet = excel['משובים מקושרים'];
+
+        // Headers for linked feedbacks
+        final linkedHeaders = [
+          'שם',
+          'תפקיד',
+          'תרגיל',
+          'מדריך',
+          'תאריך',
+          'ציון ממוצע',
+          'פוש',
+          'הכרזה',
+          'הפצה',
+          'מיקום המפקד',
+          'מיקום הכוח',
+          'חיילות פרט',
+          'מקצועיות המחלקה',
+          'הבנת האירוע',
+          'תפקוד באירוע',
+          'סיכום משוב',
+        ];
+
+        // Write headers for linked sheet
+        for (var i = 0; i < linkedHeaders.length; i++) {
+          final cell = linkedSheet.cell(
+            CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+          );
+          cell.value = TextCellValue(linkedHeaders[i]);
+          cell.cellStyle = CellStyle(
+            bold: true,
+            fontSize: 12,
+            backgroundColorHex: ExcelColor.green,
+            fontColorHex: ExcelColor.white,
+          );
+        }
+
+        // Load each linked feedback from Firestore
+        int rowIndex = 1;
+        for (final feedbackId in linkedFeedbackIds) {
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(feedbackId)
+                .get()
+                .timeout(const Duration(seconds: 5));
+
+            if (!doc.exists || doc.data() == null) {
+              debugPrint('   ⚠️ Linked feedback $feedbackId not found');
+              continue;
+            }
+
+            final data = doc.data()!;
+
+            // Extract linked feedback data
+            final linkedName = (data['name'] ?? '').toString();
+            final linkedRole = (data['role'] ?? '').toString();
+            final linkedExercise = (data['exercise'] ?? '').toString();
+            final linkedInstructor = (data['instructorName'] ?? '').toString();
+
+            // Parse date
+            final linkedCreatedAt = data['createdAt'];
+            String linkedDateStr = '';
+            if (linkedCreatedAt is Timestamp) {
+              final dt = linkedCreatedAt.toDate();
+              linkedDateStr =
+                  '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+            } else if (linkedCreatedAt is String) {
+              try {
+                final dt = DateTime.parse(linkedCreatedAt);
+                linkedDateStr =
+                    '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+              } catch (_) {
+                linkedDateStr = linkedCreatedAt;
+              }
+            }
+
+            // Extract scores
+            final scores =
+                (data['scores'] as Map?)?.cast<String, dynamic>() ?? {};
+
+            // Calculate average of non-zero scores
+            final scoreValues = scores.values
+                .whereType<num>()
+                .where((v) => v > 0)
+                .toList();
+            final avgScore = scoreValues.isNotEmpty
+                ? (scoreValues.reduce((a, b) => a + b) / scoreValues.length)
+                      .toStringAsFixed(1)
+                : '-';
+
+            // Get individual criteria scores
+            String getScoreStr(String key) {
+              final v = scores[key];
+              if (v == null || (v is num && v == 0)) return '-';
+              return v.toString();
+            }
+
+            final linkedSummary = (data['summary'] ?? '').toString();
+
+            // Write row data
+            final linkedRowData = [
+              linkedName,
+              linkedRole,
+              linkedExercise,
+              linkedInstructor,
+              linkedDateStr,
+              avgScore,
+              getScoreStr('פוש'),
+              getScoreStr('הכרזה'),
+              getScoreStr('הפצה'),
+              getScoreStr('מיקום המפקד'),
+              getScoreStr('מיקום הכוח'),
+              getScoreStr('חיילות פרט'),
+              getScoreStr('מקצועיות המחלקה'),
+              getScoreStr('הבנת האירוע'),
+              getScoreStr('תפקוד באירוע'),
+              linkedSummary,
+            ];
+
+            for (var i = 0; i < linkedRowData.length; i++) {
+              final cell = linkedSheet.cell(
+                CellIndex.indexByColumnRow(columnIndex: i, rowIndex: rowIndex),
+              );
+              cell.value = TextCellValue(linkedRowData[i]);
+            }
+
+            debugPrint('   ✅ Added linked feedback: $linkedName ($linkedRole)');
+            rowIndex++;
+          } catch (e) {
+            debugPrint('   ❌ Error loading feedback $feedbackId: $e');
+          }
+        }
+
+        // Auto-size columns for linked sheet
+        for (var i = 0; i < linkedHeaders.length; i++) {
+          linkedSheet.setColumnWidth(i, 15);
+        }
+        linkedSheet.setColumnWidth(0, 20); // שם
+        linkedSheet.setColumnWidth(15, 40); // סיכום משוב
+
+        debugPrint(
+          '✅ Excel sheet 2 (משובים מקושרים) created with ${rowIndex - 1} feedbacks',
+        );
+      } else {
+        debugPrint('   ℹ️ No linked feedbacks found');
+      }
 
       // Save/download file
-      excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
       final fileBytes = excel.encode();
       if (fileBytes == null) {
