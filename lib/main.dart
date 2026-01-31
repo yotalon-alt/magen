@@ -4687,8 +4687,18 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
   /// Get unique exercise options from a list of feedbacks
   List<String> _getExerciseOptions(List<FeedbackModel> feedbacks) {
+    // For training summary folders, use trainingType instead of exercise
+    final isTrainingSummaryFolder =
+        _selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי';
+
     final exercises = feedbacks
-        .map((f) => f.exercise)
+        .map((f) {
+          if (isTrainingSummaryFolder && f.trainingType.isNotEmpty) {
+            return f.trainingType;
+          }
+          return f.exercise;
+        })
         .where((e) => e.isNotEmpty)
         .toSet()
         .toList();
@@ -4720,6 +4730,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
   /// Apply filters to a list of feedbacks (AND logic)
   List<FeedbackModel> _applyFilters(List<FeedbackModel> feedbacks) {
+    // For training summary folders, filter by trainingType instead of exercise
+    final isTrainingSummaryFolder =
+        _selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי';
+
     return feedbacks.where((f) {
       // Settlement filter
       if (_filterSettlement != 'הכל') {
@@ -4729,8 +4744,15 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       }
       // Exercise filter
       if (_filterExercise != 'הכל') {
-        if (f.exercise.isEmpty || f.exercise != _filterExercise) {
-          return false;
+        // For training summary, compare against trainingType
+        if (isTrainingSummaryFolder) {
+          if (f.trainingType.isEmpty || f.trainingType != _filterExercise) {
+            return false;
+          }
+        } else {
+          if (f.exercise.isEmpty || f.exercise != _filterExercise) {
+            return false;
+          }
         }
       }
       // Role filter
@@ -13180,8 +13202,18 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   }
 
   List<String> _getExerciseOptions(List<FeedbackModel> feedbacks) {
+    // For training summary folders, use trainingType instead of exercise
+    final isTrainingSummaryFolder =
+        _selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי';
+
     final exercises = feedbacks
-        .map((f) => f.exercise)
+        .map((f) {
+          if (isTrainingSummaryFolder && f.trainingType.isNotEmpty) {
+            return f.trainingType;
+          }
+          return f.exercise;
+        })
         .where((e) => e.isNotEmpty)
         .toSet()
         .toList();
@@ -13210,6 +13242,11 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   }
 
   List<FeedbackModel> _applyFilters(List<FeedbackModel> feedbacks) {
+    // For training summary folders, filter by trainingType instead of exercise
+    final isTrainingSummaryFolder =
+        _selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי';
+
     return feedbacks.where((f) {
       if (_filterSettlement != 'הכל') {
         if (f.settlement.isEmpty || f.settlement != _filterSettlement) {
@@ -13217,8 +13254,15 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
         }
       }
       if (_filterExercise != 'הכל') {
-        if (f.exercise.isEmpty || f.exercise != _filterExercise) {
-          return false;
+        // For training summary, compare against trainingType
+        if (isTrainingSummaryFolder) {
+          if (f.trainingType.isEmpty || f.trainingType != _filterExercise) {
+            return false;
+          }
+        } else {
+          if (f.exercise.isEmpty || f.exercise != _filterExercise) {
+            return false;
+          }
         }
       }
       if (_filterRole != 'הכל') {
