@@ -29,7 +29,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
       initialDate: _dateFrom ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      locale: const Locale('he'),
+
     );
     if (result != null) {
       setState(() => _dateFrom = result);
@@ -42,7 +42,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
       initialDate: _dateTo ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      locale: const Locale('he'),
+
     );
     if (result != null) {
       setState(() => _dateTo = result);

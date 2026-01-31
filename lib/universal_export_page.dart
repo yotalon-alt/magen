@@ -138,7 +138,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
       initialDate: _dateFrom ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      locale: const Locale('he'),
+
     );
     if (result != null) {
       setState(() => _dateFrom = result);
@@ -152,7 +152,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
       initialDate: _dateTo ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      locale: const Locale('he'),
+
     );
     if (result != null) {
       setState(() => _dateTo = result);

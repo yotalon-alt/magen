@@ -5592,7 +5592,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                                         _filterDateFrom ?? now,
                                                     firstDate: DateTime(2020),
                                                     lastDate: now,
-                                                    locale: const Locale('he'),
+
                                                   );
                                               if (picked != null) {
                                                 setState(
@@ -5629,7 +5629,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                                         _filterDateTo ?? now,
                                                     firstDate: DateTime(2020),
                                                     lastDate: now,
-                                                    locale: const Locale('he'),
+
                                                   );
                                               if (picked != null) {
                                                 setState(
@@ -8716,7 +8716,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
       initialDate: dateFrom ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateFrom = r);
   }
@@ -8728,7 +8727,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
       initialDate: dateTo ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateTo = r);
   }
@@ -8953,7 +8951,6 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       initialDate: dateFrom ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateFrom = r);
   }
@@ -8965,7 +8962,6 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       initialDate: dateTo ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateTo = r);
   }
@@ -9898,7 +9894,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       initialDate: dateFrom ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateFrom = r);
   }
@@ -9910,7 +9905,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       initialDate: dateTo ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateTo = r);
   }
@@ -12105,7 +12099,6 @@ class _SurpriseDrillsStatisticsPageState
       initialDate: dateFrom ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateFrom = r);
   }
@@ -12117,7 +12110,6 @@ class _SurpriseDrillsStatisticsPageState
       initialDate: dateTo ?? now,
       firstDate: DateTime(2000),
       lastDate: now,
-      locale: const Locale('he'),
     );
     if (r != null) setState(() => dateTo = r);
   }
@@ -13945,7 +13937,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                                         _filterDateFrom ?? now,
                                                     firstDate: DateTime(2020),
                                                     lastDate: now,
-                                                    locale: const Locale('he'),
+
                                                   );
                                               if (picked != null) {
                                                 setState(
@@ -13982,7 +13974,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                                         _filterDateTo ?? now,
                                                     firstDate: DateTime(2020),
                                                     lastDate: now,
-                                                    locale: const Locale('he'),
+
                                                   );
                                               if (picked != null) {
                                                 setState(
@@ -14089,7 +14081,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                                         _filterDateFrom ?? now,
                                                     firstDate: DateTime(2020),
                                                     lastDate: now,
-                                                    locale: const Locale('he'),
+
                                                   );
                                               if (picked != null) {
                                                 setState(
@@ -14126,7 +14118,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                                         _filterDateTo ?? now,
                                                     firstDate: DateTime(2020),
                                                     lastDate: now,
-                                                    locale: const Locale('he'),
+
                                                   );
                                               if (picked != null) {
                                                 setState(
