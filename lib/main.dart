@@ -2185,23 +2185,28 @@ class _HomePageState extends State<HomePage>
             left: 16,
             child: Directionality(
               textDirection: TextDirection.rtl,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                  // AuthGate will automatically handle navigation
-                },
-                icon: const Icon(Icons.logout, size: 16),
-                label: const Text('יציאה'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      // AuthGate will automatically handle navigation
+                    },
+                    icon: const Icon(Icons.logout, size: 16),
+                    label: const Text('יציאה'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      textStyle: const TextStyle(fontSize: 14),
+                      elevation: 2,
+                    ),
                   ),
-                  textStyle: const TextStyle(fontSize: 14),
-                  elevation: 2,
-                ),
+                ],
               ),
             ),
           ),

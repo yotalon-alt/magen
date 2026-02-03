@@ -1,0 +1,8 @@
+name: trainee_import_script
+description: סקריפט ייבוא חניכים
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  excel: ^4.0.3
