@@ -560,7 +560,7 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
     final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = snap.docs
         .cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
 
-    debugPrint('\n✅ ===== QUERY RESULTS =====');
+    debugPrint('\n✅ ===== QUERY RESULTS (MY FEEDBACKS) =====');
     debugPrint('   RESULT SIZE: ${docs.length}');
     debugPrint('   Query returned ${docs.length} document(s)');
     debugPrint('   User UID: "$uid"');
@@ -599,8 +599,49 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
       );
     }
     debugPrint(
-      '📋 loadFeedbacksForCurrentUser: total ${feedbackStorage.length} feedbacks in storage',
+      '📋 loadFeedbacksForCurrentUser: total ${feedbackStorage.length} feedbacks in storage (my feedbacks)',
     );
+
+    // ✨ NEW: Load feedbacks where I'm an additional instructor (non-admins only)
+    if (!adminFlag) {
+      debugPrint('\n🔍 ===== LOADING SHARED FEEDBACKS =====');
+      debugPrint('   Looking for feedbacks where I am in instructors array');
+      try {
+        final sharedQuery = FirebaseFirestore.instance
+            .collection('feedbacks')
+            .where('instructors', arrayContains: uid)
+            .orderBy('createdAt', descending: true);
+
+        final sharedSnap = await sharedQuery.get().timeout(
+          const Duration(seconds: 10),
+        );
+        debugPrint('   Found ${sharedSnap.docs.length} shared feedback(s)');
+
+        for (final doc in sharedSnap.docs) {
+          final raw = doc.data();
+          // Skip if already in storage (avoid duplicates)
+          if (feedbackStorage.any((f) => f.id == doc.id)) {
+            debugPrint('  ⏭️ Skipping ${doc.id} (already in storage)');
+            continue;
+          }
+
+          final model = FeedbackModel.fromMap(raw, id: doc.id);
+          if (model != null) {
+            feedbackStorage.add(model);
+            debugPrint(
+              '  ✅ Added shared feedback: ${model.name} by ${model.instructorName}',
+            );
+          }
+        }
+
+        debugPrint(
+          '📋 Total after shared: ${feedbackStorage.length} feedbacks',
+        );
+      } catch (e) {
+        debugPrint('⚠️ Failed to load shared feedbacks: $e');
+      }
+      debugPrint('🔍 ===== END SHARED FEEDBACKS =====\n');
+    }
 
     // Debug: Show training summaries found
     final trainingSummaries = feedbackStorage
@@ -6125,10 +6166,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             feedbackData,
                           );
 
-                          // Check delete permissions
-                          final canDelete =
-                              currentUser?.role == 'Admin' ||
-                              f.instructorName == currentUser?.name;
+                          // Check delete permissions - only admin for now (proper check requires async)
+                          final canDelete = currentUser?.role == 'Admin';
 
                           // Check if folder supports selection mode
                           final supportsSelectionMode =
@@ -14711,9 +14750,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                             feedbackData,
                           );
 
-                          final canDelete =
-                              currentUser?.role == 'Admin' ||
-                              f.instructorName == currentUser?.name;
+                          // Check delete permissions - only admin for now (proper check requires async)
+                          final canDelete = currentUser?.role == 'Admin';
 
                           final supportsSelectionMode =
                               _selectedFolder == 'מטווחים 474' ||

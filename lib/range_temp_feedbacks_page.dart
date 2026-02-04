@@ -86,6 +86,37 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
         feedbacks.add(data);
       }
 
+      // ✨ NEW: Load temp feedbacks where I'm an additional instructor (non-admins only)
+      if (!isAdmin) {
+        debugPrint('\n🔍 Loading shared temp feedbacks...');
+        try {
+          final sharedQuery = FirebaseFirestore.instance
+              .collection('feedbacks')
+              .where('module', isEqualTo: 'shooting_ranges')
+              .where('isTemporary', isEqualTo: true)
+              .where('instructors', arrayContains: uid)
+              .orderBy('createdAt', descending: true);
+
+          final sharedSnap = await sharedQuery.get();
+          debugPrint(
+            '   Found ${sharedSnap.docs.length} shared temp feedback(s)',
+          );
+
+          for (final doc in sharedSnap.docs) {
+            final data = doc.data();
+            // Skip if already in list (avoid duplicates)
+            if (feedbacks.any((f) => f['id'] == doc.id)) {
+              continue;
+            }
+            data['id'] = doc.id;
+            feedbacks.add(data);
+            debugPrint('  ✅ Added shared temp: ${data['settlement']}');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to load shared temp feedbacks: $e');
+        }
+      }
+
       setState(() {
         _tempFeedbacks = feedbacks;
         _isLoading = false;
@@ -355,7 +386,7 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                     metadataLines.add('נשמר: $dateStr');
                   }
 
-                  // Check permissions
+                  // Check permissions - only owner (instructorId) or admin can delete temp feedbacks
                   final canDelete =
                       currentUser?.role == 'Admin' ||
                       feedback['instructorId'] == currentUser?.uid;
