@@ -3232,16 +3232,28 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       return;
     }
 
+    // ✅ שלח את החניכים הנוכחיים כ-preSelected כדי לאפשר עריכה
+    final currentTrainees = <String>[];
+    for (int i = 0; i < attendeesCount; i++) {
+      final controller = _attendeeNameControllers['attendee_$i'];
+      final name = controller?.text.trim() ?? '';
+      if (name.isNotEmpty) {
+        currentTrainees.add(name);
+      }
+    }
+
     final result = await showDialog<List<String>>(
       context: context,
       builder: (ctx) => TraineeSelectionDialog(
         settlementName: selectedSettlement,
         availableTrainees: _autocompleteTrainees,
-        preSelectedTrainees: [],
+        preSelectedTrainees:
+            currentTrainees, // ✅ החניכים הנוכחיים יופיעו מסומנים
       ),
     );
 
-    if (result != null && result.isNotEmpty) {
+    // ✅ אפשר לקבל גם רשימה ריקה אם המשתמש ניקה את כולם
+    if (result != null) {
       setState(() {
         // Update attendees count
         attendeesCount = result.length;
@@ -3258,9 +3270,13 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('נבחרו ${result.length} חניכים')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEmpty ? 'הרשימה נוקתה' : 'נבחרו ${result.length} חניכים',
+          ),
+        ),
+      );
     }
   }
 

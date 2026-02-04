@@ -474,16 +474,21 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       return;
     }
 
+    // ✅ שלח את החניכים הנוכחיים כ-preSelected כדי לאפשר עריכה
+    final currentTrainees = traineeRows.map((row) => row.name).toList();
+
     final result = await showDialog<List<String>>(
       context: context,
       builder: (ctx) => TraineeSelectionDialog(
         settlementName: settlementName,
         availableTrainees: _autocompleteTrainees,
-        preSelectedTrainees: [],
+        preSelectedTrainees:
+            currentTrainees, // ✅ החניכים הנוכחיים יופיעו מסומנים
       ),
     );
 
-    if (result != null && result.isNotEmpty) {
+    // ✅ אפשר לקבל גם רשימה ריקה אם המשתמש ניקה את כולם
+    if (result != null) {
       setState(() {
         // Update attendees count
         attendeesCount = result.length;
@@ -500,9 +505,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('נבחרו ${result.length} חניכים')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEmpty ? 'הרשימה נוקתה' : 'נבחרו ${result.length} חניכים',
+          ),
+        ),
+      );
     }
   }
 
@@ -2874,14 +2883,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'TEMP_SAVE_FLAGS: docId=$draftId isTemporary=true finalizedAt=null status=temporary',
       );
 
-      // ✅ FIX: TEMP SAVE - NEVER overwrite stations/trainees with empty data
-      // Only write these fields if they contain actual data
-      // This prevents wiping out existing stage data during auto-save
+      // ✅ FIX: ALWAYS save trainees (even if no stations yet)
+      // This allows users to fill trainee names first, then add stations/principles later
+      // Only skip writing stations if they're empty (to preserve existing stage data)
+      patch['trainees'] = traineesPayload;
+
       if (stationsData.isNotEmpty) {
         patch['stations'] = stationsData;
-      }
-      if (traineesPayload.isNotEmpty) {
-        patch['trainees'] = traineesPayload;
       }
 
       debugPrint('DRAFT_SAVE: PATCH keys=${patch.keys.toList()}');
