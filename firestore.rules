@@ -122,6 +122,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ===== SETTLEMENT TRAINEES COLLECTION =====
+    // רשימות חניכים לפי יישוב - להשלמה אוטומטית בטפסים
+    // ✅ All instructors/admins can read (for autocomplete in forms)
+    // ✅ Only admin can write (data is uploaded once)
+    match /settlement_trainees/{settlementId} {
+      allow read: if request.auth != null && (isInstructor() || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // ===== CUSTOM SETTLEMENTS COLLECTION =====
+    // יישובים מותאמים אישית שהמשתמשים מוסיפים
+    match /custom_settlements/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
     // Nested screenings under courses/{courseId}/screenings/{screeningId}
     match /courses/{courseId}/screenings/{screeningId} {
       function isSignedIn() {

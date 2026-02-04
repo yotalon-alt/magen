@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // for currentUser and golanSettlements
 import 'widgets/standard_back_button.dart';
+import 'widgets/trainee_selection_dialog.dart';
+import 'services/trainee_autocomplete_service.dart';
 
 // ===== SINGLE SOURCE OF TRUTH: Long Range Detection =====
 /// Determines if a feedback is Long Range based on available fields.
@@ -249,6 +251,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   final Map<String, TextEditingController> _textControllers = {};
   final Map<String, FocusNode> _focusNodes = {};
 
+  // ✅ AUTOCOMPLETE: List of trainees for 474 settlements
+  List<String> _autocompleteTrainees = [];
+
   // ✅ PERSISTENT SCROLL CONTROLLERS: For synchronized scrolling in range tables
   // OLD APPROACH (will be replaced): Single controllers shared by multiple scrollables
   // late final ScrollController _verticalCtrl;
@@ -432,6 +437,206 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return _focusNodes[key]!;
   }
 
+  /// ✅ LOAD TRAINEES FOR AUTOCOMPLETE (474 only)
+  Future<void> _loadTraineesForAutocomplete(String settlement) async {
+    debugPrint(
+      '🔄 _loadTraineesForAutocomplete called with settlement: $settlement',
+    );
+
+    if (settlement.isEmpty) {
+      debugPrint('⚠️ Settlement is empty, clearing autocomplete list');
+      setState(() => _autocompleteTrainees = []);
+      return;
+    }
+
+    debugPrint(
+      '📥 Calling TraineeAutocompleteService.getTraineesForSettlement...',
+    );
+    final trainees = await TraineeAutocompleteService.getTraineesForSettlement(
+      settlement,
+    );
+    debugPrint('📋 Received ${trainees.length} trainees from service');
+
+    if (mounted) {
+      setState(() => _autocompleteTrainees = trainees);
+      debugPrint(
+        '✅ _autocompleteTrainees updated with ${trainees.length} items',
+      );
+    }
+  }
+
+  /// ✨ NEW: Open trainee selection dialog and auto-fill table
+  Future<void> _openTraineeSelectionDialog() async {
+    if (_autocompleteTrainees.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('טוען רשימת חניכים...')));
+      return;
+    }
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => TraineeSelectionDialog(
+        settlementName: settlementName,
+        availableTrainees: _autocompleteTrainees,
+        preSelectedTrainees: [],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        // Update attendees count
+        attendeesCount = result.length;
+        _attendeesCountController.text = attendeesCount.toString();
+
+        // Clear existing trainees
+        traineeRows.clear();
+
+        // Fill in selected trainees
+        for (int i = 0; i < result.length; i++) {
+          final newRow = TraineeRowModel(index: i, name: result[i]);
+          traineeRows.add(newRow);
+        }
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('נבחרו ${result.length} חניכים')));
+    }
+  }
+
+  /// ✅ BUILD TRAINEE NAME FIELD - SMART AUTOCOMPLETE
+  /// Automatically shows autocomplete for 474 folders, regular TextField otherwise
+  Widget _buildTraineeAutocomplete({
+    required int idx,
+    required TraineeRowModel row,
+    required String controllerKey,
+    required String focusKey,
+  }) {
+    // ✅ Determine if should show autocomplete
+    final bool shouldShowAutocomplete =
+        (widget.mode == 'range' && rangeFolder == 'מטווחים 474') ||
+        (widget.mode == 'surprise' &&
+            surpriseDrillsFolder == 'משוב תרגילי הפתעה');
+
+    final bool hasAutocompleteData = _autocompleteTrainees.isNotEmpty;
+
+    // 🔍 DEBUG: Log on first trainee only
+    if (idx == 0) {
+      debugPrint('🎯 _buildTraineeAutocomplete called:');
+      debugPrint('   widget.mode: ${widget.mode}');
+      debugPrint('   rangeFolder: $rangeFolder');
+      debugPrint('   surpriseDrillsFolder: $surpriseDrillsFolder');
+      debugPrint('   shouldShowAutocomplete: $shouldShowAutocomplete');
+      debugPrint(
+        '   hasAutocompleteData: $hasAutocompleteData (${_autocompleteTrainees.length} items)',
+      );
+    }
+
+    // If autocomplete should be shown AND we have data - use RawAutocomplete
+    if (shouldShowAutocomplete && hasAutocompleteData) {
+      return RawAutocomplete<String>(
+        textEditingController: _getController(controllerKey, row.name),
+        focusNode: _getFocusNode(focusKey),
+        optionsBuilder: (TextEditingValue textEditingValue) {
+          if (textEditingValue.text.isEmpty) {
+            return _autocompleteTrainees.take(8);
+          }
+          return TraineeAutocompleteService.filterTrainees(
+            _autocompleteTrainees,
+            textEditingValue.text,
+            maxResults: 8,
+          );
+        },
+        onSelected: (String selection) {
+          row.name = selection;
+          _getController(controllerKey, row.name).text = selection;
+          _scheduleAutoSave();
+        },
+        fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+          return TextField(
+            controller: controller,
+            focusNode: focusNode,
+            decoration: const InputDecoration(
+              hintText: 'שם',
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12),
+            maxLines: 1,
+            onChanged: (v) {
+              row.name = v;
+              _scheduleAutoSave();
+            },
+            onSubmitted: (v) {
+              row.name = v;
+              onFieldSubmitted();
+              _saveImmediately();
+            },
+          );
+        },
+        optionsViewBuilder: (context, onSelected, options) {
+          return Align(
+            alignment: Alignment.topRight,
+            child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(8),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 200,
+                  maxWidth: 200,
+                ),
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (context, index) {
+                    final option = options.elementAt(index);
+                    return ListTile(
+                      dense: true,
+                      title: Text(
+                        option,
+                        style: const TextStyle(fontSize: 13),
+                        textAlign: TextAlign.right,
+                      ),
+                      onTap: () => onSelected(option),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    // Otherwise - return regular TextField
+    return TextField(
+      controller: _getController(controllerKey, row.name),
+      focusNode: _getFocusNode(focusKey),
+      decoration: const InputDecoration(
+        hintText: 'שם',
+        isDense: true,
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 12),
+      maxLines: 1,
+      onChanged: (v) {
+        row.name = v;
+        _scheduleAutoSave();
+      },
+      onSubmitted: (v) {
+        row.name = v;
+        _saveImmediately();
+      },
+    );
+  }
+
   /// אוסף את רשימת שמות המדריכים מהבקרים (מסנן ריקים)
   List<String> _collectInstructorNames() {
     final List<String> validInstructors = [];
@@ -596,12 +801,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               isManualSettlement = false;
                               selectedSettlement = 'Manual Location';
                               _settlementDisplayText = 'Manual Location';
+                              // Clear autocomplete for manual locations
+                              _autocompleteTrainees = [];
                             } else if (s == 'יישוב ידני') {
                               // Range mode manual settlement
                               isManualSettlement = true;
                               isManualLocation = false;
                               selectedSettlement = 'יישוב ידני';
                               _settlementDisplayText = 'יישוב ידני';
+                              // Clear autocomplete for manual settlements
+                              _autocompleteTrainees = [];
                             } else {
                               isManualLocation = false;
                               isManualSettlement = false;
@@ -610,6 +819,35 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               _settlementDisplayText = s;
                               manualLocationText = '';
                               manualSettlementText = '';
+
+                              // 🔍 DEBUG: Check conditions for autocomplete
+                              debugPrint('🔍 Settlement selected: $s');
+                              debugPrint('   widget.mode: ${widget.mode}');
+                              debugPrint('   rangeFolder: $rangeFolder');
+                              debugPrint(
+                                '   surpriseDrillsFolder: $surpriseDrillsFolder',
+                              );
+
+                              // ✅ Load trainees for autocomplete (474 only)
+                              if (widget.mode == 'range' &&
+                                  rangeFolder == 'מטווחים 474') {
+                                debugPrint('   ✅ Condition MET for range 474!');
+                                _loadTraineesForAutocomplete(s);
+                              } else if (widget.mode == 'range') {
+                                // ⚠️ ALWAYS load for ALL range folders (not just 474)
+                                debugPrint(
+                                  '   🔄 Loading for rangeFolder: $rangeFolder',
+                                );
+                                _loadTraineesForAutocomplete(s);
+                              }
+                              // ✅ Load trainees for Surprise Drills 474
+                              if (widget.mode == 'surprise' &&
+                                  surpriseDrillsFolder == 'משוב תרגילי הפתעה') {
+                                debugPrint(
+                                  '   ✅ Condition MET for surprise 474!',
+                                );
+                                _loadTraineesForAutocomplete(s);
+                              }
                             }
                           });
                           Navigator.pop(ctx);
@@ -3341,6 +3579,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       settlementName = '';
                       selectedSettlement = null;
                       _settlementDisplayText = '';
+                      // Clear autocomplete when folder changes
+                      _autocompleteTrainees = [];
                     });
                     _scheduleAutoSave();
                   },
@@ -3688,7 +3928,42 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 const SizedBox(height: 16),
               ],
 
-              // כמות נוכחים
+              // ✨ בחירת חניכים - כפתור מרכזי (רק למטווחים 474 ותרגילי הפתעה 474)
+              if ((widget.mode == 'range' &&
+                      rangeFolder == 'מטווחים 474' &&
+                      settlementName.isNotEmpty &&
+                      _autocompleteTrainees.isNotEmpty) ||
+                  (widget.mode == 'surprise' &&
+                      surpriseDrillsFolder == 'משוב תרגילי הפתעה' &&
+                      settlementName.isNotEmpty &&
+                      _autocompleteTrainees.isNotEmpty)) ...[
+                const Text(
+                  'בחירת נוכחים',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _openTraineeSelectionDialog,
+                    icon: const Icon(Icons.how_to_reg, size: 24),
+                    label: const Text(
+                      'בחר חניכים מרשימה',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 12),
+              ],
+
+              // כמות נוכחים (ידני)
               TextField(
                 controller: _attendeesCountController,
                 decoration: const InputDecoration(
@@ -4655,6 +4930,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         final row = traineeRows[idx];
                         final controllerKey = 'trainee_$idx';
                         final focusKey = 'trainee_$idx';
+
                         return SizedBox(
                           height: rowHeight,
                           child: Container(
@@ -4668,32 +4944,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 bottom: BorderSide(color: Colors.grey.shade200),
                               ),
                             ),
-                            child: TextField(
-                              controller: _getController(
-                                controllerKey,
-                                row.name,
-                              ),
-                              focusNode: _getFocusNode(focusKey),
-                              decoration: const InputDecoration(
-                                hintText: 'שם',
-                                isDense: true,
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                              ),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 12),
-                              maxLines: 1,
-                              onChanged: (v) {
-                                row.name = v;
-                                _scheduleAutoSave();
-                              },
-                              onSubmitted: (v) {
-                                row.name = v;
-                                _saveImmediately();
-                              },
+                            child: _buildTraineeAutocomplete(
+                              idx: idx,
+                              row: row,
+                              controllerKey: controllerKey,
+                              focusKey: focusKey,
                             ),
                           ),
                         );
@@ -5529,6 +5784,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               final row = traineeRows[idx];
                               final controllerKey = 'trainee_$idx';
                               final focusKey = 'trainee_$idx';
+
                               return SizedBox(
                                 height: rowHeight,
                                 child: Align(
@@ -5545,34 +5801,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                     ),
-                                    child: TextField(
-                                      controller: _getController(
-                                        controllerKey,
-                                        row.name,
-                                      ),
-                                      focusNode: _getFocusNode(focusKey),
-                                      decoration: const InputDecoration(
-                                        hintText: 'שם',
-                                        isDense: true,
-                                        border: OutlineInputBorder(),
-                                        contentPadding: EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 8,
-                                        ),
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 12),
-                                      maxLines: 1,
-                                      onChanged: (v) {
-                                        // ✅ ONLY UPDATE DATA: No setState, no save
-                                        row.name = v;
-                                        _scheduleAutoSave();
-                                      },
-                                      onSubmitted: (v) {
-                                        // ✅ IMMEDIATE SAVE: User pressed Enter
-                                        row.name = v;
-                                        _saveImmediately();
-                                      },
+                                    child: _buildTraineeAutocomplete(
+                                      idx: idx,
+                                      row: row,
+                                      controllerKey: controllerKey,
+                                      focusKey: focusKey,
                                     ),
                                   ),
                                 ),

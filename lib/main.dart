@@ -17,6 +17,8 @@ import 'universal_export_page.dart';
 import 'surprise_drills_entry_page.dart';
 import 'widgets/standard_back_button.dart';
 import 'widgets/feedback_list_tile_card.dart';
+import 'widgets/trainee_selection_dialog.dart';
+import 'services/trainee_autocomplete_service.dart';
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -3142,6 +3144,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   String _feedbackFilterRole = 'הכל'; // Filter by role
   String _feedbackFilterName = ''; // Filter by name
 
+  // ✅ Autocomplete trainees for 474 folder
+  List<String> _autocompleteTrainees = [];
+
   @override
   void initState() {
     super.initState();
@@ -3190,6 +3195,73 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       );
     }
     return _instructorNameControllers[key]!;
+  }
+
+  /// ✅ Load trainees for autocomplete from previous training summaries
+  Future<void> _loadTraineesForAutocomplete(String settlement) async {
+    if (settlement.isEmpty || trainingSummaryFolder != 'משוב סיכום אימון 474') {
+      setState(() => _autocompleteTrainees = []);
+      return;
+    }
+
+    try {
+      final trainees =
+          await TraineeAutocompleteService.getTraineesForSettlement(settlement);
+      if (mounted) {
+        setState(() {
+          _autocompleteTrainees = trainees;
+        });
+        debugPrint(
+          '✅ Loaded ${trainees.length} trainees for autocomplete in Training Summary',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading trainees for autocomplete: $e');
+      if (mounted) {
+        setState(() => _autocompleteTrainees = []);
+      }
+    }
+  }
+
+  /// ✨ NEW: Open trainee selection dialog and auto-fill table
+  Future<void> _openTraineeSelectionDialog() async {
+    if (_autocompleteTrainees.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('טוען רשימת חניכים...')));
+      return;
+    }
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => TraineeSelectionDialog(
+        settlementName: selectedSettlement,
+        availableTrainees: _autocompleteTrainees,
+        preSelectedTrainees: [],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        // Update attendees count
+        attendeesCount = result.length;
+        _attendeesCountController.text = attendeesCount.toString();
+
+        // Clear existing controllers
+        _attendeeNameControllers.clear();
+
+        // Fill in selected trainees
+        for (int i = 0; i < result.length; i++) {
+          final controller = TextEditingController(text: result[i]);
+          _attendeeNameControllers['attendee_$i'] = controller;
+        }
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('נבחרו ${result.length} חניכים')));
+    }
   }
 
   void _updateAttendeesCount(int count) {
@@ -3618,8 +3690,13 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                   items: golanSettlements
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (v) =>
-                      setState(() => selectedSettlement = v ?? ''),
+                  onChanged: (v) {
+                    setState(() => selectedSettlement = v ?? '');
+                    // ✅ Load trainees for autocomplete when settlement changes
+                    if (v != null && v.isNotEmpty) {
+                      _loadTraineesForAutocomplete(v);
+                    }
+                  },
                 ),
               ],
               const SizedBox(height: 12),
@@ -3828,7 +3905,37 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                 const SizedBox(height: 12),
               ],
 
-              // 8. כמות נוכחים
+              // 8. בחירת חניכים - כפתור מרכזי (רק למטווחים 474)
+              if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
+                  selectedSettlement.isNotEmpty &&
+                  _autocompleteTrainees.isNotEmpty) ...[
+                const Text(
+                  'בחירת נוכחים',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _openTraineeSelectionDialog,
+                    icon: const Icon(Icons.how_to_reg, size: 24),
+                    label: const Text(
+                      'בחר חניכים מרשימה',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 12),
+              ],
+
+              // 9. כמות נוכחים (ידני)
               const Text(
                 'כמות נוכחים',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -3925,28 +4032,113 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                // Name column
+                                // Name column - Autocomplete for 474, TextField for general
                                 Expanded(
-                                  child: TextField(
-                                    controller: _getAttendeeController(
-                                      controllerKey,
-                                      '',
-                                    ),
-                                    decoration: const InputDecoration(
-                                      hintText: 'שם',
-                                      border: OutlineInputBorder(),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 14,
-                                      ),
-                                    ),
-                                    style: const TextStyle(
-                                      color: Colors.black87,
-                                      fontSize: 14,
-                                    ),
-                                  ),
+                                  child:
+                                      trainingSummaryFolder ==
+                                              'משוב סיכום אימון 474' &&
+                                          _autocompleteTrainees.isNotEmpty
+                                      ? Autocomplete<String>(
+                                          optionsBuilder:
+                                              (
+                                                TextEditingValue
+                                                textEditingValue,
+                                              ) {
+                                                if (textEditingValue
+                                                    .text
+                                                    .isEmpty) {
+                                                  return _autocompleteTrainees;
+                                                }
+                                                return _autocompleteTrainees
+                                                    .where((name) {
+                                                      return name.contains(
+                                                        textEditingValue.text,
+                                                      );
+                                                    });
+                                              },
+                                          onSelected: (String selection) {
+                                            setState(() {
+                                              _getAttendeeController(
+                                                controllerKey,
+                                                '',
+                                              ).text = selection;
+                                            });
+                                          },
+                                          fieldViewBuilder:
+                                              (
+                                                context,
+                                                controller,
+                                                focusNode,
+                                                onFieldSubmitted,
+                                              ) {
+                                                // Sync with attendee controller
+                                                final attendeeController =
+                                                    _getAttendeeController(
+                                                      controllerKey,
+                                                      '',
+                                                    );
+                                                if (controller.text.isEmpty &&
+                                                    attendeeController
+                                                        .text
+                                                        .isNotEmpty) {
+                                                  controller.text =
+                                                      attendeeController.text;
+                                                }
+                                                // Update attendee controller when autocomplete changes
+                                                controller.addListener(() {
+                                                  attendeeController.text =
+                                                      controller.text;
+                                                });
+
+                                                return TextField(
+                                                  controller: controller,
+                                                  focusNode: focusNode,
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        hintText:
+                                                            'בחר או הקלד שם',
+                                                        border:
+                                                            OutlineInputBorder(),
+                                                        filled: true,
+                                                        fillColor: Colors.white,
+                                                        contentPadding:
+                                                            EdgeInsets.symmetric(
+                                                              horizontal: 12,
+                                                              vertical: 14,
+                                                            ),
+                                                        suffixIcon: Icon(
+                                                          Icons.arrow_drop_down,
+                                                          color: Colors.grey,
+                                                        ),
+                                                      ),
+                                                  style: const TextStyle(
+                                                    color: Colors.black87,
+                                                    fontSize: 14,
+                                                  ),
+                                                );
+                                              },
+                                        )
+                                      : TextField(
+                                          controller: _getAttendeeController(
+                                            controllerKey,
+                                            '',
+                                          ),
+                                          decoration: const InputDecoration(
+                                            hintText: 'שם',
+                                            border: OutlineInputBorder(),
+                                            filled: true,
+                                            fillColor: Colors.white,
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 14,
+                                                ),
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.black87,
+                                            fontSize: 14,
+                                          ),
+                                        ),
                                 ),
                               ],
                             ),
