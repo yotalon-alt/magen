@@ -108,14 +108,14 @@ const List<String> golanSettlements = <String>[
   'אודם',
   'אלוני הבשן',
   'אליעד',
-  'אל-רום',
+  'אלרום',
   'אניעם',
   'אפיק',
   'בני יהודה',
   'גבעת יואב',
   'גשור',
-  'חד-נס',
-  'חיספין',
+  'חד נס',
+  'חספין',
   'יונתן',
   'כפר חרוב',
   'כנף',
@@ -198,6 +198,8 @@ class FeedbackModel {
   final String rangeSubType; // 'טווח קצר' or 'טווח רחוק' for display
   final String trainingType; // 'סוג אימון' for training summary
   final String summary; // סיכום משוב
+  final List<String>
+  instructors; // ✨ NEW: Additional instructors with access to this feedback
 
   const FeedbackModel({
     this.id,
@@ -225,6 +227,7 @@ class FeedbackModel {
     this.rangeSubType = '',
     this.trainingType = '',
     this.summary = '',
+    this.instructors = const [], // ✨ NEW: Default empty list
   });
 
   static FeedbackModel? fromMap(Map<String, dynamic>? m, {String? id}) {
@@ -317,6 +320,9 @@ class FeedbackModel {
       rangeSubType: (m['rangeSubType'] ?? '').toString(),
       trainingType: (m['trainingType'] ?? '').toString(),
       summary: (m['summary'] ?? '').toString(),
+      instructors: ((m['instructors'] as List?) ?? const [])
+          .whereType<String>()
+          .toList(), // ✨ NEW: Load instructors array
     );
   }
 
@@ -345,6 +351,7 @@ class FeedbackModel {
     String? rangeSubType,
     String? trainingType,
     String? summary,
+    List<String>? instructors, // ✨ NEW
   }) {
     return FeedbackModel(
       id: id ?? this.id,
@@ -371,6 +378,7 @@ class FeedbackModel {
       rangeSubType: rangeSubType ?? this.rangeSubType,
       trainingType: trainingType ?? this.trainingType,
       summary: summary ?? this.summary,
+      instructors: instructors ?? this.instructors, // ✨ NEW
     );
   }
 
@@ -400,6 +408,7 @@ class FeedbackModel {
       'rangeSubType': rangeSubType,
       'trainingType': trainingType,
       'summary': summary,
+      'instructors': instructors, // ✨ NEW
     };
   }
 }
@@ -603,9 +612,13 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
     );
 
     // ✨ NEW: Load feedbacks where I'm an additional instructor (non-admins only)
+    // This includes BOTH final AND temporary (drafts) feedbacks
+    // ✅ CRITICAL: Uses UID for instructors array (NOT name) - more reliable
     if (!adminFlag) {
-      debugPrint('\n🔍 ===== LOADING SHARED FEEDBACKS =====');
-      debugPrint('   Looking for feedbacks where I am in instructors array');
+      debugPrint('\n🔍 ===== LOADING SHARED FEEDBACKS (FINAL + DRAFTS) =====');
+      debugPrint(
+        '   Looking for feedbacks where UID=$uid is in instructors array',
+      );
       try {
         final sharedQuery = FirebaseFirestore.instance
             .collection('feedbacks')
@@ -616,6 +629,9 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
           const Duration(seconds: 10),
         );
         debugPrint('   Found ${sharedSnap.docs.length} shared feedback(s)');
+
+        int finalCount = 0;
+        int draftCount = 0;
 
         for (final doc in sharedSnap.docs) {
           final raw = doc.data();
@@ -628,12 +644,21 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
           final model = FeedbackModel.fromMap(raw, id: doc.id);
           if (model != null) {
             feedbackStorage.add(model);
-            debugPrint(
-              '  ✅ Added shared feedback: ${model.name} by ${model.instructorName}',
-            );
+            if (model.isTemporary) {
+              draftCount++;
+              debugPrint(
+                '  ✅ Added shared DRAFT: ${model.name} by ${model.instructorName}',
+              );
+            } else {
+              finalCount++;
+              debugPrint(
+                '  ✅ Added shared FINAL: ${model.name} by ${model.instructorName}',
+              );
+            }
           }
         }
 
+        debugPrint('📋 Total shared: $finalCount final + $draftCount drafts');
         debugPrint(
           '📋 Total after shared: ${feedbackStorage.length} feedbacks',
         );
@@ -3201,6 +3226,13 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _instructorsCountController = TextEditingController(
       text: instructorsCount.toString(),
     );
+    // ✅ CRITICAL: Load trainees on init if settlement already selected (from draft)
+    Future.microtask(() {
+      if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
+          selectedSettlement.isNotEmpty) {
+        _loadTraineesForAutocomplete(selectedSettlement);
+      }
+    });
   }
 
   @override
@@ -3963,8 +3995,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ],
 
               // 8. בחירת חניכים - כפתור מרכזי (רק למטווחים 474)
-              if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
-                  selectedSettlement.isNotEmpty &&
+              if (selectedSettlement.isNotEmpty &&
                   _autocompleteTrainees.isNotEmpty) ...[
                 const Text(
                   'בחירת נוכחים',
@@ -8948,12 +8979,14 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
+    final currentUid = currentUser?.uid ?? '';
     return feedbackStorage.where((f) {
-      // instructor permission: non-admins (instructors) only see feedback they submitted
+      // instructor permission: non-admins (instructors) see feedback they created OR where they're listed as additional instructor
       if (!isAdmin) {
         if (currentUser == null) return false;
-        if (currentUser?.role == 'Instructor' &&
-            f.instructorName != (currentUser?.name ?? '')) {
+        final isCreator = f.instructorName == (currentUser?.name ?? '');
+        final isAdditionalInstructor = f.instructors.contains(currentUid);
+        if (!isCreator && !isAdditionalInstructor) {
           return false;
         }
       }
@@ -9175,11 +9208,14 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
     return feedbackStorage.where((f) {
-      // instructor permission: non-admins (instructors) only see feedback they submitted
+      // instructor permission: non-admins (instructors) see feedback they created OR where they're listed as additional instructor
       if (!isAdmin) {
         if (currentUser == null) return false;
-        if (currentUser?.role == 'Instructor' &&
-            f.instructorName != (currentUser?.name ?? '')) {
+        final isCreator = f.instructorName == (currentUser?.name ?? '');
+        final isAdditionalInstructor = f.instructors.contains(
+          currentUser?.name ?? '',
+        );
+        if (!isCreator && !isAdditionalInstructor) {
           return false;
         }
       }
@@ -10090,6 +10126,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
+    final currentUid = currentUser?.uid ?? '';
     return feedbackStorage.where((f) {
       // Enforce range scope: only allow מטווחי ירי and מטווחים 474
       const allowedFolders = ['מטווחי ירי', 'מטווחים 474'];
@@ -10124,11 +10161,13 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
         }
       }
 
-      // instructor permission: non-admins (instructors) only see feedback they submitted
+      // instructor permission: non-admins (instructors) see feedback they created OR where they're listed as additional instructor
       if (!isAdmin) {
         if (currentUser == null) return false;
-        if (currentUser?.role == 'Instructor' &&
-            f.instructorName != (currentUser?.name ?? '')) {
+        final isCreator = f.instructorName == (currentUser?.name ?? '');
+        // ✅ CHECK: instructors array contains my UID (not name - more reliable)
+        final isAdditionalInstructor = f.instructors.contains(currentUid);
+        if (!isCreator && !isAdditionalInstructor) {
           return false;
         }
       }
@@ -12318,6 +12357,7 @@ class _SurpriseDrillsStatisticsPageState
 
   List<FeedbackModel> getFiltered() {
     final isAdmin = currentUser?.role == 'Admin';
+    final currentUid = currentUser?.uid ?? '';
     return feedbackStorage.where((f) {
       // Only surprise drills feedbacks (both 474 and general)
       if (f.folder != 'משוב תרגילי הפתעה' &&
@@ -12329,11 +12369,13 @@ class _SurpriseDrillsStatisticsPageState
       // Exclude temporary drafts
       if (f.isTemporary == true) return false;
 
-      // Instructor permission
+      // Instructor permission: see feedback they created OR where they're listed as additional instructor
       if (!isAdmin) {
         if (currentUser == null) return false;
-        if (currentUser?.role == 'Instructor' &&
-            f.instructorName != (currentUser?.name ?? '')) {
+        final isCreator = f.instructorName == (currentUser?.name ?? '');
+        // ✅ CHECK: instructors array contains my UID (not name - more reliable)
+        final isAdditionalInstructor = f.instructors.contains(currentUid);
+        if (!isCreator && !isAdditionalInstructor) {
           return false;
         }
       }

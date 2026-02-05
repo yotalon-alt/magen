@@ -3486,6 +3486,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           'DRAFT_LOAD:   traineeRows[$i]: name="${traineeRows[i].name}" values=${traineeRows[i].values}',
         );
       }
+
+      // ✅ FIX: Load autocomplete trainees after draft is loaded
+      // This ensures the green button appears when opening a draft
+      if ((widget.mode == 'range' && rangeFolder == 'מטווחים 474') ||
+          (widget.mode == 'surprise' &&
+              surpriseDrillsFolder == 'משוב תרגילי הפתעה')) {
+        final settlementToLoad = settlementName.isNotEmpty
+            ? settlementName
+            : (selectedSettlement ?? '');
+        if (settlementToLoad.isNotEmpty) {
+          debugPrint(
+            '🔄 DRAFT_LOAD: Loading autocomplete trainees for settlement: $settlementToLoad',
+          );
+          await _loadTraineesForAutocomplete(settlementToLoad);
+        }
+      }
+
       debugPrint('========== ✅ DRAFT_LOAD END (SUCCESS) ==========\n');
     } catch (e, stackTrace) {
       debugPrint('\n========== ❌ DRAFT_LOAD ERROR ==========');
@@ -3937,13 +3954,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               ],
 
               // ✨ בחירת חניכים - כפתור מרכזי (רק למטווחים 474 ותרגילי הפתעה 474)
+              // ✅ FIX: Use selectedSettlement OR settlementName to catch both new drafts and loaded ones
               if ((widget.mode == 'range' &&
                       rangeFolder == 'מטווחים 474' &&
-                      settlementName.isNotEmpty &&
+                      (settlementName.isNotEmpty ||
+                          (selectedSettlement?.isNotEmpty ?? false)) &&
                       _autocompleteTrainees.isNotEmpty) ||
                   (widget.mode == 'surprise' &&
                       surpriseDrillsFolder == 'משוב תרגילי הפתעה' &&
-                      settlementName.isNotEmpty &&
+                      (settlementName.isNotEmpty ||
+                          (selectedSettlement?.isNotEmpty ?? false)) &&
                       _autocompleteTrainees.isNotEmpty)) ...[
                 const Text(
                   'בחירת נוכחים',
