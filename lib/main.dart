@@ -6583,20 +6583,17 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                     final data = snapshot.data!.data() as Map<String, dynamic>?;
                     if (data == null) return const SizedBox.shrink();
 
-                    final additionalInstructors =
+                    final additionalInstructorUids =
                         (data['instructors'] as List?)?.cast<String>() ?? [];
 
-                    // Filter out main instructor from the list
-                    final filteredInstructors = additionalInstructors
+                    // ✅ Filter out main instructor UID and empty values
+                    final filteredUids = additionalInstructorUids
                         .where(
-                          (name) =>
-                              name.isNotEmpty &&
-                              name != feedback.instructorName &&
-                              name != resolvedInstructorName,
+                          (uid) => uid.isNotEmpty && uid != currentUser?.uid,
                         )
                         .toList();
 
-                    if (filteredInstructors.isEmpty) {
+                    if (filteredUids.isEmpty) {
                       return const SizedBox.shrink();
                     }
 
@@ -6612,30 +6609,69 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        ...filteredInstructors.map(
-                          (name) => Padding(
-                            padding: const EdgeInsets.only(
-                              right: 12.0,
-                              bottom: 2.0,
-                            ),
-                            child: Row(
-                              children: [
-                                const Text(
-                                  '• ',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
+                        // ✅ Resolve each UID to Hebrew name using FutureBuilder
+                        ...filteredUids.map(
+                          (uid) => FutureBuilder<String>(
+                            future: resolveUserHebrewName(uid),
+                            builder: (context, nameSnapshot) {
+                              // Show loading indicator while resolving
+                              if (nameSnapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: 12.0,
+                                    bottom: 2.0,
                                   ),
-                                ),
-                                Text(
-                                  name,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
+                                  child: Row(
+                                    children: const [
+                                      Text(
+                                        '• ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 1.5,
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                );
+                              }
+
+                              // Display resolved name (or friendly placeholder)
+                              final displayName =
+                                  nameSnapshot.data ?? 'מדריך נוסף';
+
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 12.0,
+                                  bottom: 2.0,
                                 ),
-                              ],
-                            ),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      '• ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 8),
