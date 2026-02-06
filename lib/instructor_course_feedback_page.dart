@@ -217,17 +217,19 @@ class _InstructorCourseFeedbackPageState
         resolvedUpdaterName = resolvedCreatorName;
       }
 
+      // ✅ Check if document exists to preserve original creator
+      final docRef = FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .doc(_stableDraftId);
+
+      final existingDoc = await docRef.get();
+      final isNewDocument = !existingDoc.exists;
+
       final draftData = {
         'status': 'draft',
         'ownerUid': uid, // Required for rules and queries
         'courseType': 'miunim',
-        'createdAt': _existingScreeningId == _stableDraftId
-            ? FieldValue.serverTimestamp()
-            : null,
         'updatedAt': FieldValue.serverTimestamp(),
-        'createdBy': uid,
-        'createdByUid': uid,
-        'createdByName': resolvedCreatorName,
         'updatedByUid': uid, // ✅ Track last editor
         'updatedByName': resolvedUpdaterName, // ✅ Track last editor name
         'command': _selectedPikud ?? '',
@@ -241,15 +243,16 @@ class _InstructorCourseFeedbackPageState
         'module': 'instructor_course_selection',
         'type': 'instructor_course_feedback',
       };
-      // Remove null createdAt if this is an update
-      if (draftData['createdAt'] == null) {
-        draftData.remove('createdAt');
+
+      // ✅ Add createdBy fields ONLY for new documents (preserve original creator)
+      if (isNewDocument) {
+        draftData['createdAt'] = FieldValue.serverTimestamp();
+        draftData['createdBy'] = uid;
+        draftData['createdByUid'] = uid;
+        draftData['createdByName'] = resolvedCreatorName;
       }
 
       // ✅ Save to single collection: instructor_course_evaluations
-      final docRef = FirebaseFirestore.instance
-          .collection('instructor_course_evaluations')
-          .doc(_stableDraftId);
 
       final draftDocPath = docRef.path;
       debugPrint(
@@ -503,8 +506,7 @@ class _InstructorCourseFeedbackPageState
           'candidateName': _candidateNameController.text.trim(),
           'candidateNumber': _candidateNumber ?? 0,
           'title': _candidateNameController.text.trim(),
-          'createdByUid': uid,
-          'createdByName': resolvedCreatorName,
+          // ✅ DON'T update createdBy* - preserve original creator!
         });
 
         debugPrint('✅ MIUNIM_SAVE_OK: evalId=$draftId, docPath=$finalDocPath');
