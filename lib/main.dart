@@ -1876,49 +1876,55 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(
-            child: _loadingData
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 12),
-                        Text('טוען נתונים...'),
-                      ],
-                    ),
-                  )
-                : IndexedStack(index: selectedIndex, children: _pages),
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: selectedIndex,
-        onTap: (i) => setState(() => selectedIndex = i),
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.blueGrey.shade900,
-        selectedItemColor: Colors.orangeAccent,
-        unselectedItemColor: Colors.white,
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'בית'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment),
-            label: 'תרגילים',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.feedback), label: 'משובים'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'סטטיסטיקה',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.menu_book),
-            label: 'חומר עיוני',
-          ),
-        ],
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            SafeArea(
+              child: _loadingData
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 12),
+                          Text('טוען נתונים...'),
+                        ],
+                      ),
+                    )
+                  : IndexedStack(index: selectedIndex, children: _pages),
+            ),
+          ],
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: selectedIndex,
+          onTap: (i) => setState(() => selectedIndex = i),
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.blueGrey.shade900,
+          selectedItemColor: Colors.orangeAccent,
+          unselectedItemColor: Colors.white,
+          showUnselectedLabels: true,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'בית'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.assignment),
+              label: 'תרגילים',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.feedback),
+              label: 'משובים',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart),
+              label: 'סטטיסטיקה',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.menu_book),
+              label: 'חומר עיוני',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -15780,7 +15786,7 @@ class _AboutPageState extends State<AboutPage> {
           title: const Text('אודות המערכת'),
           leading: const StandardBackButton(),
         ),
-        body: Padding(
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Center(
             child: Column(
@@ -15820,6 +15826,16 @@ class _AboutPageState extends State<AboutPage> {
                 const SizedBox(height: 8),
                 const Text(
                   'יותם אלון',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'דוד בן צבי',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
