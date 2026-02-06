@@ -613,30 +613,37 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
 
     // ✨ NEW: Load feedbacks where I'm an additional instructor (non-admins only)
     // This includes BOTH final AND temporary (drafts) feedbacks
-    // ✅ CRITICAL: Uses UID for instructors array (NOT name) - more reliable
+    // ✅ HYBRID: Check BOTH UID and name for backward compatibility
     if (!adminFlag) {
       debugPrint('\n🔍 ===== LOADING SHARED FEEDBACKS (FINAL + DRAFTS) =====');
       debugPrint(
-        '   Looking for feedbacks where UID=$uid is in instructors array',
+        '   Looking for feedbacks where I am in instructors array (UID or name)',
       );
-      try {
-        final sharedQuery = FirebaseFirestore.instance
-            .collection('feedbacks')
-            .where('instructors', arrayContains: uid)
-            .orderBy('createdAt', descending: true);
 
-        final sharedSnap = await sharedQuery.get().timeout(
+      int finalCount = 0;
+      int draftCount = 0;
+      final Set<String> processedIds =
+          {}; // Track processed to avoid duplicates
+
+      try {
+        // Query 1: Search by UID (new format)
+        debugPrint('   🔍 Query 1: Searching by UID=$uid');
+        final sharedQueryByUid = FirebaseFirestore.instance
+            .collection('feedbacks')
+            .where('instructors', arrayContains: uid);
+
+        final sharedSnapByUid = await sharedQueryByUid.get().timeout(
           const Duration(seconds: 10),
         );
-        debugPrint('   Found ${sharedSnap.docs.length} shared feedback(s)');
+        debugPrint(
+          '   Found ${sharedSnapByUid.docs.length} feedback(s) by UID',
+        );
 
-        int finalCount = 0;
-        int draftCount = 0;
-
-        for (final doc in sharedSnap.docs) {
+        for (final doc in sharedSnapByUid.docs) {
           final raw = doc.data();
-          // Skip if already in storage (avoid duplicates)
-          if (feedbackStorage.any((f) => f.id == doc.id)) {
+          // Skip if already in storage or already processed
+          if (feedbackStorage.any((f) => f.id == doc.id) ||
+              processedIds.contains(doc.id)) {
             debugPrint('  ⏭️ Skipping ${doc.id} (already in storage)');
             continue;
           }
@@ -644,27 +651,73 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
           final model = FeedbackModel.fromMap(raw, id: doc.id);
           if (model != null) {
             feedbackStorage.add(model);
+            processedIds.add(doc.id);
             if (model.isTemporary) {
               draftCount++;
               debugPrint(
-                '  ✅ Added shared DRAFT: ${model.name} by ${model.instructorName}',
+                '  ✅ Added shared DRAFT (by UID): ${model.name} by ${model.instructorName}',
               );
             } else {
               finalCount++;
               debugPrint(
-                '  ✅ Added shared FINAL: ${model.name} by ${model.instructorName}',
+                '  ✅ Added shared FINAL (by UID): ${model.name} by ${model.instructorName}',
               );
             }
           }
         }
-
-        debugPrint('📋 Total shared: $finalCount final + $draftCount drafts');
-        debugPrint(
-          '📋 Total after shared: ${feedbackStorage.length} feedbacks',
-        );
       } catch (e) {
-        debugPrint('⚠️ Failed to load shared feedbacks: $e');
+        debugPrint('⚠️ Failed to load shared feedbacks by UID: $e');
       }
+
+      // Query 2: Search by name (fallback for old data)
+      try {
+        final currentUserName = currentUser?.name ?? '';
+        if (currentUserName.isNotEmpty) {
+          debugPrint('   🔍 Query 2: Searching by name="$currentUserName"');
+          final sharedQueryByName = FirebaseFirestore.instance
+              .collection('feedbacks')
+              .where('instructors', arrayContains: currentUserName);
+
+          final sharedSnapByName = await sharedQueryByName.get().timeout(
+            const Duration(seconds: 10),
+          );
+          debugPrint(
+            '   Found ${sharedSnapByName.docs.length} feedback(s) by name',
+          );
+
+          for (final doc in sharedSnapByName.docs) {
+            final raw = doc.data();
+            // Skip if already in storage or already processed
+            if (feedbackStorage.any((f) => f.id == doc.id) ||
+                processedIds.contains(doc.id)) {
+              debugPrint('  ⏭️ Skipping ${doc.id} (already processed)');
+              continue;
+            }
+
+            final model = FeedbackModel.fromMap(raw, id: doc.id);
+            if (model != null) {
+              feedbackStorage.add(model);
+              processedIds.add(doc.id);
+              if (model.isTemporary) {
+                draftCount++;
+                debugPrint(
+                  '  ✅ Added shared DRAFT (by name): ${model.name} by ${model.instructorName}',
+                );
+              } else {
+                finalCount++;
+                debugPrint(
+                  '  ✅ Added shared FINAL (by name): ${model.name} by ${model.instructorName}',
+                );
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to load shared feedbacks by name: $e');
+      }
+
+      debugPrint('📋 Total shared: $finalCount final + $draftCount drafts');
+      debugPrint('📋 Total after shared: ${feedbackStorage.length} feedbacks');
       debugPrint('🔍 ===== END SHARED FEEDBACKS =====\n');
     }
 
@@ -10165,8 +10218,10 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       if (!isAdmin) {
         if (currentUser == null) return false;
         final isCreator = f.instructorName == (currentUser?.name ?? '');
-        // ✅ CHECK: instructors array contains my UID (not name - more reliable)
-        final isAdditionalInstructor = f.instructors.contains(currentUid);
+        // ✅ HYBRID CHECK: instructors array by UID OR name (backward compatible)
+        final isAdditionalInstructor =
+            f.instructors.contains(currentUid) ||
+            f.instructors.contains(currentUser?.name ?? '');
         if (!isCreator && !isAdditionalInstructor) {
           return false;
         }
@@ -12373,8 +12428,10 @@ class _SurpriseDrillsStatisticsPageState
       if (!isAdmin) {
         if (currentUser == null) return false;
         final isCreator = f.instructorName == (currentUser?.name ?? '');
-        // ✅ CHECK: instructors array contains my UID (not name - more reliable)
-        final isAdditionalInstructor = f.instructors.contains(currentUid);
+        // ✅ HYBRID CHECK: instructors array by UID OR name (backward compatible)
+        final isAdditionalInstructor =
+            f.instructors.contains(currentUid) ||
+            f.instructors.contains(currentUser?.name ?? '');
         if (!isCreator && !isAdditionalInstructor) {
           return false;
         }

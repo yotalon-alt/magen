@@ -16,7 +16,7 @@ class SurpriseDrillsEntryPage extends StatelessWidget {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('תרגילי הפתעה 474'),
+          title: const Text('תרגילי הפתעה'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_forward),
             onPressed: () => Navigator.pop(context),
@@ -35,7 +35,7 @@ class SurpriseDrillsEntryPage extends StatelessWidget {
 
                 // Title
                 const Text(
-                  'תרגילי הפתעה 474',
+                  'תרגילי הפתעה',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),

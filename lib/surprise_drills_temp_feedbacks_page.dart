@@ -87,33 +87,66 @@ class _SurpriseDrillsTempFeedbacksPageState
       }
 
       // ✨ NEW: Load temp surprise drills where I'm an additional instructor (non-admins only)
+      // ✅ HYBRID: Check BOTH UID and name for backward compatibility
       if (!isAdmin) {
-        debugPrint('\n🔍 Loading shared temp surprise drills...');
+        debugPrint('\n🔍 Loading shared temp surprise drills (UID + name)...');
+        final Set<String> processedIds = {};
+
+        // Query 1: Search by UID
         try {
-          final sharedQuery = FirebaseFirestore.instance
+          debugPrint('   Query 1: By UID=$uid');
+          final sharedQueryByUid = FirebaseFirestore.instance
               .collection('feedbacks')
               .where('module', isEqualTo: 'surprise_drill')
               .where('isTemporary', isEqualTo: true)
-              .where('instructors', arrayContains: uid)
-              .orderBy('createdAt', descending: true);
+              .where('instructors', arrayContains: uid);
 
-          final sharedSnap = await sharedQuery.get();
-          debugPrint(
-            '   Found ${sharedSnap.docs.length} shared temp surprise drill(s)',
-          );
+          final sharedSnapByUid = await sharedQueryByUid.get();
+          debugPrint('   Found ${sharedSnapByUid.docs.length} by UID');
 
-          for (final doc in sharedSnap.docs) {
+          for (final doc in sharedSnapByUid.docs) {
             final data = doc.data();
-            // Skip if already in list (avoid duplicates)
-            if (feedbacks.any((f) => f['id'] == doc.id)) {
+            if (feedbacks.any((f) => f['id'] == doc.id) ||
+                processedIds.contains(doc.id)) {
               continue;
             }
             data['id'] = doc.id;
             feedbacks.add(data);
-            debugPrint('  ✅ Added shared temp: ${data['settlement']}');
+            processedIds.add(doc.id);
+            debugPrint('  ✅ Added shared (UID): ${data['settlement']}');
           }
         } catch (e) {
-          debugPrint('⚠️ Failed to load shared temp surprise drills: $e');
+          debugPrint('⚠️ Failed to load by UID: $e');
+        }
+
+        // Query 2: Search by name
+        try {
+          final currentUserName = currentUser?.name ?? '';
+          if (currentUserName.isNotEmpty) {
+            debugPrint('   Query 2: By name="$currentUserName"');
+            final sharedQueryByName = FirebaseFirestore.instance
+                .collection('feedbacks')
+                .where('module', isEqualTo: 'surprise_drill')
+                .where('isTemporary', isEqualTo: true)
+                .where('instructors', arrayContains: currentUserName);
+
+            final sharedSnapByName = await sharedQueryByName.get();
+            debugPrint('   Found ${sharedSnapByName.docs.length} by name');
+
+            for (final doc in sharedSnapByName.docs) {
+              final data = doc.data();
+              if (feedbacks.any((f) => f['id'] == doc.id) ||
+                  processedIds.contains(doc.id)) {
+                continue;
+              }
+              data['id'] = doc.id;
+              feedbacks.add(data);
+              processedIds.add(doc.id);
+              debugPrint('  ✅ Added shared (name): ${data['settlement']}');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to load by name: $e');
         }
       }
 

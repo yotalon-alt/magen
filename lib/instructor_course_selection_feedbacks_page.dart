@@ -24,9 +24,13 @@ class _InstructorCourseSelectionFeedbacksPageState
   // Filter state variables
   String _filterCommand = 'הכל'; // Dropdown: הכל, צפון, מרכז, דרום
   final TextEditingController _filterNameController = TextEditingController();
-  final TextEditingController _filterNumberController = TextEditingController();
+  final TextEditingController _filterNumberFromController =
+      TextEditingController();
+  final TextEditingController _filterNumberToController =
+      TextEditingController();
   String _filterName = '';
-  String _filterNumber = '';
+  String _filterNumberFrom = '';
+  String _filterNumberTo = '';
   DateTime? _filterDateFrom;
   DateTime? _filterDateTo;
 
@@ -47,72 +51,102 @@ class _InstructorCourseSelectionFeedbacksPageState
   @override
   void dispose() {
     _filterNameController.dispose();
-    _filterNumberController.dispose();
+    _filterNumberFromController.dispose();
+    _filterNumberToController.dispose();
     super.dispose();
   }
 
   /// Get filtered feedbacks based on search filters (AND logic, case-insensitive contains)
   List<Map<String, dynamic>> get _filteredFeedbacks {
+    List<Map<String, dynamic>> result;
+
     if (_filterCommand == 'הכל' &&
         _filterName.isEmpty &&
-        _filterNumber.isEmpty &&
+        _filterNumberFrom.isEmpty &&
+        _filterNumberTo.isEmpty &&
         _filterDateFrom == null &&
         _filterDateTo == null) {
-      return _feedbacks;
+      result = _feedbacks;
+    } else {
+      result = _feedbacks.where((feedback) {
+        // Command filter (פיקוד) - exact match
+        if (_filterCommand != 'הכל') {
+          final command = (feedback['command'] ?? '').toString();
+          if (command != _filterCommand) {
+            return false;
+          }
+        }
+
+        // Name filter (שם)
+        if (_filterName.isNotEmpty) {
+          final candidateName = (feedback['candidateName'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (!candidateName.contains(_filterName.toLowerCase())) {
+            return false;
+          }
+        }
+
+        // Number filter (מס׳ חניך) - range filter
+        if (_filterNumberFrom.isNotEmpty || _filterNumberTo.isNotEmpty) {
+          final candidateNumber = feedback['candidateNumber'] as int?;
+          if (candidateNumber != null) {
+            if (_filterNumberFrom.isNotEmpty) {
+              final fromNum = int.tryParse(_filterNumberFrom);
+              if (fromNum != null && candidateNumber < fromNum) {
+                return false;
+              }
+            }
+            if (_filterNumberTo.isNotEmpty) {
+              final toNum = int.tryParse(_filterNumberTo);
+              if (toNum != null && candidateNumber > toNum) {
+                return false;
+              }
+            }
+          } else {
+            // If no number, exclude from range filter
+            return false;
+          }
+        }
+
+        // Date filter
+        if (_filterDateFrom != null || _filterDateTo != null) {
+          final createdAt = feedback['createdAt'];
+          DateTime? feedbackDate;
+          if (createdAt is Timestamp) {
+            feedbackDate = createdAt.toDate();
+          } else if (createdAt is String) {
+            feedbackDate = DateTime.tryParse(createdAt);
+          }
+          if (feedbackDate != null) {
+            if (_filterDateFrom != null &&
+                feedbackDate.isBefore(_filterDateFrom!)) {
+              return false;
+            }
+            if (_filterDateTo != null &&
+                feedbackDate.isAfter(
+                  _filterDateTo!.add(const Duration(days: 1)),
+                )) {
+              return false;
+            }
+          }
+        }
+
+        return true;
+      }).toList();
     }
 
-    return _feedbacks.where((feedback) {
-      // Command filter (פיקוד) - exact match
-      if (_filterCommand != 'הכל') {
-        final command = (feedback['command'] ?? '').toString();
-        if (command != _filterCommand) {
-          return false;
-        }
-      }
+    // Sort by candidateNumber (ascending)
+    result.sort((a, b) {
+      final numA = a['candidateNumber'] as int?;
+      final numB = b['candidateNumber'] as int?;
+      if (numA == null && numB == null) return 0;
+      if (numA == null) return 1; // null values at the end
+      if (numB == null) return -1;
+      return numA.compareTo(numB);
+    });
 
-      // Name filter (שם)
-      if (_filterName.isNotEmpty) {
-        final candidateName = (feedback['candidateName'] ?? '')
-            .toString()
-            .toLowerCase();
-        if (!candidateName.contains(_filterName.toLowerCase())) {
-          return false;
-        }
-      }
-
-      // Number filter (מס׳ חניך)
-      if (_filterNumber.isNotEmpty) {
-        final candidateNumber = (feedback['candidateNumber'] ?? '').toString();
-        if (!candidateNumber.contains(_filterNumber)) {
-          return false;
-        }
-      }
-
-      // Date filter
-      if (_filterDateFrom != null || _filterDateTo != null) {
-        final createdAt = feedback['createdAt'];
-        DateTime? feedbackDate;
-        if (createdAt is Timestamp) {
-          feedbackDate = createdAt.toDate();
-        } else if (createdAt is String) {
-          feedbackDate = DateTime.tryParse(createdAt);
-        }
-        if (feedbackDate != null) {
-          if (_filterDateFrom != null &&
-              feedbackDate.isBefore(_filterDateFrom!)) {
-            return false;
-          }
-          if (_filterDateTo != null &&
-              feedbackDate.isAfter(
-                _filterDateTo!.add(const Duration(days: 1)),
-              )) {
-            return false;
-          }
-        }
-      }
-
-      return true;
-    }).toList();
+    return result;
   }
 
   /// Clear all filters
@@ -120,11 +154,13 @@ class _InstructorCourseSelectionFeedbacksPageState
     setState(() {
       _filterCommand = 'הכל';
       _filterName = '';
-      _filterNumber = '';
+      _filterNumberFrom = '';
+      _filterNumberTo = '';
       _filterDateFrom = null;
       _filterDateTo = null;
       _filterNameController.clear();
-      _filterNumberController.clear();
+      _filterNumberFromController.clear();
+      _filterNumberToController.clear();
     });
   }
 
@@ -132,7 +168,8 @@ class _InstructorCourseSelectionFeedbacksPageState
   bool get _hasActiveFilters =>
       _filterCommand != 'הכל' ||
       _filterName.isNotEmpty ||
-      _filterNumber.isNotEmpty ||
+      _filterNumberFrom.isNotEmpty ||
+      _filterNumberTo.isNotEmpty ||
       _filterDateFrom != null ||
       _filterDateTo != null;
 
@@ -988,31 +1025,65 @@ class _InstructorCourseSelectionFeedbacksPageState
                           onChanged: (v) => setState(() => _filterName = v),
                         ),
                       ),
-                      // Number filter (מס׳ חניך)
+                      // Number FROM filter (ממס׳ חניך)
                       SizedBox(
-                        width: 160,
+                        width: 110,
                         child: TextField(
-                          controller: _filterNumberController,
+                          controller: _filterNumberFromController,
                           decoration: InputDecoration(
-                            labelText: 'מס׳ חניך',
+                            labelText: 'ממספר',
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 8,
                             ),
-                            prefixIcon: const Icon(Icons.tag, size: 20),
-                            suffixIcon: _filterNumber.isNotEmpty
+                            prefixIcon: const Icon(
+                              Icons.arrow_upward,
+                              size: 20,
+                            ),
+                            suffixIcon: _filterNumberFrom.isNotEmpty
                                 ? IconButton(
                                     icon: const Icon(Icons.clear, size: 18),
                                     onPressed: () {
-                                      _filterNumberController.clear();
-                                      setState(() => _filterNumber = '');
+                                      _filterNumberFromController.clear();
+                                      setState(() => _filterNumberFrom = '');
                                     },
                                   )
                                 : null,
                           ),
                           keyboardType: TextInputType.number,
-                          onChanged: (v) => setState(() => _filterNumber = v),
+                          onChanged: (v) =>
+                              setState(() => _filterNumberFrom = v),
+                        ),
+                      ),
+                      // Number TO filter (עד מס׳ חניך)
+                      SizedBox(
+                        width: 110,
+                        child: TextField(
+                          controller: _filterNumberToController,
+                          decoration: InputDecoration(
+                            labelText: 'עד מספר',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.arrow_downward,
+                              size: 20,
+                            ),
+                            suffixIcon: _filterNumberTo.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _filterNumberToController.clear();
+                                      setState(() => _filterNumberTo = '');
+                                    },
+                                  )
+                                : null,
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => setState(() => _filterNumberTo = v),
                         ),
                       ),
                       // Date from filter
