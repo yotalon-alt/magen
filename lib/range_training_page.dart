@@ -504,6 +504,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         }
       });
 
+      // ✅ FIX: Save trainee names immediately after selection
+      _scheduleAutoSave();
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

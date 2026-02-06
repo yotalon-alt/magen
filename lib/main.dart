@@ -16033,6 +16033,50 @@ class _AboutPageState extends State<AboutPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 24),
+
+                // Recent updates
+                Card(
+                  color: Colors.blue.shade50,
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.new_releases,
+                              color: Colors.blue.shade700,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'עדכונים אחרונים - גרסה 2.1.3',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          '• תיקון: שמירת רשימת חניכים במטווחים גם ללא בחירת מקצה\n'
+                          '• תיקון: שמירה אוטומטית לאחר בחירת חניכים מהדיאלוג\n'
+                          '• שיפור: שמירה מיידית של נתונים בכל שדות הטופס',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.black87,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
