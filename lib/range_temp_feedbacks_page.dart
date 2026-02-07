@@ -54,17 +54,6 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
       //   2. module ASC + isTemporary ASC + instructorId ASC + createdAt DESC (for instructors)
       // =====================================================
 
-      // 🔍 DIAGNOSTIC: TEMP_LIST_QUERY - Log exact query filters
-      debugPrint('\n========== TEMP_LIST_QUERY DIAGNOSTIC ==========');
-      debugPrint('TEMP_LIST_QUERY: collection=feedbacks');
-      debugPrint('TEMP_LIST_QUERY: where module == shooting_ranges');
-      debugPrint('TEMP_LIST_QUERY: where isTemporary == true');
-      if (!isAdmin) {
-        debugPrint('TEMP_LIST_QUERY: where instructorId == $uid');
-      }
-      debugPrint('TEMP_LIST_QUERY: orderBy createdAt DESC');
-      debugPrint('=================================================\n');
-
       Query query = FirebaseFirestore.instance
           .collection('feedbacks')
           .where('module', isEqualTo: 'shooting_ranges')
@@ -86,67 +75,27 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
         feedbacks.add(data);
       }
 
-      // ✨ NEW: Load temp feedbacks where I'm an additional instructor (non-admins only)
-      // ✅ HYBRID: Check BOTH UID and name for backward compatibility
+      // ✨ Load temp feedbacks where I'm an additional instructor (non-admins only)
       if (!isAdmin) {
-        debugPrint('\n🔍 Loading shared temp feedbacks (UID + name)...');
-        final Set<String> processedIds = {};
-
-        // Query 1: Search by UID
         try {
-          debugPrint('   Query 1: By UID=$uid');
-          final sharedQueryByUid = FirebaseFirestore.instance
+          final sharedQuery = FirebaseFirestore.instance
               .collection('feedbacks')
               .where('module', isEqualTo: 'shooting_ranges')
               .where('isTemporary', isEqualTo: true)
-              .where('instructors', arrayContains: uid);
+              .where('instructors', arrayContains: currentUser?.name ?? '');
 
-          final sharedSnapByUid = await sharedQueryByUid.get();
-          debugPrint('   Found ${sharedSnapByUid.docs.length} by UID');
+          final sharedSnap = await sharedQuery.get();
 
-          for (final doc in sharedSnapByUid.docs) {
+          for (final doc in sharedSnap.docs) {
             final data = doc.data();
-            if (feedbacks.any((f) => f['id'] == doc.id) ||
-                processedIds.contains(doc.id)) {
+            if (feedbacks.any((f) => f['id'] == doc.id)) {
               continue;
             }
             data['id'] = doc.id;
             feedbacks.add(data);
-            processedIds.add(doc.id);
-            debugPrint('  ✅ Added shared (UID): ${data['settlement']}');
           }
         } catch (e) {
-          debugPrint('⚠️ Failed to load by UID: $e');
-        }
-
-        // Query 2: Search by name
-        try {
-          final currentUserName = currentUser?.name ?? '';
-          if (currentUserName.isNotEmpty) {
-            debugPrint('   Query 2: By name="$currentUserName"');
-            final sharedQueryByName = FirebaseFirestore.instance
-                .collection('feedbacks')
-                .where('module', isEqualTo: 'shooting_ranges')
-                .where('isTemporary', isEqualTo: true)
-                .where('instructors', arrayContains: currentUserName);
-
-            final sharedSnapByName = await sharedQueryByName.get();
-            debugPrint('   Found ${sharedSnapByName.docs.length} by name');
-
-            for (final doc in sharedSnapByName.docs) {
-              final data = doc.data();
-              if (feedbacks.any((f) => f['id'] == doc.id) ||
-                  processedIds.contains(doc.id)) {
-                continue;
-              }
-              data['id'] = doc.id;
-              feedbacks.add(data);
-              processedIds.add(doc.id);
-              debugPrint('  ✅ Added shared (name): ${data['settlement']}');
-            }
-          }
-        } catch (e) {
-          debugPrint('⚠️ Failed to load by name: $e');
+          // Silently fail - user will just see their own feedbacks
         }
       }
 
@@ -162,28 +111,7 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
 
       if (e.code == 'failed-precondition' ||
           e.message?.contains('index') == true) {
-        debugPrint('');
-        debugPrint('🔥🔥🔥 MISSING INDEX ERROR 🔥🔥🔥');
-        debugPrint('');
-        debugPrint('Query Details:');
-        debugPrint('  Collection: feedbacks');
-        debugPrint('  Filters:');
-        debugPrint('    - module == "shooting_ranges"');
-        debugPrint('    - isTemporary == true');
-        final isAdmin = currentUser?.role == 'Admin';
-        if (!isAdmin) {
-          debugPrint('    - instructorId == "${currentUser?.uid}"');
-        }
-        debugPrint('  OrderBy: createdAt (DESCENDING)');
-        debugPrint('');
-        debugPrint('Required Index:');
-        debugPrint(
-          '  Fields: module (ASC) + isTemporary (ASC) + ${isAdmin ? "" : "instructorId (ASC) + "}createdAt (DESC)',
-        );
-        debugPrint('');
-        debugPrint('To fix: Run "firebase deploy --only firestore:indexes"');
-        debugPrint('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥');
-        debugPrint('');
+        debugPrint('❌ MISSING INDEX: ${e.message}');
 
         setState(() {
           _isLoading = false;
@@ -390,8 +318,10 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                       : (settlementNameField.isNotEmpty
                             ? settlementNameField
                             : 'לא צוין');
-                  final instructorName =
-                      feedback['instructorName'] as String? ?? '';
+                  final createdByName =
+                      feedback['createdByName'] as String? ?? '';
+                  final updatedByName =
+                      feedback['updatedByName'] as String? ?? '';
                   final attendeesCount =
                       feedback['attendeesCount'] as int? ?? 0;
 
@@ -409,8 +339,13 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
 
                   // Build metadata lines
                   final metadataLines = <String>[];
-                  if (instructorName.isNotEmpty) {
-                    metadataLines.add('מדריך: $instructorName');
+                  if (createdByName.isNotEmpty) {
+                    metadataLines.add('מדריך ממשב: $createdByName');
+                  }
+                  // Show last editor only if different from creator
+                  if (updatedByName.isNotEmpty &&
+                      updatedByName != createdByName) {
+                    metadataLines.add('מדריך אחרון שערך: $updatedByName');
                   }
                   if (attendeesCount > 0) {
                     metadataLines.add('משתתפים: $attendeesCount');

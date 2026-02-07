@@ -22,6 +22,7 @@ class _InstructorCourseFeedbackPageState
   bool _isFormLocked = false;
   String? _selectedPikud;
   final List<String> _pikudOptions = ['פיקוד צפון', 'פיקוד מרכז', 'פיקוד דרום'];
+  String? _originalCreatorName; // ✅ Track original creator's name
 
   final TextEditingController _hativaController = TextEditingController();
   final TextEditingController _candidateNameController =
@@ -208,15 +209,6 @@ class _InstructorCourseFeedbackPageState
         }
       });
 
-      // Resolve instructor's Hebrew full name from Firestore
-      String resolvedCreatorName =
-          FirebaseAuth.instance.currentUser?.email ?? '';
-      String resolvedUpdaterName = resolvedCreatorName;
-      if (uid.isNotEmpty) {
-        resolvedCreatorName = await resolveUserHebrewName(uid);
-        resolvedUpdaterName = resolvedCreatorName;
-      }
-
       // ✅ Check if document exists to preserve original creator
       final docRef = FirebaseFirestore.instance
           .collection('instructor_course_evaluations')
@@ -227,11 +219,12 @@ class _InstructorCourseFeedbackPageState
 
       final draftData = {
         'status': 'draft',
-        'ownerUid': uid, // Required for rules and queries
         'courseType': 'miunim',
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedByUid': uid, // ✅ Track last editor
-        'updatedByName': resolvedUpdaterName, // ✅ Track last editor name
+        'updatedByName':
+            currentUser?.name ??
+            '', // ✅ Track last editor name (no Firestore fetch)
         'command': _selectedPikud ?? '',
         'brigade': _hativaController.text.trim(),
         'candidateName': _candidateNameController.text.trim(),
@@ -244,12 +237,14 @@ class _InstructorCourseFeedbackPageState
         'type': 'instructor_course_feedback',
       };
 
-      // ✅ Add createdBy fields ONLY for new documents (preserve original creator)
+      // ✅ Add creator fields ONLY for new documents (preserve original creator)
       if (isNewDocument) {
         draftData['createdAt'] = FieldValue.serverTimestamp();
         draftData['createdBy'] = uid;
         draftData['createdByUid'] = uid;
-        draftData['createdByName'] = resolvedCreatorName;
+        draftData['createdByName'] =
+            currentUser?.name ?? ''; // Use local name (no Firestore fetch)
+        draftData['ownerUid'] = uid; // Set owner only for new documents
       }
 
       // ✅ Save to single collection: instructor_course_evaluations
@@ -260,7 +255,9 @@ class _InstructorCourseFeedbackPageState
       );
       debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: docPath=$draftDocPath');
       debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: evalId=$_stableDraftId');
-      debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: status=draft, ownerUid=$uid');
+      debugPrint(
+        '🔵 MIUNIM_AUTOSAVE_WRITE: status=draft, isNewDocument=$isNewDocument',
+      );
       await docRef.set(draftData, SetOptions(merge: true));
       debugPrint('✅ AUTOSAVE: Save complete');
 
@@ -355,6 +352,9 @@ class _InstructorCourseFeedbackPageState
     _existingScreeningId = widget.screeningId;
     if (_existingScreeningId != null && _existingScreeningId!.isNotEmpty) {
       _loadExistingScreening(_existingScreeningId!);
+    } else {
+      // ✅ New feedback: set creator name to current user
+      _originalCreatorName = currentUser?.name;
     }
   }
 
@@ -375,11 +375,20 @@ class _InstructorCourseFeedbackPageState
       final brigade = (data['brigade'] as String?) ?? '';
       final candName = (data['candidateName'] as String?) ?? '';
       final candNumber = (data['candidateNumber'] as num?)?.toInt();
+
+      // ✅ Load original creator's name (use stored name, no extra fetch)
+      final createdByName = data['createdByName'] as String?;
+      String? originalName = createdByName;
+
       setState(() {
         _selectedPikud = cmd.isNotEmpty ? cmd : _selectedPikud;
         _hativaController.text = brigade;
         _candidateNameController.text = candName;
         _candidateNumber = candNumber;
+        // ✅ FIX: Preserve existing draft ID to prevent creating duplicate with current user's UID
+        _stableDraftId = id;
+        // ✅ Save original creator name
+        _originalCreatorName = originalName;
       });
       final fields = (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
       final Map<String, int> newCats = Map<String, int>.from(categories);
@@ -478,26 +487,19 @@ class _InstructorCourseFeedbackPageState
       debugPrint('🟢 MIUNIM_FINALIZE_WRITE: docPath=$finalDocPath');
       debugPrint('🟢 MIUNIM_FINALIZE_WRITE: evalId=$draftId');
       debugPrint(
-        '🟢 MIUNIM_FINALIZE_WRITE: status=final, isSuitable=$isSuitableForInstructorCourse, ownerUid=$uid',
+        '🟢 MIUNIM_FINALIZE_WRITE: status=final, isSuitable=$isSuitableForInstructorCourse',
       );
-
-      // Resolve instructor's Hebrew full name from Firestore
-      String resolvedCreatorName =
-          FirebaseAuth.instance.currentUser?.email ?? '';
-      String resolvedUpdaterName = resolvedCreatorName;
-      if (uid.isNotEmpty) {
-        resolvedCreatorName = await resolveUserHebrewName(uid);
-        resolvedUpdaterName = resolvedCreatorName;
-      }
 
       try {
         await docRef.update({
           'status': 'final',
-          'ownerUid': uid, // Ensure ownerUid is set
+          // ✅ DON'T update ownerUid - preserve original creator!
           'finalizedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
           'updatedByUid': uid, // ✅ Track last editor
-          'updatedByName': resolvedUpdaterName, // ✅ Track last editor name
+          'updatedByName':
+              currentUser?.name ??
+              '', // ✅ Track last editor name (no Firestore fetch)
           'fields': fields,
           'finalWeightedScore': finalWeightedScore,
           'isSuitable': isSuitableForInstructorCourse,
@@ -976,7 +978,9 @@ class _InstructorCourseFeedbackPageState
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                currentUser?.name ?? 'לא ידוע',
+                                _originalCreatorName ??
+                                    currentUser?.name ??
+                                    'לא ידוע',
                                 style: const TextStyle(
                                   color: Colors.black,
                                   fontSize: 16,

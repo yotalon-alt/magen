@@ -187,6 +187,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   String? loadedFolderLabel; // ✅ Folder label loaded from draft (if any)
   String settlementName = ''; // unified settlement field
   String instructorName = '';
+  String? _originalCreatorName; // ✅ Track original creator's name
   bool isManualLocation =
       false; // Track if "Manual Location" is selected for Surprise Drills
   String manualLocationText =
@@ -315,6 +316,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       _loadExistingTemporaryFeedback(_editingFeedbackId!);
     } else {
       debugPrint('INIT: Starting new feedback (clean slate)');
+      // ✅ New feedback: set creator name to current user
+      _originalCreatorName = currentUser?.name;
     }
     // ✅ Initialize autosave timer (will be scheduled on data changes)
     // ✅ Initialize persistent scroll controllers for table sync
@@ -1871,12 +1874,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('╚════════════════════════════════════════════╝\n');
       }
 
-      // Resolve instructor's Hebrew full name from Firestore
-      String resolvedInstructorName = instructorName;
-      if (uid.isNotEmpty) {
-        resolvedInstructorName = await resolveUserHebrewName(uid);
-      }
-
       // Prepare stations data
       List<Map<String, dynamic>> stationsData;
       if (_rangeType == 'קצרים') {
@@ -1932,13 +1929,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
 
       final Map<String, dynamic> baseData = {
-        'instructorName': resolvedInstructorName,
+        'instructorName':
+            currentUser?.name ?? '', // ✅ Use local name (no Firestore fetch)
         'instructorId': uid,
         'instructorEmail': email,
         'instructorRole': currentUser?.role ?? 'Instructor',
         'instructorUsername': currentUser?.username ?? '',
         'createdAt': FieldValue.serverTimestamp(),
-        'createdByName': resolvedInstructorName,
+        'createdByName':
+            currentUser?.name ?? '', // ✅ Use local name (no Firestore fetch)
         'createdByUid': uid,
         'rangeType': _rangeType,
         'rangeSubType':
@@ -2778,11 +2777,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         );
       }
 
-      String resolvedInstructorName = instructorName;
-      if (uid.isNotEmpty) {
-        resolvedInstructorName = await resolveUserHebrewName(uid);
-      }
-
       // Prepare stations data for temporary save
       List<Map<String, dynamic>> stationsData;
       if (_rangeType == 'קצרים') {
@@ -2839,6 +2833,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final docRef = FirebaseFirestore.instance
           .collection('feedbacks')
           .doc(draftId);
+
+      // ✅ Check if document exists to preserve original creator
+      final existingDoc = await docRef.get();
+      final isNewDocument = !existingDoc.exists;
+
       Map<String, dynamic> patch = {
         'status': 'temporary',
         'isDraft': true,
@@ -2853,9 +2852,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             : (_rangeType == 'ארוכים' ? 'range_long' : moduleType)),
         'rangeMode': widget.mode,
         'instructorId': uid,
-        'instructorName': resolvedInstructorName,
-        'createdByName': resolvedInstructorName,
-        'createdByUid': uid,
+        'instructorName':
+            currentUser?.name ?? '', // ✅ Use local name (no Firestore fetch)
+        'updatedByUid': uid, // ✅ Track last editor
+        'updatedByName': currentUser?.name ?? '', // ✅ Track last editor name
         'rangeType': _rangeType,
         'rangeSubType': rangeSubType,
         // ✅ FIX: Settlement value based on mode
@@ -2881,9 +2881,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'summary': trainingSummary, // ✅ סיכום האימון מהמדריך
       };
 
+      // ✅ Add creator fields ONLY for new documents (preserve original creator)
+      if (isNewDocument) {
+        patch['createdByName'] = currentUser?.name ?? '';
+        patch['createdByUid'] = uid;
+        patch['createdAt'] = FieldValue.serverTimestamp();
+      }
+
       // 🔍 DEBUG: Log temp save flags before write
       debugPrint(
-        'TEMP_SAVE_FLAGS: docId=$draftId isTemporary=true finalizedAt=null status=temporary',
+        'TEMP_SAVE_FLAGS: docId=$draftId isTemporary=true finalizedAt=null status=temporary isNewDocument=$isNewDocument',
       );
 
       // ✅ FIX: ALWAYS save trainees (even if no stations yet)
@@ -3063,6 +3070,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           data['longRangeManualStageName'] as String?;
       final rawLongRangeManualBulletsCount =
           data['longRangeManualBulletsCount'] as num?;
+
+      // ✅ Load original creator's name (use stored name)
+      final createdByName = data['createdByName'] as String?;
 
       debugPrint('DRAFT_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
       debugPrint('DRAFT_LOAD: rawStations.length=${rawStations?.length ?? -1}');
@@ -3246,6 +3256,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // ✅ UPDATE STATE: Replace all data with loaded data
       setState(() {
+        // ✅ Save original creator name
+        _originalCreatorName = createdByName;
+
         // Update metadata
         selectedSettlement = rawSettlement ?? selectedSettlement;
         settlementName = rawSettlementName ?? settlementName;
@@ -3755,10 +3768,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
               // מדריך
               TextField(
-                controller: TextEditingController(text: instructorName)
-                  ..selection = TextSelection.collapsed(
-                    offset: instructorName.length,
-                  ),
+                controller:
+                    TextEditingController(
+                        text: _originalCreatorName ?? instructorName,
+                      )
+                      ..selection = TextSelection.collapsed(
+                        offset: (_originalCreatorName ?? instructorName).length,
+                      ),
                 decoration: const InputDecoration(
                   labelText: 'מדריך',
                   border: OutlineInputBorder(),

@@ -50,19 +50,6 @@ class _SurpriseDrillsTempFeedbacksPageState
 
       final isAdmin = currentUser?.role == 'Admin';
 
-      debugPrint('\n🔍 ===== LOADING SURPRISE DRILLS TEMP FEEDBACKS =====');
-      debugPrint('   User UID: $uid');
-      debugPrint('   Is Admin: $isAdmin');
-      debugPrint('   Query:');
-      debugPrint('     collection: feedbacks');
-      debugPrint('     where: module == "surprise_drill"');
-      debugPrint('     where: isTemporary == true');
-      if (!isAdmin) {
-        debugPrint('     where: instructorId == "$uid"');
-      }
-      debugPrint('     orderBy: createdAt DESC');
-      debugPrint('🔍 ================================================\n');
-
       Query query = FirebaseFirestore.instance
           .collection('feedbacks')
           .where('module', isEqualTo: 'surprise_drill')
@@ -92,17 +79,19 @@ class _SurpriseDrillsTempFeedbacksPageState
         debugPrint('\n🔍 Loading shared temp surprise drills (UID + name)...');
         final Set<String> processedIds = {};
 
-        // Query 1: Search by UID
+        // Query: Search by instructor name in instructors array
         try {
-          debugPrint('   Query 1: By UID=$uid');
+          debugPrint('   Query: By instructor name=${currentUser?.name}');
           final sharedQueryByUid = FirebaseFirestore.instance
               .collection('feedbacks')
               .where('module', isEqualTo: 'surprise_drill')
               .where('isTemporary', isEqualTo: true)
-              .where('instructors', arrayContains: uid);
+              .where('instructors', arrayContains: currentUser?.name ?? '');
 
           final sharedSnapByUid = await sharedQueryByUid.get();
-          debugPrint('   Found ${sharedSnapByUid.docs.length} by UID');
+          debugPrint(
+            '   Found ${sharedSnapByUid.docs.length} shared feedbacks',
+          );
 
           for (final doc in sharedSnapByUid.docs) {
             final data = doc.data();
@@ -157,27 +146,9 @@ class _SurpriseDrillsTempFeedbacksPageState
         });
       }
     } on FirebaseException catch (e) {
-      debugPrint('❌ FirebaseException: ${e.code}');
-      debugPrint('   Message: ${e.message}');
-
       if (e.code == 'failed-precondition' ||
           e.message?.contains('index') == true) {
-        debugPrint('\n🔥 COMPOSITE INDEX ERROR DETECTED!');
-        debugPrint('   Required index:');
-        debugPrint('     Collection: feedbacks');
-        debugPrint('     Fields:');
-        debugPrint('       1. module (Ascending)');
-        debugPrint('       2. isTemporary (Ascending)');
-        if (currentUser?.role != 'Admin') {
-          debugPrint('       3. instructorId (Ascending)');
-        }
-        debugPrint('       N. createdAt (Descending)');
-        debugPrint('');
-        debugPrint(
-          '   Deploy indexes: firebase deploy --only firestore:indexes',
-        );
-        debugPrint('🔥 ==========================================\n');
-
+        debugPrint('❌ MISSING INDEX: ${e.message}');
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -203,7 +174,7 @@ class _SurpriseDrillsTempFeedbacksPageState
         });
       }
     } catch (e) {
-      debugPrint('❌ Unexpected error: $e');
+      debugPrint('❌ Error loading temp feedbacks: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -356,7 +327,8 @@ class _SurpriseDrillsTempFeedbacksPageState
         final settlement = (feedback['settlement'] ?? '').toString();
         final attendeesCount =
             (feedback['attendeesCount'] as num?)?.toInt() ?? 0;
-        final instructorName = (feedback['instructorName'] ?? '').toString();
+        final createdByName = (feedback['createdByName'] ?? '').toString();
+        final updatedByName = (feedback['updatedByName'] ?? '').toString();
 
         final createdAt = feedback['createdAt'];
         String dateStr = '';
@@ -371,8 +343,12 @@ class _SurpriseDrillsTempFeedbacksPageState
 
         // Build metadata lines
         final metadataLines = <String>[];
-        if (instructorName.isNotEmpty) {
-          metadataLines.add('מדריך: $instructorName');
+        if (createdByName.isNotEmpty) {
+          metadataLines.add('מדריך ממשב: $createdByName');
+        }
+        // Show last editor only if different from creator
+        if (updatedByName.isNotEmpty && updatedByName != createdByName) {
+          metadataLines.add('מדריך אחרון שערך: $updatedByName');
         }
         metadataLines.add('נוכחים: $attendeesCount');
         if (dateStr.isNotEmpty) {
