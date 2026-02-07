@@ -2186,11 +2186,6 @@ class _HomePageState extends State<HomePage>
   late final Animation<double> _scale;
   late final Animation<Offset> _offset;
 
-  // ✨ NEW: Version tracking for update alert
-  String _currentVersion = '';
-  String _savedVersion = '';
-  bool _showUpdateAlert = false;
-
   @override
   void initState() {
     super.initState();
@@ -2214,140 +2209,6 @@ class _HomePageState extends State<HomePage>
       _controller.forward();
       _hasPlayed = true;
     }
-
-    // ✨ Check for app version changes
-    _checkVersionUpdate();
-  }
-
-  /// Check if app version has changed - show update alert if needed
-  Future<void> _checkVersionUpdate() async {
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      final prefs = await SharedPreferences.getInstance();
-
-      final currentVersion =
-          '${packageInfo.version}+${packageInfo.buildNumber}';
-      final savedVersion = prefs.getString('app_version') ?? '';
-
-      if (mounted) {
-        setState(() {
-          _currentVersion = currentVersion;
-          _savedVersion = savedVersion;
-          // Show alert if version changed AND we had a previous version
-          _showUpdateAlert =
-              savedVersion.isNotEmpty && currentVersion != savedVersion;
-        });
-
-        debugPrint(
-          '🔔 Version check: current=$currentVersion, saved=$savedVersion, showAlert=$_showUpdateAlert',
-        );
-      }
-    } catch (e) {
-      debugPrint('⚠️ Version check error: $e');
-    }
-  }
-
-  /// User acknowledged the update - save new version and hide alert
-  Future<void> _dismissUpdateAlert() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('app_version', _currentVersion);
-
-      if (mounted) {
-        setState(() {
-          _savedVersion = _currentVersion;
-          _showUpdateAlert = false;
-        });
-      }
-
-      debugPrint('✅ Version saved: $_currentVersion');
-    } catch (e) {
-      debugPrint('⚠️ Save version error: $e');
-    }
-  }
-
-  /// Show update instructions dialog
-  void _showUpdateDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: Row(
-            children: const [
-              Icon(Icons.update, color: Colors.orangeAccent, size: 32),
-              SizedBox(width: 12),
-              Text('עדכון אפליקציה'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'האפליקציה עודכנה לגרסה חדשה!',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'כדי להבטיח שכל העדכונים ייטענו כראוי:',
-                style: TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orangeAccent.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orangeAccent, width: 2),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      '1️⃣ סגור את האפליקציה',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      '2️⃣ פתח את האפליקציה מחדש',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_savedVersion.isNotEmpty)
-                Text(
-                  'גרסה קודמת: $_savedVersion',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              if (_savedVersion.isNotEmpty) const SizedBox(height: 4),
-              Text(
-                'גרסה חדשה: $_currentVersion',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _dismissUpdateAlert();
-              },
-              child: const Text('הבנתי'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -2445,42 +2306,6 @@ class _HomePageState extends State<HomePage>
               ),
             ),
           ),
-          // ✨ Update alert button (top center, below header)
-          if (_showUpdateAlert)
-            Positioned(
-              top: 120,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Directionality(
-                  textDirection: TextDirection.rtl,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                    child: ElevatedButton.icon(
-                      onPressed: _showUpdateDialog,
-                      icon: const Icon(Icons.update, size: 24),
-                      label: const Text(
-                        'עדכון זמין - סגור ופתח את האפליקציה',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orangeAccent,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 16,
-                        ),
-                        elevation: 12,
-                        shadowColor: Colors.orangeAccent.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           // Logout button in top left corner
           Positioned(
             top: 16,
