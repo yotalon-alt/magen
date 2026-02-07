@@ -2186,6 +2186,10 @@ class _HomePageState extends State<HomePage>
   late final Animation<double> _scale;
   late final Animation<Offset> _offset;
 
+  // Version tracking for update notifications
+  String _currentVersion = '';
+  bool _showUpdateAlert = false;
+
   @override
   void initState() {
     super.initState();
@@ -2209,6 +2213,160 @@ class _HomePageState extends State<HomePage>
       _controller.forward();
       _hasPlayed = true;
     }
+
+    // Check for app version changes
+    _checkVersionUpdate();
+  }
+
+  /// Check if app version has changed - show update alert if needed
+  Future<void> _checkVersionUpdate() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final prefs = await SharedPreferences.getInstance();
+
+      final currentVersion =
+          '${packageInfo.version}+${packageInfo.buildNumber}';
+      final savedVersion = prefs.getString('app_version') ?? '';
+
+      if (mounted) {
+        setState(() {
+          _currentVersion = currentVersion;
+          // Show alert if version changed AND we had a previous version
+          _showUpdateAlert =
+              savedVersion.isNotEmpty && currentVersion != savedVersion;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Version check error: $e');
+    }
+  }
+
+  /// User acknowledged the update - save new version and hide alert
+  Future<void> _dismissUpdateAlert() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('app_version', _currentVersion);
+
+      if (mounted) {
+        setState(() {
+          _showUpdateAlert = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Save version error: $e');
+    }
+  }
+
+  /// Show update instructions dialog (simple, no version numbers)
+  void _showUpdateDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.update, color: Colors.orangeAccent, size: 32),
+              SizedBox(width: 12),
+              Text('עדכון אפליקציה'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'האפליקציה עודכנה!',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'כדי להבטיח שכל העדכונים ייטענו כראוי:',
+                style: TextStyle(fontSize: 15),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orangeAccent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orangeAccent, width: 2),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '1️⃣ סגור את הטאב/חלון',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      '2️⃣ פתח את האפליקציה מחדש',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: Colors.blue,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'לפעמים צריך לעשות זאת פעמיים',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.blue.shade800,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _dismissUpdateAlert();
+              },
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                backgroundColor: Colors.orangeAccent,
+                foregroundColor: Colors.black,
+              ),
+              child: const Text(
+                'הבנתי',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -2306,6 +2464,65 @@ class _HomePageState extends State<HomePage>
               ),
             ),
           ),
+          // Update alert button (top center)
+          if (_showUpdateAlert)
+            Positioned(
+              top: 100,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Material(
+                      elevation: 8,
+                      borderRadius: BorderRadius.circular(16),
+                      color: Colors.orangeAccent,
+                      child: InkWell(
+                        onTap: _showUpdateDialog,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 18,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(
+                                Icons.update,
+                                size: 28,
+                                color: Colors.black87,
+                              ),
+                              SizedBox(width: 16),
+                              Flexible(
+                                child: Text(
+                                  'עדכון זמין! נא לסגור ולפתוח מחדש את האפליקציה',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 18,
+                                color: Colors.black54,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Logout button in top left corner
           Positioned(
             top: 16,
