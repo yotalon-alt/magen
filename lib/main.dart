@@ -475,32 +475,6 @@ Future<String> resolveUserHebrewName(String uid) async {
 }
 
 // Load feedbacks from Firestore according to current user permissions
-// בדיקה זמנית - שאילתה פשוטה בלי where לוודא שהדאטה קיימת
-Future<void> testSimpleFeedbackQuery() async {
-  try {
-    debugPrint('\n🧪 ===== TEST: Simple Query (no filters) =====');
-    final snap = await FirebaseFirestore.instance
-        .collection('feedbacks')
-        .orderBy('createdAt', descending: true)
-        .get()
-        .timeout(const Duration(seconds: 10));
-
-    debugPrint('✅ TEST SUCCESS: Got ${snap.docs.length} total documents');
-
-    for (var i = 0; i < snap.docs.length && i < 3; i++) {
-      final doc = snap.docs[i];
-      final data = doc.data();
-      debugPrint(
-        '   Doc $i: id=${doc.id}, instructorId=${data['instructorId']}, createdAt=${data['createdAt']}',
-      );
-    }
-
-    debugPrint('🧪 ===== TEST END =====\n');
-  } catch (e) {
-    debugPrint('❌ TEST FAILED: $e');
-  }
-}
-
 Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
   feedbackStorage.clear();
   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -565,7 +539,7 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
   debugPrint('🚀 Executing Firestore query...');
 
   try {
-    final snap = await q.get().timeout(const Duration(seconds: 15));
+    final snap = await q.get().timeout(const Duration(seconds: 8));
     final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = snap.docs
         .cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
 
@@ -625,72 +599,48 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
       final Set<String> processedIds =
           {}; // Track processed to avoid duplicates
 
-      try {
-        // Query 1: Search by UID (new format)
-        debugPrint('   🔍 Query 1: Searching by UID=$uid');
-        final sharedQueryByUid = FirebaseFirestore.instance
+      // ⚡ PERFORMANCE: Run both queries in parallel
+      final currentUserName = currentUser?.name ?? '';
+      final futures = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
+
+      // Query 1: Search by UID (new format)
+      debugPrint('   🔍 Preparing Query 1: UID=$uid');
+      futures.add(
+        FirebaseFirestore.instance
             .collection('feedbacks')
-            .where('instructors', arrayContains: uid);
+            .where('instructors', arrayContains: uid)
+            .get()
+            .timeout(const Duration(seconds: 5)),
+      );
 
-        final sharedSnapByUid = await sharedQueryByUid.get().timeout(
-          const Duration(seconds: 10),
+      // Query 2: Search by name (fallback for old data) - only if name exists
+      if (currentUserName.isNotEmpty) {
+        debugPrint('   🔍 Preparing Query 2: name="$currentUserName"');
+        futures.add(
+          FirebaseFirestore.instance
+              .collection('feedbacks')
+              .where('instructors', arrayContains: currentUserName)
+              .get()
+              .timeout(const Duration(seconds: 5)),
         );
-        debugPrint(
-          '   Found ${sharedSnapByUid.docs.length} feedback(s) by UID',
-        );
-
-        for (final doc in sharedSnapByUid.docs) {
-          final raw = doc.data();
-          // Skip if already in storage or already processed
-          if (feedbackStorage.any((f) => f.id == doc.id) ||
-              processedIds.contains(doc.id)) {
-            debugPrint('  ⏭️ Skipping ${doc.id} (already in storage)');
-            continue;
-          }
-
-          final model = FeedbackModel.fromMap(raw, id: doc.id);
-          if (model != null) {
-            feedbackStorage.add(model);
-            processedIds.add(doc.id);
-            if (model.isTemporary) {
-              draftCount++;
-              debugPrint(
-                '  ✅ Added shared DRAFT (by UID): ${model.name} by ${model.instructorName}',
-              );
-            } else {
-              finalCount++;
-              debugPrint(
-                '  ✅ Added shared FINAL (by UID): ${model.name} by ${model.instructorName}',
-              );
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ Failed to load shared feedbacks by UID: $e');
       }
 
-      // Query 2: Search by name (fallback for old data)
+      // Execute both queries in parallel
       try {
-        final currentUserName = currentUser?.name ?? '';
-        if (currentUserName.isNotEmpty) {
-          debugPrint('   🔍 Query 2: Searching by name="$currentUserName"');
-          final sharedQueryByName = FirebaseFirestore.instance
-              .collection('feedbacks')
-              .where('instructors', arrayContains: currentUserName);
+        debugPrint('   ⚡ Executing ${futures.length} queries in parallel...');
+        final results = await Future.wait(futures, eagerError: false);
 
-          final sharedSnapByName = await sharedQueryByName.get().timeout(
-            const Duration(seconds: 10),
-          );
-          debugPrint(
-            '   Found ${sharedSnapByName.docs.length} feedback(s) by name',
-          );
+        // Process results from both queries
+        for (var i = 0; i < results.length; i++) {
+          final snap = results[i];
+          final queryType = i == 0 ? 'UID' : 'name';
+          debugPrint('   Found ${snap.docs.length} feedback(s) by $queryType');
 
-          for (final doc in sharedSnapByName.docs) {
+          for (final doc in snap.docs) {
             final raw = doc.data();
             // Skip if already in storage or already processed
             if (feedbackStorage.any((f) => f.id == doc.id) ||
                 processedIds.contains(doc.id)) {
-              debugPrint('  ⏭️ Skipping ${doc.id} (already processed)');
               continue;
             }
 
@@ -700,20 +650,18 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
               processedIds.add(doc.id);
               if (model.isTemporary) {
                 draftCount++;
-                debugPrint(
-                  '  ✅ Added shared DRAFT (by name): ${model.name} by ${model.instructorName}',
-                );
               } else {
                 finalCount++;
-                debugPrint(
-                  '  ✅ Added shared FINAL (by name): ${model.name} by ${model.instructorName}',
-                );
               }
             }
           }
         }
+
+        debugPrint(
+          '   ✅ Processed ${processedIds.length} unique shared feedbacks',
+        );
       } catch (e) {
-        debugPrint('⚠️ Failed to load shared feedbacks by name: $e');
+        debugPrint('⚠️ Failed to load shared feedbacks: $e');
       }
 
       debugPrint('📋 Total shared: $finalCount final + $draftCount drafts');
@@ -754,7 +702,7 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
       final evalSnap = await evalQuery
           .orderBy('createdAt', descending: true)
           .get()
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 5));
 
       debugPrint(
         '   Found ${evalSnap.docs.length} instructor course evaluations',
@@ -1818,60 +1766,9 @@ class _MainScreenState extends State<MainScreen> {
         },
       ),
     ];
-    // Initial data load from Firestore to populate feedbackStorage
-    Future.microtask(() async {
-      try {
-        // בדיקה זמנית - מריצים שאילתה פשוטה קודם
-        await testSimpleFeedbackQuery();
-
-        final isAdmin = currentUser?.role == 'Admin';
-        debugPrint('\n🔍 ===== DIAGNOSTIC INFO =====');
-        debugPrint('   currentUser.name: ${currentUser?.name}');
-        debugPrint('   currentUser.role: ${currentUser?.role}');
-        debugPrint('   currentUser.uid: ${currentUser?.uid}');
-        debugPrint(
-          '   auth.currentUser.uid: ${FirebaseAuth.instance.currentUser?.uid}',
-        );
-        debugPrint('   isAdmin: $isAdmin');
-        debugPrint(
-          '   feedbackStorage.length BEFORE load: ${feedbackStorage.length}',
-        );
-        debugPrint('🔍 ===========================\n');
-        debugPrint(
-          '📥 Loading feedbacks for role: ${currentUser?.role} (isAdmin: $isAdmin)',
-        );
-        await loadFeedbacksForCurrentUser(isAdmin: isAdmin).timeout(
-          const Duration(seconds: 20),
-          onTimeout: () {
-            debugPrint('MainScreen: feedback load timeout');
-            // Don't throw; just continue with empty feedbackStorage
-          },
-        );
-
-        // ✅ קריטי: קורא ל-setState אחרי שה-feedbackStorage התעדכן
-        if (mounted) {
-          setState(() {
-            debugPrint('\n✅ ===== UI UPDATE =====');
-            debugPrint(
-              '   feedbackStorage.length AFTER load: ${feedbackStorage.length}',
-            );
-            debugPrint('   Triggering rebuild...');
-            debugPrint('✅ ====================\n');
-          });
-        }
-      } catch (e) {
-        debugPrint('MainScreen: feedback load error $e');
-        // Continue; let UI show empty state
-      } finally {
-        // Always clear loading state, regardless of success/timeout/error
-        if (mounted) {
-          setState(() {
-            _loadingData = false;
-            debugPrint('MainScreen: _loadingData cleared for instructor/admin');
-          });
-        }
-      }
-    });
+    // ⚡ PERFORMANCE: Clear loading state immediately - lazy load feedbacks when needed
+    _loadingData = false;
+    debugPrint('✅ MainScreen initialized - feedbacks will load on demand');
   }
 
   @override
@@ -4825,6 +4722,7 @@ class FeedbacksPage extends StatefulWidget {
 
 class _FeedbacksPageState extends State<FeedbacksPage> {
   bool _isRefreshing = false;
+  bool _isInitialLoading = false;
   String?
   _selectedFolder; // null = show folders, non-null = show feedbacks from that folder
   String selectedSettlement = 'כל היישובים';
@@ -4842,6 +4740,42 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   bool _selectionMode = false;
   final Set<String> _selectedFeedbackIds = {};
   bool _isExporting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // ⚡ LAZY LOADING: Load feedbacks only when FeedbacksPage opens
+    _loadInitialFeedbacks();
+  }
+
+  Future<void> _loadInitialFeedbacks() async {
+    // Skip if already loaded
+    if (feedbackStorage.isNotEmpty) {
+      debugPrint(
+        '✅ Feedbacks already loaded (${feedbackStorage.length} items)',
+      );
+      return;
+    }
+
+    setState(() => _isInitialLoading = true);
+
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      debugPrint('📥 Lazy loading feedbacks for ${currentUser?.role}...');
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      setState(() {});
+      debugPrint(
+        '✅ Initial load complete: ${feedbackStorage.length} feedbacks',
+      );
+    } catch (e) {
+      debugPrint('❌ Initial load error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isInitialLoading = false);
+      }
+    }
+  }
 
   /// Helper: Get Hebrew display label for folder (handles internal values)
   String _getFolderDisplayLabel(String internalValue) {
@@ -5372,6 +5306,29 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading indicator during initial load
+    if (_isInitialLoading) {
+      return Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('משובים'),
+            backgroundColor: Colors.blueGrey.shade800,
+          ),
+          body: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('טוען משובים...', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final isAdmin = currentUser?.role == 'Admin';
 
     // Show folders view
