@@ -247,6 +247,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // ✅ AUTOSAVE TIMER: Debounced autosave (700ms delay)
   Timer? _autoSaveTimer;
 
+  // ✅ REAL-TIME SYNC: Listen to concurrent edits by other admins
+  StreamSubscription<DocumentSnapshot>? _draftListener;
+  bool _isLoadingRemoteChanges = false;
+  String? _lastRemoteUpdateBy;
+
   // ✅ STABLE CONTROLLERS: Prevent focus loss on rebuild
   // Key format: "trainee_{idx}" for name fields, "trainee_{idx}_station_{stationIdx}" for numeric fields
   final Map<String, TextEditingController> _textControllers = {};
@@ -709,6 +714,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   @override
   void dispose() {
+    _draftListener?.cancel(); // ✅ Cancel real-time listener
     _autoSaveTimer?.cancel();
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
@@ -2978,12 +2984,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // ✅ CRITICAL: Store draftId in _editingFeedbackId after FIRST save
       // This ensures subsequent _saveFinalFeedback() UPDATES same doc instead of creating new one
-      if (_editingFeedbackId == null || _editingFeedbackId != draftId) {
+      final bool isFirstSave =
+          _editingFeedbackId == null || _editingFeedbackId != draftId;
+      if (isFirstSave) {
         _editingFeedbackId = draftId;
         debugPrint('DRAFT_SAVE: ✅ _editingFeedbackId set to "$draftId"');
         debugPrint(
           'DRAFT_SAVE: Next final save will UPDATE this doc, not create new',
         );
+
+        // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins
+        _startListeningToDraft(draftId);
       }
 
       debugPrint('========== ✅ DRAFT_SAVE END ==========');
@@ -3014,6 +3025,180 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // );
     } finally {
       _isSaving = false;
+    }
+  }
+
+  /// ✅ REAL-TIME SYNC: Start listening to draft changes by other admins
+  void _startListeningToDraft(String draftId) {
+    // Cancel previous listener if exists
+    _draftListener?.cancel();
+
+    debugPrint('🔄 REALTIME: Starting listener for draft=$draftId');
+
+    final docRef = FirebaseFirestore.instance
+        .collection('feedbacks')
+        .doc(draftId);
+
+    _draftListener = docRef.snapshots().listen(
+      (snapshot) {
+        if (!snapshot.exists || !mounted) {
+          debugPrint(
+            '⚠️ REALTIME: Snapshot does not exist or widget unmounted',
+          );
+          return;
+        }
+
+        final data = snapshot.data();
+        if (data == null) {
+          debugPrint('⚠️ REALTIME: Snapshot data is null');
+          return;
+        }
+
+        // Check who updated
+        final updatedByUid = data['updatedByUid'] as String?;
+        final updatedByName = data['updatedByName'] as String?;
+        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
+        // Ignore our own updates
+        if (updatedByUid == currentUid) {
+          debugPrint('⏭️ REALTIME: Ignoring own update');
+          return;
+        }
+
+        debugPrint('📥 REALTIME: Remote update detected!');
+        debugPrint('   Updated by: $updatedByName (uid=$updatedByUid)');
+
+        // Show notification when another admin edits
+        if (updatedByName != null && updatedByName != _lastRemoteUpdateBy) {
+          _lastRemoteUpdateBy = updatedByName;
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$updatedByName עדכן/ה את המשוב בזמן אמת'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.blue,
+              ),
+            );
+          }
+        }
+
+        // Merge remote changes into local state
+        _mergeRemoteChanges(data);
+      },
+      onError: (error) {
+        debugPrint('❌ REALTIME: Listener error: $error');
+      },
+    );
+  }
+
+  /// ✅ REAL-TIME SYNC: Merge remote changes with local state
+  /// SMART MERGE: Keeps non-empty values from both local and remote
+  void _mergeRemoteChanges(Map<String, dynamic> remoteData) {
+    // Prevent recursion (merging while saving)
+    if (_isLoadingRemoteChanges || _isSaving) {
+      debugPrint('⏸️ REALTIME: Skipping merge (already saving or loading)');
+      return;
+    }
+
+    _isLoadingRemoteChanges = true;
+
+    try {
+      debugPrint('🔄 REALTIME: Merging remote changes...');
+
+      final remoteTrainees = remoteData['trainees'] as List?;
+      if (remoteTrainees == null || remoteTrainees.isEmpty) {
+        debugPrint('⚠️ REALTIME: No remote trainees to merge');
+        _isLoadingRemoteChanges = false;
+        return;
+      }
+
+      debugPrint('   Remote trainees count: ${remoteTrainees.length}');
+      debugPrint('   Local trainees count: ${traineeRows.length}');
+
+      setState(() {
+        // Merge each trainee - KEEP NON-EMPTY VALUES from both sides
+        for (int i = 0; i < remoteTrainees.length; i++) {
+          // Ensure we have enough local rows
+          while (i >= traineeRows.length) {
+            traineeRows.add(
+              TraineeRowModel(index: traineeRows.length, name: ''),
+            );
+          }
+
+          final remoteTrainee = remoteTrainees[i] as Map<String, dynamic>;
+          final remoteName = (remoteTrainee['name'] as String?) ?? '';
+          final remoteValues =
+              remoteTrainee['values'] as Map<String, dynamic>? ?? {};
+
+          debugPrint('   Merging trainee[$i]:');
+          debugPrint('     Local name: "${traineeRows[i].name}"');
+          debugPrint('     Remote name: "$remoteName"');
+
+          // MERGE NAME: Use remote name if local is empty
+          if (traineeRows[i].name.trim().isEmpty && remoteName.isNotEmpty) {
+            debugPrint('     ✅ Taking remote name');
+            traineeRows[i].name = remoteName;
+          } else if (traineeRows[i].name.trim().isNotEmpty &&
+              remoteName.isEmpty) {
+            debugPrint('     ✅ Keeping local name');
+            // Keep local name
+          } else if (traineeRows[i].name.trim().isNotEmpty &&
+              remoteName.isNotEmpty &&
+              traineeRows[i].name != remoteName) {
+            debugPrint(
+              '     ⚠️ Both have names - keeping local (user is editing)',
+            );
+            // Keep local (current user is typing)
+          }
+
+          // MERGE VALUES: Take non-zero values from either side
+          final Map<int, int> mergedValues = Map<int, int>.from(
+            traineeRows[i].values,
+          );
+          int mergedCount = 0;
+
+          remoteValues.forEach((key, value) {
+            final stageIdx = int.tryParse(
+              key.toString().replaceAll('station_', ''),
+            );
+            if (stageIdx != null) {
+              final localValue = traineeRows[i].values[stageIdx] ?? 0;
+              final remoteValue = (value as num?)?.toInt() ?? 0;
+
+              debugPrint(
+                '     Station[$stageIdx]: local=$localValue remote=$remoteValue',
+              );
+
+              // SMART MERGE: Take non-zero value
+              if (localValue == 0 && remoteValue > 0) {
+                mergedValues[stageIdx] = remoteValue;
+                mergedCount++;
+                debugPrint('       → Taking remote value');
+              } else if (localValue > 0 && remoteValue == 0) {
+                // Keep local
+                debugPrint('       → Keeping local value');
+              } else if (localValue > 0 &&
+                  remoteValue > 0 &&
+                  localValue != remoteValue) {
+                // Both have values - keep local (user is actively editing)
+                debugPrint('       → Both non-zero, keeping local');
+              }
+            }
+          });
+
+          // Apply merged values
+          traineeRows[i].values.addAll(mergedValues);
+
+          debugPrint('     Merged $mergedCount cells from remote');
+        }
+      });
+
+      debugPrint('✅ REALTIME: Merge complete');
+    } catch (e) {
+      debugPrint('❌ REALTIME: Merge failed: $e');
+    } finally {
+      _isLoadingRemoteChanges = false;
     }
   }
 
@@ -3520,6 +3705,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       }
 
       debugPrint('========== ✅ DRAFT_LOAD END (SUCCESS) ==========\n');
+
+      // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins
+      _startListeningToDraft(id);
     } catch (e, stackTrace) {
       debugPrint('\n========== ❌ DRAFT_LOAD ERROR ==========');
       debugPrint('DRAFT_LOAD_ERROR: $e');

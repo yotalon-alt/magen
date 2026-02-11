@@ -275,6 +275,12 @@ class _InstructorCourseFeedbackPageState
       debugPrint('AUTOSAVE: Checksum=$verifyChecksum');
       debugPrint('========== ✅ AUTOSAVE END ==========\n');
 
+      // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins/instructors
+      final bool isFirstSave = _draftListener == null;
+      if (isFirstSave && _stableDraftId != null) {
+        _startListeningToDraft(_stableDraftId!);
+      }
+
       if (mounted) {
         setState(() {
           _hasUnsavedChanges = false;
@@ -292,6 +298,160 @@ class _InstructorCourseFeedbackPageState
     }
   }
 
+  /// ✅ REAL-TIME SYNC: Start listening to draft changes by other admins/instructors
+  void _startListeningToDraft(String draftId) {
+    // Cancel previous listener if exists
+    _draftListener?.cancel();
+
+    debugPrint('🔄 REALTIME_INSTRUCTOR: Starting listener for evalId=$draftId');
+
+    final docRef = FirebaseFirestore.instance
+        .collection('instructor_course_evaluations')
+        .doc(draftId);
+
+    _draftListener = docRef.snapshots().listen(
+      (snapshot) {
+        if (!snapshot.exists || !mounted) {
+          debugPrint(
+            '⚠️ REALTIME_INSTRUCTOR: Snapshot does not exist or widget unmounted',
+          );
+          return;
+        }
+
+        final data = snapshot.data();
+        if (data == null) {
+          debugPrint('⚠️ REALTIME_INSTRUCTOR: Snapshot data is null');
+          return;
+        }
+
+        // Check who updated
+        final updatedByUid = data['updatedByUid'] as String?;
+        final updatedByName = data['updatedByName'] as String?;
+        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
+        // Ignore our own updates
+        if (updatedByUid == currentUid) {
+          debugPrint('⏭️ REALTIME_INSTRUCTOR: Ignoring own update');
+          return;
+        }
+
+        debugPrint('📥 REALTIME_INSTRUCTOR: Remote update detected!');
+        debugPrint('   Updated by: $updatedByName (uid=$updatedByUid)');
+
+        // Show notification when another instructor/admin edits
+        if (updatedByName != null && updatedByName != _lastRemoteUpdateBy) {
+          _lastRemoteUpdateBy = updatedByName;
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$updatedByName עדכן/ה את המיון בזמן אמת'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.blue,
+              ),
+            );
+          }
+        }
+
+        // Merge remote changes into local state
+        _mergeRemoteChanges(data);
+      },
+      onError: (error) {
+        debugPrint('❌ REALTIME_INSTRUCTOR: Listener error: $error');
+      },
+    );
+  }
+
+  /// ✅ REAL-TIME SYNC: Merge remote changes with local state
+  /// SMART MERGE: Keeps non-empty/non-zero values from both local and remote
+  void _mergeRemoteChanges(Map<String, dynamic> remoteData) {
+    // Prevent recursion (merging while saving)
+    if (_isLoadingRemoteChanges || _isAutosaving || _isSaving) {
+      debugPrint(
+        '⏸️ REALTIME_INSTRUCTOR: Skipping merge (already saving or loading)',
+      );
+      return;
+    }
+
+    _isLoadingRemoteChanges = true;
+
+    try {
+      debugPrint('🔄 REALTIME_INSTRUCTOR: Merging remote changes...');
+
+      final remoteFields = remoteData['fields'] as Map<String, dynamic>?;
+      if (remoteFields == null) {
+        debugPrint('⚠️ REALTIME_INSTRUCTOR: No remote fields to merge');
+        _isLoadingRemoteChanges = false;
+        return;
+      }
+
+      setState(() {
+        // Merge category scores - KEEP NON-ZERO VALUES from both sides
+        remoteFields.forEach((categoryName, fieldData) {
+          if (fieldData is Map<String, dynamic>) {
+            final remoteValue = (fieldData['value'] as num?)?.toInt() ?? 0;
+            final localValue = categories[categoryName] ?? 0;
+
+            debugPrint(
+              '   Category "$categoryName": local=$localValue remote=$remoteValue',
+            );
+
+            // SMART MERGE: Take non-zero value
+            if (localValue == 0 && remoteValue > 0) {
+              categories[categoryName] = remoteValue;
+              debugPrint('     → Taking remote value');
+            } else if (localValue > 0 && remoteValue == 0) {
+              // Keep local
+              debugPrint('     → Keeping local value');
+            } else if (localValue > 0 &&
+                remoteValue > 0 &&
+                localValue != remoteValue) {
+              // Both have values - keep local (user is actively editing)
+              debugPrint('     → Both non-zero, keeping local');
+            }
+          }
+        });
+
+        // Merge text fields (only if local is empty)
+        final remotePikud = remoteData['command'] as String?;
+        if ((_selectedPikud == null || _selectedPikud!.isEmpty) &&
+            remotePikud != null &&
+            remotePikud.isNotEmpty) {
+          _selectedPikud = remotePikud;
+          debugPrint('   ✅ Merged command: $remotePikud');
+        }
+
+        final remoteBrigade = remoteData['brigade'] as String?;
+        if (_hativaController.text.isEmpty &&
+            remoteBrigade != null &&
+            remoteBrigade.isNotEmpty) {
+          _hativaController.text = remoteBrigade;
+          debugPrint('   ✅ Merged brigade: $remoteBrigade');
+        }
+
+        final remoteName = remoteData['candidateName'] as String?;
+        if (_candidateNameController.text.isEmpty &&
+            remoteName != null &&
+            remoteName.isNotEmpty) {
+          _candidateNameController.text = remoteName;
+          debugPrint('   ✅ Merged candidateName: $remoteName');
+        }
+
+        final remoteNumber = remoteData['candidateNumber'] as num?;
+        if (_candidateNumber == null && remoteNumber != null) {
+          _candidateNumber = remoteNumber.toInt();
+          debugPrint('   ✅ Merged candidateNumber: $_candidateNumber');
+        }
+      });
+
+      debugPrint('✅ REALTIME_INSTRUCTOR: Merge complete');
+    } catch (e) {
+      debugPrint('❌ REALTIME_INSTRUCTOR: Merge failed: $e');
+    } finally {
+      _isLoadingRemoteChanges = false;
+    }
+  }
+
   static const Map<String, double> _categoryWeights = {
     'בוחן רמה': 0.15,
     'תרגיל הפתעה': 0.25,
@@ -304,6 +464,11 @@ class _InstructorCourseFeedbackPageState
   Timer? _autosaveTimer;
   bool _isAutosaving = false;
   String? _stableDraftId; // Stable draft document ID for this session
+
+  // ✅ REAL-TIME SYNC: Listen to concurrent edits by other admins/instructors
+  StreamSubscription<DocumentSnapshot>? _draftListener;
+  bool _isLoadingRemoteChanges = false;
+  String? _lastRemoteUpdateBy;
 
   double get finalWeightedScore {
     for (final category in _categoryWeights.keys) {
@@ -338,6 +503,7 @@ class _InstructorCourseFeedbackPageState
 
   @override
   void dispose() {
+    _draftListener?.cancel(); // ✅ Cancel real-time listener
     _autosaveTimer?.cancel();
     _hativaController.dispose();
     _candidateNameController.dispose();
@@ -409,6 +575,9 @@ class _InstructorCourseFeedbackPageState
         newCats.forEach((k, v) => categories[k] = v);
       });
       _updateLevelTestRating();
+
+      // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins/instructors
+      _startListeningToDraft(id);
     } catch (_) {
     } finally {
       if (mounted) setState(() => _loadingExisting = false);
