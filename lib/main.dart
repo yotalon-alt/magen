@@ -425,14 +425,6 @@ Future<void> main() async {
     ).timeout(const Duration(seconds: 8));
     // ignore: avoid_print
     print('Firebase initialized successfully in main()');
-
-    // ✅ OFFLINE MODE: Enable Firestore persistence for offline support
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
-    // ignore: avoid_print
-    print('✅ Firestore offline persistence enabled');
   } catch (e) {
     // Initialization failed or timed out — log but continue
     // ignore: avoid_print

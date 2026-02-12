@@ -132,45 +132,6 @@
       }
     };
   </script>
-  
-  <!-- ✅ OFFLINE MODE: Service Worker Registration -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/flutter_service_worker.js')
-          .then(function(registration) {
-            console.log('✅ Service Worker registered:', registration.scope);
-            
-            // Check for updates every 60 seconds
-            setInterval(function() {
-              registration.update();
-            }, 60000);
-            
-            // Handle updates
-            registration.addEventListener('updatefound', function() {
-              const newWorker = registration.installing;
-              if (newWorker) {
-                newWorker.addEventListener('statechange', function() {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('🔄 New version available - reload to update');
-                    // Auto-reload after 3 seconds
-                    setTimeout(function() {
-                      window.location.reload();
-                    }, 3000);
-                  }
-                });
-              }
-            });
-          })
-          .catch(function(error) {
-            console.error('❌ Service Worker registration failed:', error);
-          });
-      });
-    } else {
-      console.warn('⚠️ Service Worker not supported in this browser');
-    }
-  </script>
-  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
