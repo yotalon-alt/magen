@@ -234,6 +234,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // Contains ALL data for table: index, name, and all numeric values
   List<TraineeRowModel> traineeRows = [];
 
+  // ✅ LOADED DRAFT TRAINEES: Keep loaded trainee names for restoration when count changes
+  List<TraineeRowModel> _loadedDraftTrainees = [];
+
   // editing document id stored in state so we can create/update temporary docs
   String? _editingFeedbackId;
 
@@ -897,9 +900,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // ✅ Update traineeRows to match count
       if (count > traineeRows.length) {
-        // Add new rows
+        // Add new rows - try to restore from loaded draft
         for (int i = traineeRows.length; i < count; i++) {
-          traineeRows.add(TraineeRowModel(index: i, name: ''));
+          if (i < _loadedDraftTrainees.length &&
+              _loadedDraftTrainees[i].name.trim().isNotEmpty) {
+            // Restore from loaded draft with saved name and values
+            traineeRows.add(
+              TraineeRowModel(
+                index: i,
+                name: _loadedDraftTrainees[i].name,
+                values: Map<int, int>.from(_loadedDraftTrainees[i].values),
+              ),
+            );
+            debugPrint(
+              '   Restored trainee $i: "${_loadedDraftTrainees[i].name}"',
+            );
+          } else {
+            // Create new empty row
+            traineeRows.add(TraineeRowModel(index: i, name: ''));
+          }
         }
       } else if (count < traineeRows.length) {
         // Remove excess rows
@@ -2936,6 +2955,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       await docRef.set(patch, SetOptions(merge: true));
       debugPrint('✅ DRAFT_SAVE: Patch (merge) complete');
 
+      // ✅ Update loaded draft trainees after successful save
+      _loadedDraftTrainees = List<TraineeRowModel>.from(traineeRows);
+
       // ✅ LONG RANGE: Verify we NEVER use add(), ALWAYS use doc(id).set(merge:true)
       if (isLongRange) {
         debugPrint(
@@ -3630,6 +3652,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // ✅ Replace traineeRows with loaded data (NO default empty rows)
         traineeRows = loadedRows;
 
+        // ✅ Save loaded trainees for restoration when count changes
+        _loadedDraftTrainees = List<TraineeRowModel>.from(loadedRows);
+
         // ✅ Load summary text from draft
         final loadedSummary = data['summary'] as String? ?? '';
         trainingSummary = loadedSummary;
@@ -4211,30 +4236,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   final count = int.tryParse(v) ?? 0;
                   _updateAttendeesCount(count);
                 },
+                onSubmitted: (v) {
+                  final count = int.tryParse(v) ?? 0;
+                  _updateAttendeesCount(count);
+                  _saveImmediately(); // שמירה מיידית כשמסיימים לערוך
+                },
               ),
               const SizedBox(height: 32),
 
               // Short Range: Multi-stage dynamic list with add/remove
               if (_rangeType == 'קצרים') ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'מקצים',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _addShortRangeStage,
-                      icon: const Icon(Icons.add),
-                      label: const Text('הוסף מקצה'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
-                    ),
-                  ],
+                // כותרת מקצים
+                const Text(
+                  'מקצים',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
 
@@ -4395,31 +4410,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   );
                 }),
 
+                // כפתור הוסף מקצה/עיקרון - מתחת לרשימת המקצים
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: _addShortRangeStage,
+                    icon: const Icon(Icons.add),
+                    label: Text(_addItemLabel),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 16),
               ],
 
               // Long Range: Multi-stage with add/remove (like Short Range)
               if (_rangeType == 'ארוכים' && widget.mode == 'range') ...[
-                // Header with Add button (like Short Range)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'מקצים',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _addLongRangeStage,
-                      icon: const Icon(Icons.add),
-                      label: const Text('הוסף מקצה'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
-                    ),
-                  ],
+                // כותרת מקצים
+                const Text(
+                  'מקצים',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
 
@@ -4659,31 +4670,30 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   );
                 }),
 
+                // כפתור הוסף מקצה - מתחת לרשימת המקצים
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: _addLongRangeStage,
+                    icon: const Icon(Icons.add),
+                    label: const Text('הוסף מקצה'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 16),
               ],
 
               // Surprise: Multi-principle approach (existing)
               if (widget.mode == 'surprise') ...[
                 // כותרת עקרונות
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _itemsLabel,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _addStation,
-                      icon: const Icon(Icons.add),
-                      label: Text(_addItemLabel),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
-                    ),
-                  ],
+                Text(
+                  _itemsLabel,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
 
@@ -4767,6 +4777,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     ),
                   );
                 }),
+
+                // כפתור הוספת עיקרון - מתחת לרשימת העקרונות
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: _addStation,
+                    icon: const Icon(Icons.add),
+                    label: Text(_addItemLabel),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                    ),
+                  ),
+                ),
               ], // End of Surprise multi-principle section
 
               const SizedBox(height: 32),

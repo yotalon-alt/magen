@@ -7,10 +7,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
     function isAdmin() {
-      return request.auth != null && userRole() == 'admin';
+      return request.auth != null && (userRole() == 'Admin' || userRole() == 'admin');
     }
     function isInstructor() {
-      return request.auth != null && userRole() == 'instructor';
+      return request.auth != null && (userRole() == 'Instructor' || userRole() == 'instructor');
     }
 
     // ===== Production-safe rules =====

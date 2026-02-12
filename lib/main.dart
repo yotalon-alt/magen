@@ -2490,10 +2490,7 @@ class ExercisesPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('תרגילים'),
-          leading: const StandardBackButton(),
-        ),
+        appBar: AppBar(title: const Text('תרגילים')),
         body: ListView.builder(
           itemCount: exercises.length,
           itemBuilder: (ctx, i) {
@@ -9280,10 +9277,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('סטטיסטיקה'),
-          leading: const StandardBackButton(),
-        ),
+        appBar: AppBar(title: const Text('סטטיסטיקה')),
         body: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -15123,10 +15117,7 @@ class MaterialsPage extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('חומר עיוני'),
-          leading: const StandardBackButton(),
-        ),
+        appBar: AppBar(title: const Text('חומר עיוני')),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
           child: ListView.separated(
