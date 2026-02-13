@@ -13295,15 +13295,6 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
     _feedbacks = List.from(widget.feedbacks);
   }
 
-  /// Extract folder type from title (e.g., "מטווחים 474 - ישוב" → "מטווחים 474")
-  String get _folderType {
-    final title = widget.title;
-    if (title.startsWith('מטווחים 474')) return 'מטווחים 474';
-    if (title.startsWith('תרגילי הפתעה 474')) return 'משוב תרגילי הפתעה';
-    if (title.startsWith('סיכום אימון 474')) return 'משוב סיכום אימון 474';
-    return '';
-  }
-
   String _formatTimeSince(Duration duration) {
     if (duration.inMinutes < 60) {
       return 'לפני ${duration.inMinutes} דקות';
@@ -13389,26 +13380,6 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
   Widget _buildDetailedFeedbackCard(FeedbackModel f) {
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
     final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
-
-    // Determine icon and color based on folder type
-    IconData folderIcon = Icons.feedback;
-    Color iconColor = Colors.blue;
-    String typeLabel = '';
-
-    final folderType = _folderType;
-    if (folderType == 'מטווחים 474') {
-      folderIcon = Icons.adjust;
-      typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
-      iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
-    } else if (folderType == 'משוב תרגילי הפתעה') {
-      folderIcon = Icons.flash_on;
-      iconColor = Colors.yellow.shade700;
-      typeLabel = 'תרגיל הפתעה';
-    } else if (folderType == 'משוב סיכום אימון 474') {
-      folderIcon = Icons.summarize;
-      iconColor = Colors.teal;
-      typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-    }
 
     final isAdmin = currentUser?.role == 'Admin';
 
@@ -13499,23 +13470,6 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                 ],
               ),
               const SizedBox(height: 10),
-
-              // Type row
-              Row(
-                children: [
-                  Icon(folderIcon, size: 18, color: iconColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    'סוג: $typeLabel',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
 
               // Exercise row (if applicable)
               if (f.exercise.isNotEmpty) ...[
@@ -15165,37 +15119,6 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
     final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
 
-    // Determine icon and color based on folder
-    IconData folderIcon = Icons.feedback;
-    Color iconColor = Colors.blue;
-    String typeLabel = '';
-
-    if (_selectedFolder == 'מטווחים 474' ||
-        _selectedFolder == '474 Ranges' ||
-        _selectedFolder == 'מטווחי ירי') {
-      folderIcon = Icons.adjust;
-      typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
-      iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
-    } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
-      folderIcon = Icons.shield;
-      iconColor = Colors.purple;
-      typeLabel = 'מחלקת הגנה';
-    } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
-        _selectedFolder == 'תרגילי הפתעה כללי') {
-      folderIcon = Icons.flash_on;
-      iconColor = Colors.yellow.shade700;
-      typeLabel = 'תרגיל הפתעה';
-    } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
-        _selectedFolder == 'סיכום אימון כללי') {
-      folderIcon = Icons.summarize;
-      iconColor = Colors.teal;
-      typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-    } else if (_selectedFolder == 'משובים – כללי') {
-      folderIcon = Icons.fitness_center;
-      iconColor = Colors.green;
-      typeLabel = f.exercise.isNotEmpty ? f.exercise : 'אימון';
-    }
-
     final isAdmin = currentUser?.role == 'Admin';
 
     return Card(
@@ -15285,22 +15208,49 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
               ),
               const SizedBox(height: 10),
 
-              // Type row
-              Row(
-                children: [
-                  Icon(folderIcon, size: 18, color: iconColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    'סוג: $typeLabel',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
+              // Role (if exists)
+              if (f.role.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person_outline,
+                      size: 18,
+                      color: Colors.blue,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'תפקיד: ${f.role}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Name (if exists)
+              if (f.name.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.badge, size: 18, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'שם: ${f.name}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
 
               // Exercise row (if applicable)
               if (f.exercise.isNotEmpty) ...[
