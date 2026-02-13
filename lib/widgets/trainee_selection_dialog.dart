@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Dialog לבחירת חניכים עם checkboxes
 /// מציג רשימה של חניכים לבחירה, עם אפשרות לחיפוש והוספה ידנית
@@ -20,9 +21,10 @@ class TraineeSelectionDialog extends StatefulWidget {
 
 class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
   late Set<String> selectedTrainees;
+  Set<String> manuallyAddedTrainees = {}; // ✨ שמות שנוספו ידנית
   String searchQuery = '';
   final TextEditingController manualNameController = TextEditingController();
-  bool saveManualToList = false;
+  bool saveManualToList = false; // ✨ האם לשמור את השם הידני למחלקה
 
   @override
   void initState() {
@@ -45,7 +47,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
         .toList();
   }
 
-  void _addManualTrainee() {
+  void _addManualTrainee() async {
     final name = manualNameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(
@@ -54,10 +56,62 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
       return;
     }
 
+    // בדיקה אם השם כבר קיים
+    if (selectedTrainees.contains(name)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('שם זה כבר נבחר')));
+      return;
+    }
+
     setState(() {
       selectedTrainees.add(name);
+      manuallyAddedTrainees.add(name); // ✨ עקוב אחרי שמות ידניים
       manualNameController.clear();
     });
+
+    // ✨ שמירה למחלקה אם מסומן
+    if (saveManualToList) {
+      await _saveTraineeToSettlement(name);
+    }
+  }
+
+  /// ✨ שומר חניך למחלקת היישוב ב-Firestore
+  Future<void> _saveTraineeToSettlement(String traineeName) async {
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('settlements')
+          .doc(widget.settlementName)
+          .collection('trainees')
+          .doc(traineeName);
+
+      await docRef.set({
+        'name': traineeName,
+        'addedAt': FieldValue.serverTimestamp(),
+        'addedManually': true,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ "$traineeName" נשמר למחלקת ${widget.settlementName}',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ שגיאה בשמירה: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -103,6 +157,77 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
               ),
               const SizedBox(height: 12),
 
+              // ✨ שיפור 1: הצגת חניכים שנוספו ידנית
+              if (manuallyAddedTrainees.isNotEmpty) ...[
+                Card(
+                  color: Colors.green.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.person_add,
+                              size: 20,
+                              color: Colors.green,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'חניכים שנוספו ידנית (${manuallyAddedTrainees.length})',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ...manuallyAddedTrainees.map((trainee) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2.0),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle,
+                                  size: 16,
+                                  color: Colors.green,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    trainee,
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.close,
+                                    size: 18,
+                                    color: Colors.red,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () {
+                                    setState(() {
+                                      manuallyAddedTrainees.remove(trainee);
+                                      selectedTrainees.remove(trainee);
+                                    });
+                                  },
+                                  tooltip: 'הסר',
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // Select all / Clear buttons
               Row(
                 children: [
@@ -126,10 +251,11 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                       onPressed: () {
                         setState(() {
                           selectedTrainees.clear();
+                          manuallyAddedTrainees.clear(); // ✨ נקה גם שמות ידניים
                         });
                       },
                       icon: const Icon(Icons.clear),
-                      label: const Text('נקה'),
+                      label: const Text('נקה הכל'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                       ),
@@ -150,19 +276,35 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                           final trainee = filteredTrainees[index];
                           final isSelected = selectedTrainees.contains(trainee);
 
-                          return CheckboxListTile(
-                            value: isSelected,
-                            onChanged: (checked) {
-                              setState(() {
-                                if (checked == true) {
-                                  selectedTrainees.add(trainee);
-                                } else {
-                                  selectedTrainees.remove(trainee);
-                                }
-                              });
-                            },
-                            title: Text(trainee),
-                            activeColor: Colors.green,
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: CheckboxListTile(
+                                  value: isSelected,
+                                  onChanged: (checked) {
+                                    setState(() {
+                                      if (checked == true) {
+                                        selectedTrainees.add(trainee);
+                                      } else {
+                                        selectedTrainees.remove(trainee);
+                                      }
+                                    });
+                                  },
+                                  title: Text(trainee),
+                                  activeColor: Colors.green,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                              // ✨ שיפור 3: כפתור שמירה למחלקה
+                              IconButton(
+                                icon: const Icon(Icons.save, size: 18),
+                                tooltip: 'שמור למחלקה',
+                                color: Colors.blue,
+                                onPressed: () async {
+                                  await _saveTraineeToSettlement(trainee);
+                                },
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -194,6 +336,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                                 border: OutlineInputBorder(),
                                 isDense: true,
                               ),
+                              onSubmitted: (_) => _addManualTrainee(),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -206,6 +349,23 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      // ✨ שיפור 2: Checkbox לשמירה למחלקה
+                      CheckboxListTile(
+                        value: saveManualToList,
+                        onChanged: (value) {
+                          setState(() {
+                            saveManualToList = value ?? false;
+                          });
+                        },
+                        title: const Text(
+                          'שמור שם זה למחלקת היישוב',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
                       ),
                     ],
                   ),

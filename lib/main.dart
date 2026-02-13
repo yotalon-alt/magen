@@ -15,6 +15,7 @@ import 'feedback_export_service.dart';
 import 'export_selection_page.dart';
 import 'universal_export_page.dart';
 import 'surprise_drills_entry_page.dart';
+import 'training_summary_entry_page.dart';
 import 'widgets/standard_back_button.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
@@ -1636,7 +1637,7 @@ class _MainScreenState extends State<MainScreen> {
               );
             case '/training_summary':
               return MaterialPageRoute(
-                builder: (_) => const TrainingSummaryFormPage(),
+                builder: (_) => const TrainingSummaryEntryPage(),
                 settings: settings,
               );
             case '/feedback_form':
@@ -3350,7 +3351,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 /* ================== TRAINING SUMMARY FORM PAGE ================== */
 
 class TrainingSummaryFormPage extends StatefulWidget {
-  const TrainingSummaryFormPage({super.key});
+  final String? draftId; // ✨ Optional draft ID for editing existing drafts
+  
+  const TrainingSummaryFormPage({super.key, this.draftId});
 
   @override
   State<TrainingSummaryFormPage> createState() =>
@@ -3372,6 +3375,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   final Map<String, TextEditingController> _instructorNameControllers =
       {}; // בקרים לשמות מדריכים
   bool _isSaving = false;
+  
+  // ✨ Autosave feature
+  Timer? _autosaveTimer;
+  String? _currentDraftId; // Track current draft document ID
 
   // ✨ NEW: Linked feedbacks feature
   List<FeedbackModel> _availableFeedbacks = []; // Feedbacks available to link
@@ -3396,6 +3403,15 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _instructorsCountController = TextEditingController(
       text: instructorsCount.toString(),
     );
+    
+    // ✨ Set draft ID if editing existing draft
+    _currentDraftId = widget.draftId;
+    
+    // ✨ Load draft if draftId is provided
+    if (widget.draftId != null && widget.draftId!.isNotEmpty) {
+      Future.microtask(() => _loadDraft(widget.draftId!));
+    }
+    
     // ✅ CRITICAL: Load trainees on init if settlement already selected (from draft)
     Future.microtask(() {
       if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
@@ -3407,6 +3423,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel(); // ✨ Cancel autosave timer
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
     for (final controller in _attendeeNameControllers.values) {
@@ -3438,6 +3455,201 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       );
     }
     return _instructorNameControllers[key]!;
+  }
+
+  /// ✨ Load existing draft for editing
+  Future<void> _loadDraft(String draftId) async {
+    try {
+      debugPrint('📂 Loading training summary draft: $draftId');
+      
+      final doc = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(draftId)
+          .get();
+
+      if (!doc.exists) {
+        debugPrint('❌ Draft not found: $draftId');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('הטיוטה לא נמצאה'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final data = doc.data()!;
+      
+      debugPrint('✅ Draft loaded successfully');
+      
+      setState(() {
+        trainingSummaryFolder = data['folder'] as String?;
+        selectedSettlement = data['settlement'] as String? ?? '';
+        trainingType = data['trainingType'] as String? ?? '';
+        summary = data['summary'] as String? ?? '';
+        
+        // Load attendees
+        final attendees = (data['attendees'] as List?)?.cast<String>() ?? [];
+        attendeesCount = attendees.length;
+        _attendeesCountController.text = attendeesCount.toString();
+        
+        _attendeeNameControllers.clear();
+        for (int i = 0; i < attendees.length; i++) {
+          _attendeeNameControllers['attendee_$i'] = 
+              TextEditingController(text: attendees[i]);
+        }
+        
+        // Load instructors
+        final instructors = (data['instructors'] as List?)?.cast<String>() ?? [];
+        instructorsCount = instructors.length;
+        _instructorsCountController.text = instructorsCount.toString();
+        
+        _instructorNameControllers.clear();
+        for (int i = 0; i < instructors.length; i++) {
+          _instructorNameControllers['instructor_$i'] = 
+              TextEditingController(text: instructors[i]);
+        }
+        
+        // Load linked feedbacks
+        final linkedIds = (data['linkedFeedbackIds'] as List?)?.cast<String>() ?? [];
+        _selectedFeedbackIds.clear();
+        _selectedFeedbackIds.addAll(linkedIds);
+      });
+      
+      // Load trainees for autocomplete if needed
+      if (selectedSettlement.isNotEmpty && 
+          trainingSummaryFolder == 'משוב סיכום אימון 474') {
+        _loadTraineesForAutocomplete(selectedSettlement);
+      }
+      
+      // Load available feedbacks for linking
+      if (selectedSettlement.isNotEmpty) {
+        _loadAvailableFeedbacks();
+      }
+      
+      debugPrint('📋 Draft state restored: $selectedSettlement / $trainingType / $attendeesCount attendees');
+      
+    } catch (e) {
+      debugPrint('❌ Error loading draft: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאה בטעינת הטיוטה: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// ✨ Trigger autosave after 900ms of inactivity
+  void _triggerAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 900), () {
+      _saveDraft();
+    });
+  }
+
+  /// ✨ Save current state as draft (isTemporary: true)
+  Future<void> _saveDraft() async {
+    // Skip if insufficient data
+    if (selectedSettlement.isEmpty || trainingType.isEmpty) {
+      debugPrint('⏭️ Skipping autosave - insufficient data');
+      return;
+    }
+
+    try {
+      final uid = currentUser?.uid ?? '';
+      if (uid.isEmpty) return;
+
+      // Resolve instructor name
+      String resolvedInstructorName = instructorNameDisplay;
+      if (uid.isNotEmpty) {
+        resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
+      // Collect attendees
+      final List<String> validAttendees = [];
+      for (int i = 0; i < attendeesCount; i++) {
+        final controller = _attendeeNameControllers['attendee_$i'];
+        final name = controller?.text.trim() ?? '';
+        if (name.isNotEmpty) {
+          validAttendees.add(name);
+        }
+      }
+
+      // Collect instructors
+      final List<String> validInstructors = [];
+      for (int i = 0; i < instructorsCount; i++) {
+        final controller = _instructorNameControllers['instructor_$i'];
+        final name = controller?.text.trim() ?? '';
+        if (name.isNotEmpty) {
+          validInstructors.add(name);
+        }
+      }
+
+      // Determine folder keys
+      String folderKey;
+      String folderLabel = trainingSummaryFolder ?? '';
+
+      if (trainingSummaryFolder == 'סיכום אימון כללי') {
+        folderKey = 'training_summary_general';
+      } else {
+        folderKey = 'training_summary_474';
+      }
+
+      final Map<String, dynamic> draftData = {
+        'folder': trainingSummaryFolder,
+        'folderKey': folderKey,
+        'folderLabel': folderLabel,
+        'settlement': selectedSettlement,
+        'trainingType': trainingType,
+        'attendees': validAttendees,
+        'attendeesCount': validAttendees.length,
+        'instructorsCount': validInstructors.length,
+        'instructors': validInstructors,
+        'summary': summary,
+        'instructorName': resolvedInstructorName,
+        'instructorRole': instructorRoleDisplay,
+        'instructorId': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'createdByName': resolvedInstructorName,
+        'createdByUid': uid,
+        'role': '',
+        'name': selectedSettlement,
+        'exercise': 'סיכום אימון',
+        'scores': {},
+        'notes': {},
+        'criteriaList': [],
+        'commandText': '',
+        'commandStatus': 'פתוח',
+        'scenario': '',
+        'module': 'training_summary',
+        'type': 'training_summary',
+        'isTemporary': true, // ✨ Mark as draft
+        'linkedFeedbackIds': _selectedFeedbackIds.toList(),
+      };
+
+      if (_currentDraftId == null || _currentDraftId!.isEmpty) {
+        // Create new draft
+        final ref = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .add(draftData);
+        _currentDraftId = ref.id;
+        debugPrint('✅ Draft created: $_currentDraftId');
+      } else {
+        // Update existing draft
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(_currentDraftId)
+            .set(draftData, SetOptions(merge: true));
+        debugPrint('✅ Draft updated: $_currentDraftId');
+      }
+    } catch (e) {
+      debugPrint('❌ Autosave error: $e');
+    }
   }
 
   /// ✅ Load trainees for autocomplete from previous training summaries
@@ -3512,6 +3724,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         }
       });
 
+      _triggerAutosave(); // ✨ Autosave after trainee selection
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -3527,6 +3741,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     setState(() {
       attendeesCount = count;
     });
+    _triggerAutosave(); // ✨ Autosave
   }
 
   /// ✨ Load available personal feedbacks from same settlement and same day
@@ -3823,6 +4038,19 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
           .collection('feedbacks')
           .add(doc);
 
+      // ✨ Delete draft if exists
+      if (_currentDraftId != null && _currentDraftId!.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(_currentDraftId)
+              .delete();
+          debugPrint('✅ Draft deleted: $_currentDraftId');
+        } catch (e) {
+          debugPrint('⚠️ Failed to delete draft: $e');
+        }
+      }
+
       // Update local cache
       final model = FeedbackModel.fromMap(doc, id: ref.id);
       if (model != null) {
@@ -3911,6 +4139,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                   trainingSummaryFolder = v;
                   // Reset settlement when folder changes
                   selectedSettlement = '';
+                  _triggerAutosave(); // ✨ Autosave
                 }),
               ),
               const SizedBox(height: 12),
@@ -3933,7 +4162,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                     border: OutlineInputBorder(),
                     hintText: 'הזן שם יישוב',
                   ),
-                  onChanged: (v) => setState(() => selectedSettlement = v),
+                  onChanged: (v) {
+                    setState(() => selectedSettlement = v);
+                    _triggerAutosave(); // ✨ Autosave
+                  },
                 ),
               ] else ...[
                 // 474 folder: dropdown from Golan settlements
@@ -3955,6 +4187,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                     if (v != null && v.isNotEmpty) {
                       _loadTraineesForAutocomplete(v);
                     }
+                    _triggerAutosave(); // ✨ Autosave
                   },
                 ),
               ],
@@ -3972,7 +4205,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                   hintText: 'לדוגמה: אימון ירי, אימון שטח, תרגיל לילה',
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (v) => setState(() => trainingType = v),
+                onChanged: (v) {
+                  setState(() => trainingType = v);
+                  _triggerAutosave(); // ✨ Autosave
+                },
               ),
               const SizedBox(height: 12),
 
@@ -4423,7 +4659,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                   alignLabelWithHint: true,
                 ),
                 maxLines: 6,
-                onChanged: (v) => setState(() => summary = v),
+                onChanged: (v) {
+                  setState(() => summary = v);
+                  _triggerAutosave(); // ✨ Autosave
+                },
               ),
               const SizedBox(height: 20),
 
