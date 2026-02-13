@@ -15435,11 +15435,7 @@ class MaterialsPage extends StatelessWidget {
         'route': 'sheva',
       },
       {'title': 'סעב"ל', 'subtitle': 'סדר עדיפויות בלחימה', 'route': 'saabal'},
-      {
-        'title': 'איפוס נשק',
-        'subtitle': 'הליך איפוס ונקיון M16/M4',
-        'route': 'weapon',
-      },
+      {'title': 'איפוס נשק', 'subtitle': 'איפוס M4/ערד', 'route': 'weapon'},
       {
         'title': 'אודות המערכת',
         'subtitle': 'מידע על האפליקציה',

@@ -56,20 +56,12 @@ class WeaponResetPage extends StatelessWidget {
 
                 // Title
                 const Text(
-                  'מצגת איפוס נשק M16/M4',
+                  'איפוס 50/200 מ\'',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-
-                // Description
-                const Text(
-                  'הליך מלא לאיפוס ונקיון נשק',
-                  style: TextStyle(fontSize: 16, color: Colors.black54),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
