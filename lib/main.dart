@@ -15419,9 +15419,15 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
         return f.folder == _selectedFolder;
       }).toList();
     } else {
-      filteredFeedbacks = feedbackStorage
-          .where((f) => f.folder == _selectedFolder && f.isTemporary == false)
-          .toList();
+      // Generic folder filtering with support for alternative folder names
+      // Handle cases like 'מחלקות הגנה 474' vs 'מחלקות ההגנה – חטיבה 474'
+      filteredFeedbacks = feedbackStorage.where((f) {
+        if (f.isTemporary == true) return false;
+
+        // Check both the selected folder name and the initial folder name
+        // This handles different naming conventions
+        return f.folder == _selectedFolder || f.folder == widget.initialFolder;
+      }).toList();
     }
 
     final isRangeFolder =
