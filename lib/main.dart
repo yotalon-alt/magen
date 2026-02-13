@@ -5321,6 +5321,212 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     }
   }
 
+  /// Helper: Format time since feedback was created/updated
+  String _formatTimeSince(Duration duration) {
+    if (duration.inMinutes < 60) {
+      return 'לפני ${duration.inMinutes} דקות';
+    } else if (duration.inHours < 24) {
+      return 'לפני ${duration.inHours} שעות';
+    } else {
+      return 'לפני ${duration.inDays} ימים';
+    }
+  }
+
+  /// Build detailed feedback card (for Brigade 474 and General folders)
+  Widget _buildDetailedFeedbackCard(FeedbackModel f) {
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
+    final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
+
+    // Determine icon and color based on folder
+    IconData folderIcon = Icons.feedback;
+    Color iconColor = Colors.blue;
+    String typeLabel = '';
+
+    if (_selectedFolder == 'מטווחים 474' ||
+        _selectedFolder == '474 Ranges' ||
+        _selectedFolder == 'מטווחי ירי') {
+      folderIcon = Icons.adjust;
+      typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
+      iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
+    } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+      folderIcon = Icons.shield;
+      iconColor = Colors.purple;
+      typeLabel = 'מחלקת הגנה';
+    } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+        _selectedFolder == 'תרגילי הפתעה כללי') {
+      folderIcon = Icons.flash_on;
+      iconColor = Colors.yellow.shade700;
+      typeLabel = 'תרגיל הפתעה';
+    } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי') {
+      folderIcon = Icons.summarize;
+      iconColor = Colors.teal;
+      typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+    } else if (_selectedFolder == 'משובים – כללי') {
+      folderIcon = Icons.fitness_center;
+      iconColor = Colors.green;
+      typeLabel = f.exercise.isNotEmpty ? f.exercise : 'אימון';
+    }
+
+    final isAdmin = currentUser?.role == 'Admin';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).pushNamed('/feedback_details', arguments: f);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header: Settlement and date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            f.settlement.isNotEmpty ? f.settlement : f.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+
+              // Type/Exercise
+              Row(
+                children: [
+                  Icon(folderIcon, size: 16, color: iconColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'סוג: $typeLabel',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Additional info based on folder type
+              if (f.exercise.isNotEmpty &&
+                  _selectedFolder != 'מחלקות ההגנה – חטיבה 474') ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.fitness_center,
+                      size: 16,
+                      color: Colors.green,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'תרגיל: ${f.exercise}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              const SizedBox(height: 6),
+
+              // Trainees count
+              if (f.attendeesCount > 0) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.people, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${f.attendeesCount} משתתפים',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Instructor
+              Row(
+                children: [
+                  const Icon(Icons.person, size: 16, color: Colors.purple),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'מדריך: ${f.instructorName}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+
+              // Time since
+              Text(
+                'שונה $timeSince',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+
+              // Delete button (Admin only)
+              if (isAdmin && !_selectionMode) ...[
+                const SizedBox(height: 6),
+                const Divider(height: 1),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.center,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _confirmDeleteFeedback(
+                      f.id ?? '',
+                      f.settlement.isNotEmpty ? f.settlement : f.name,
+                    ),
+                    icon: const Icon(Icons.delete, size: 16),
+                    label: const Text('מחק משוב'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Export selected feedbacks (generic for all folders)
   Future<void> _exportSelectedFeedbacks() async {
     setState(() => _isExporting = true);
@@ -6685,6 +6891,23 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                         itemBuilder: (_, i) {
                           final f = finalFilteredFeedbacks[i];
 
+                          // ✅ Use detailed card for Brigade 474 and General folders
+                          final useDetailedCard =
+                              _selectedFolder == 'מטווחים 474' ||
+                              _selectedFolder == '474 Ranges' ||
+                              _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
+                              _selectedFolder == 'משוב תרגילי הפתעה' ||
+                              _selectedFolder == 'משוב סיכום אימון 474' ||
+                              _selectedFolder == 'מטווחי ירי' ||
+                              _selectedFolder == 'משובים – כללי' ||
+                              _selectedFolder == 'תרגילי הפתעה כללי' ||
+                              _selectedFolder == 'סיכום אימון כללי';
+
+                          if (useDetailedCard && !_selectionMode) {
+                            return _buildDetailedFeedbackCard(f);
+                          }
+
+                          // Standard card for other folders or selection mode
                           // Build title from feedback data
                           final title =
                               (f.folderKey == 'shooting_ranges' ||
@@ -12963,19 +13186,265 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
 }
 
 /// Widget helper to display filtered feedbacks list from statistics
-class _FeedbacksListFiltered extends StatelessWidget {
+class _FeedbacksListFiltered extends StatefulWidget {
   final List<FeedbackModel> feedbacks;
   final String title;
 
   const _FeedbacksListFiltered({required this.feedbacks, required this.title});
 
   @override
+  State<_FeedbacksListFiltered> createState() => _FeedbacksListFilteredState();
+}
+
+class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
+  late List<FeedbackModel> _feedbacks;
+
+  @override
+  void initState() {
+    super.initState();
+    _feedbacks = List.from(widget.feedbacks);
+  }
+
+  String _formatTimeSince(Duration duration) {
+    if (duration.inMinutes < 60) {
+      return 'לפני ${duration.inMinutes} דקות';
+    } else if (duration.inHours < 24) {
+      return 'לפני ${duration.inHours} שעות';
+    } else {
+      return 'לפני ${duration.inDays} ימים';
+    }
+  }
+
+  Future<void> _deleteFeedback(String id, String settlement) async {
+    try {
+      await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
+
+      // Remove from local list
+      setState(() {
+        _feedbacks.removeWhere((f) => f.id == id);
+      });
+
+      // Also remove from global feedbackStorage
+      feedbackStorage.removeWhere((f) => f.id == id);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('המשוב עבור $settlement נמחק בהצלחה')),
+      );
+    } catch (e) {
+      debugPrint('❌ Error deleting feedback: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה במחיקת משוב: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _confirmDeleteFeedback(String id, String settlement, String date) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת משוב'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'האם למחוק את המשוב?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Text('יישוב: $settlement'),
+              Text('תאריך: $date'),
+              const SizedBox(height: 12),
+              const Text(
+                'אזהרה: פעולה זו אינה ניתנת לביטול!',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _deleteFeedback(id, settlement);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('מחק לצמיתות'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeedbackCard(FeedbackModel f) {
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
+    final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
+
+    // Determine range type and color
+    final rangeSubType = f.rangeSubType;
+    final isShortRange = rangeSubType == 'טווח קצר';
+    final rangeLabel = rangeSubType.isNotEmpty ? rangeSubType : 'טווח';
+    final iconColor = isShortRange ? Colors.blue : Colors.orange;
+
+    final isAdmin = currentUser?.role == 'Admin';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => FeedbackDetailsPage(feedback: f)),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header: Settlement and date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+
+              // Range type
+              Row(
+                children: [
+                  Icon(Icons.adjust, size: 16, color: iconColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    'סוג: $rangeLabel',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+
+              // Trainees count
+              if (f.attendeesCount > 0) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.people, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${f.attendeesCount} משתתפים',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Instructor
+              Row(
+                children: [
+                  const Icon(Icons.person, size: 16, color: Colors.purple),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'מדריך: ${f.instructorName}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+
+              // Time since
+              Text(
+                'שונה $timeSince',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+
+              // Delete button (Admin only)
+              if (isAdmin) ...[
+                const SizedBox(height: 6),
+                const Divider(height: 1),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.center,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _confirmDeleteFeedback(
+                      f.id ?? '',
+                      f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
+                      dateStr,
+                    ),
+                    icon: const Icon(Icons.delete, size: 16),
+                    label: const Text('מחק משוב'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: Text(title), leading: const StandardBackButton()),
-        body: feedbacks.isEmpty
+        appBar: AppBar(
+          title: Text(widget.title),
+          leading: const StandardBackButton(),
+        ),
+        body: _feedbacks.isEmpty
             ? const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -12988,43 +13457,8 @@ class _FeedbacksListFiltered extends StatelessWidget {
               )
             : ListView.builder(
                 padding: const EdgeInsets.all(8),
-                itemCount: feedbacks.length,
-                itemBuilder: (ctx, i) {
-                  final f = feedbacks[i];
-                  final dateStr = DateFormat(
-                    'dd/MM/yy HH:mm',
-                  ).format(f.createdAt);
-
-                  return Card(
-                    margin: const EdgeInsets.symmetric(
-                      vertical: 4,
-                      horizontal: 8,
-                    ),
-                    elevation: 2,
-                    child: ListTile(
-                      title: Text(
-                        f.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        '${f.instructorName} | $dateStr',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      trailing: const Icon(
-                        Icons.arrow_back,
-                        color: Colors.orangeAccent,
-                      ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FeedbackDetailsPage(feedback: f),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
+                itemCount: _feedbacks.length,
+                itemBuilder: (ctx, i) => _buildFeedbackCard(_feedbacks[i]),
               ),
       ),
     );
