@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -11796,12 +11797,21 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
           settlementData.putIfAbsent(f.settlement, () => {});
           settlementData[f.settlement]!.putIfAbsent(
             typeKey,
-            () => {'count': 0, 'trainees': <String>{}},
+            () => {
+              'count': 0,
+              'trainees': <String>{},
+              'feedbacks': <FeedbackModel>[],
+            },
           );
 
           // ✅ INCREMENT COUNT ONCE - at the start of loop for this feedback
           settlementData[f.settlement]![typeKey]!['count'] =
               (settlementData[f.settlement]![typeKey]!['count'] as int) + 1;
+
+          // ✅ ADD FEEDBACK TO LIST for click navigation
+          (settlementData[f.settlement]![typeKey]!['feedbacks']
+                  as List<FeedbackModel>)
+              .add(f);
         }
 
         // ✅ SINGLE Firestore read per feedback - load all data at once
@@ -12631,36 +12641,73 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                 // Training types breakdown (only show if exists)
                                 if (data.containsKey('מטווחים 474') &&
                                     data['מטווחים 474']!['count'] > 0) ...[
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        '🎯 מטווחים:',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.white,
+                                  InkWell(
+                                    onTap: () {
+                                      final feedbacks =
+                                          data['מטווחים 474']!['feedbacks']
+                                              as List<FeedbackModel>;
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              _FeedbacksListFiltered(
+                                                feedbacks: feedbacks,
+                                                title:
+                                                    'מטווחים 474 - $settlement',
+                                              ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${data['מטווחים 474']!['count']} אימונים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.orangeAccent.withValues(
+                                            alpha: 0.3,
+                                          ),
                                         ),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      const Text(
-                                        ' | ',
-                                        style: TextStyle(color: Colors.white70),
+                                      child: Row(
+                                        children: [
+                                          const Text(
+                                            '🎯 מטווחים:',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${data['מטווחים 474']!['count']} אימונים',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            ' | ',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${(data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.greenAccent,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          const Icon(
+                                            Icons.arrow_back,
+                                            size: 18,
+                                            color: Colors.orangeAccent,
+                                          ),
+                                        ],
                                       ),
-                                      Text(
-                                        '${(data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.greenAccent,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -12668,36 +12715,72 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                 if (data.containsKey('משוב תרגילי הפתעה') &&
                                     data['משוב תרגילי הפתעה']!['count'] >
                                         0) ...[
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        '⚡ תרגילי הפתעה:',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.white,
+                                  InkWell(
+                                    onTap: () {
+                                      final feedbacks =
+                                          data['משוב תרגילי הפתעה']!['feedbacks']
+                                              as List<FeedbackModel>;
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => _FeedbacksListFiltered(
+                                            feedbacks: feedbacks,
+                                            title:
+                                                'תרגילי הפתעה 474 - $settlement',
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${data['משוב תרגילי הפתעה']!['count']} אימונים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.orangeAccent.withValues(
+                                            alpha: 0.3,
+                                          ),
                                         ),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      const Text(
-                                        ' | ',
-                                        style: TextStyle(color: Colors.white70),
+                                      child: Row(
+                                        children: [
+                                          const Text(
+                                            '⚡ תרגילי הפתעה:',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${data['משוב תרגילי הפתעה']!['count']} אימונים',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            ' | ',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${(data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.greenAccent,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          const Icon(
+                                            Icons.arrow_back,
+                                            size: 18,
+                                            color: Colors.orangeAccent,
+                                          ),
+                                        ],
                                       ),
-                                      Text(
-                                        '${(data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.greenAccent,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -12734,36 +12817,72 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                 if (data.containsKey('משוב סיכום אימון 474') &&
                                     data['משוב סיכום אימון 474']!['count'] >
                                         0) ...[
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        '📋 סיכום אימון:',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.white,
+                                  InkWell(
+                                    onTap: () {
+                                      final feedbacks =
+                                          data['משוב סיכום אימון 474']!['feedbacks']
+                                              as List<FeedbackModel>;
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => _FeedbacksListFiltered(
+                                            feedbacks: feedbacks,
+                                            title:
+                                                'סיכום אימון 474 - $settlement',
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${data['משוב סיכום אימון 474']!['count']} אימונים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.orangeAccent.withValues(
+                                            alpha: 0.3,
+                                          ),
                                         ),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      const Text(
-                                        ' | ',
-                                        style: TextStyle(color: Colors.white70),
+                                      child: Row(
+                                        children: [
+                                          const Text(
+                                            '📋 סיכום אימון:',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${data['משוב סיכום אימון 474']!['count']} אימונים',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            ' | ',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${(data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.greenAccent,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          const Icon(
+                                            Icons.arrow_back,
+                                            size: 18,
+                                            color: Colors.orangeAccent,
+                                          ),
+                                        ],
                                       ),
-                                      Text(
-                                        '${(data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.greenAccent,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -12839,6 +12958,75 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Widget helper to display filtered feedbacks list from statistics
+class _FeedbacksListFiltered extends StatelessWidget {
+  final List<FeedbackModel> feedbacks;
+  final String title;
+
+  const _FeedbacksListFiltered({required this.feedbacks, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: Text(title), leading: const StandardBackButton()),
+        body: feedbacks.isEmpty
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inbox, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text('אין משובים'),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: feedbacks.length,
+                itemBuilder: (ctx, i) {
+                  final f = feedbacks[i];
+                  final dateStr = DateFormat(
+                    'dd/MM/yy HH:mm',
+                  ).format(f.createdAt);
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 8,
+                    ),
+                    elevation: 2,
+                    child: ListTile(
+                      title: Text(
+                        f.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        '${f.instructorName} | $dateStr',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      trailing: const Icon(
+                        Icons.arrow_back,
+                        color: Colors.orangeAccent,
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FeedbackDetailsPage(feedback: f),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }
