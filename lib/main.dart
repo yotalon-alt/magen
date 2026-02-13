@@ -5340,10 +5340,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
     final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
 
-    // Determine icon and color based on folder
+    // Determine icon, color, and main title based on folder
     IconData folderIcon = Icons.feedback;
     Color iconColor = Colors.blue;
     String typeLabel = '';
+    String mainTitle = '';  // ✅ כותרת ראשית שתשתנה לפי תיקייה
 
     if (_selectedFolder == 'מטווחים 474' ||
         _selectedFolder == '474 Ranges' ||
@@ -5351,24 +5352,32 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       folderIcon = Icons.adjust;
       typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
       iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // יישוב
     } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
       folderIcon = Icons.shield;
       iconColor = Colors.purple;
-      typeLabel = 'מחלקת הגנה';
+      typeLabel = '${f.role} - ${f.name}';
+      mainTitle = '${f.role} — ${f.name}';  // תפקיד — שם
     } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
         _selectedFolder == 'תרגילי הפתעה כללי') {
       folderIcon = Icons.flash_on;
       iconColor = Colors.yellow.shade700;
       typeLabel = 'תרגיל הפתעה';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // רק יישוב
     } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
         _selectedFolder == 'סיכום אימון כללי') {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';  // סוג אימון
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
       typeLabel = f.exercise.isNotEmpty ? f.exercise : 'אימון';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+    } else {
+      // ברירת מחדל
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
     }
 
     final isAdmin = currentUser?.role == 'Admin';
@@ -5403,7 +5412,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            f.settlement.isNotEmpty ? f.settlement : f.name,
+                            mainTitle,  // ✅ כותרת דינמית לפי תיקייה
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -5430,7 +5439,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           child: ElevatedButton.icon(
                             onPressed: () => _confirmDeleteFeedback(
                               f.id ?? '',
-                              f.settlement.isNotEmpty ? f.settlement : f.name,
+                              mainTitle,  // ✅ שימוש בכותרת הנכונה לפי תיקייה
                             ),
                             icon: const Icon(Icons.delete, size: 14),
                             label: const Text(
@@ -5454,24 +5463,46 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               ),
               const SizedBox(height: 6),
 
-              // Type/Exercise
-              Row(
-                children: [
-                  Icon(folderIcon, size: 16, color: iconColor),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'סוג: $typeLabel',
-                      style: const TextStyle(fontSize: 13),
+              // Type/Exercise - Only show if different from main title
+              if (typeLabel.isNotEmpty &&
+                  _selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
+                  _selectedFolder != 'משוב סיכום אימון 474' &&
+                  _selectedFolder != 'סיכום אימון כללי') ...[
+                Row(
+                  children: [
+                    Icon(folderIcon, size: 16, color: iconColor),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'סוג: $typeLabel',
+                        style: const TextStyle(fontSize: 13),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-
-              // Additional info based on folder type
-              if (f.exercise.isNotEmpty &&
-                  _selectedFolder != 'מחלקות ההגנה – חטיבה 474') ...[
+                  ],
+                ),
                 const SizedBox(height: 6),
+              ],
+
+              // Settlement for Defense Companies
+              if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
+                  f.settlement.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'יישוב: ${f.settlement}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Exercise info - show for all folders
+              if (f.exercise.isNotEmpty) ...[
                 Row(
                   children: [
                     const Icon(
@@ -5488,6 +5519,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 6),
               ],
 
               const SizedBox(height: 6),
@@ -6998,15 +7030,25 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           }
 
                           // Standard card for other folders or selection mode
-                          // Build title from feedback data
-                          final title =
-                              (f.folderKey == 'shooting_ranges' ||
-                                  f.module == 'shooting_ranges' ||
-                                  f.folder == 'מטווחי ירי')
-                              ? (f.settlement.isNotEmpty
-                                    ? f.settlement
-                                    : f.name)
-                              : '${f.role} — ${f.name}';
+                          // Build title from feedback data - adjusted per folder
+                          String title;
+                          if (f.folderKey == 'shooting_ranges' ||
+                              f.module == 'shooting_ranges' ||
+                              _selectedFolder == 'מטווחים 474' ||
+                              _selectedFolder == '474 Ranges' ||
+                              _selectedFolder == 'מטווחי ירי') {
+                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
+                          } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+                            title = '${f.role} — ${f.name}';
+                          } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+                                     _selectedFolder == 'תרגילי הפתעה כללי') {
+                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
+                          } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
+                                     _selectedFolder == 'סיכום אימון כללי') {
+                            title = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+                          } else {
+                            title = '${f.role} — ${f.name}';
+                          }
 
                           // Parse date
                           final date = f.createdAt.toLocal();
@@ -15119,6 +15161,46 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
     final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
 
+    // Determine icon, color, and main title based on folder
+    IconData folderIcon = Icons.feedback;
+    Color iconColor = Colors.blue;
+    String typeLabel = '';
+    String mainTitle = '';  // ✅ כותרת ראשית שתשתנה לפי תיקייה
+
+    if (_selectedFolder == 'מטווחים 474' ||
+        _selectedFolder == '474 Ranges' ||
+        _selectedFolder == 'מטווחי ירי') {
+      folderIcon = Icons.adjust;
+      typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
+      iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // יישוב
+    } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+      folderIcon = Icons.shield;
+      iconColor = Colors.purple;
+      typeLabel = '${f.role} - ${f.name}';
+      mainTitle = '${f.role} — ${f.name}';  // תפקיד — שם
+    } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+        _selectedFolder == 'תרגילי הפתעה כללי') {
+      folderIcon = Icons.flash_on;
+      iconColor = Colors.yellow.shade700;
+      typeLabel = 'תרגיל הפתעה';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // רק יישוב
+    } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי') {
+      folderIcon = Icons.summarize;
+      iconColor = Colors.teal;
+      typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';  // סוג אימון
+    } else if (_selectedFolder == 'משובים – כללי') {
+      folderIcon = Icons.fitness_center;
+      iconColor = Colors.green;
+      typeLabel = f.exercise.isNotEmpty ? f.exercise : 'אימון';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+    } else {
+      // ברירת מחדל
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+    }
+
     final isAdmin = currentUser?.role == 'Admin';
 
     return Card(
@@ -15138,7 +15220,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date with delete button
+              // Header: Settlement/Title and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -15148,17 +15230,16 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                       children: [
                         const Icon(
                           Icons.location_on,
-                          size: 18,
+                          size: 16,
                           color: Colors.blue,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
+                            mainTitle,  // ✅ כותרת דינמית לפי תיקייה
                             style: const TextStyle(
-                              fontSize: 17,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
                             ),
                           ),
                         ),
@@ -15182,9 +15263,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                           child: ElevatedButton.icon(
                             onPressed: () => _confirmDeleteFeedback(
                               f.id ?? '',
-                              f.settlement.isNotEmpty
-                                  ? f.settlement
-                                  : 'לא צוין',
+                              mainTitle,  // ✅ שימוש בכותרת הנכונה לפי תיקייה
                             ),
                             icon: const Icon(Icons.delete, size: 14),
                             label: const Text(
@@ -15206,117 +15285,104 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
 
-              // Role (if exists)
-              if (f.role.isNotEmpty) ...[
+              // Type/Exercise - Only show if different from main title
+              if (typeLabel.isNotEmpty &&
+                  _selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
+                  _selectedFolder != 'משוב סיכום אימון 474' &&
+                  _selectedFolder != 'סיכום אימון כללי') ...[
                 Row(
                   children: [
-                    const Icon(
-                      Icons.person_outline,
-                      size: 18,
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(width: 8),
+                    Icon(folderIcon, size: 16, color: iconColor),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'תפקיד: ${f.role}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
+                        'סוג: $typeLabel',
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
               ],
 
-              // Name (if exists)
-              if (f.name.isNotEmpty) ...[
+              // Settlement for Defense Companies
+              if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
+                  f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
-                    const Icon(Icons.badge, size: 18, color: Colors.green),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'שם: ${f.name}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
+                        'יישוב: ${f.settlement}',
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
               ],
 
-              // Exercise row (if applicable)
+              // Exercise info - show for all folders
               if (f.exercise.isNotEmpty) ...[
                 Row(
                   children: [
                     const Icon(
                       Icons.fitness_center,
-                      size: 18,
+                      size: 16,
                       color: Colors.green,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         'תרגיל: ${f.exercise}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
               ],
+
+              const SizedBox(height: 6),
 
               // Trainees count
               if (f.attendeesCount > 0) ...[
                 Row(
                   children: [
-                    const Icon(Icons.people, size: 18, color: Colors.orange),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.people, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
                     Text(
                       '${f.attendeesCount} משתתפים',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                      ),
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
               ],
 
               // Instructor
               Row(
                 children: [
-                  const Icon(Icons.person, size: 18, color: Colors.purple),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.person, size: 16, color: Colors.purple),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       'מדריך: ${f.instructorName}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                      ),
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Time since
               Text(
                 'שונה $timeSince',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: Colors.grey,
                   fontStyle: FontStyle.italic,
                 ),
@@ -16257,7 +16323,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                         itemBuilder: (_, i) {
                           final f = finalFilteredFeedbacks[i];
 
-                          // ✅ Use detailed card for Brigade 474 and General folders (when not in selection mode)
+                          // ✅ Use detailed card for specific folders (when not in selection mode)
                           final useDetailedCard =
                               (_selectedFolder == 'מטווחים 474' ||
                                   _selectedFolder == '474 Ranges' ||
@@ -16276,14 +16342,24 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                           }
 
                           // Standard card for other folders or selection mode
-                          final title =
-                              (f.folderKey == 'shooting_ranges' ||
-                                  f.module == 'shooting_ranges' ||
-                                  f.folder == 'מטווחי ירי')
-                              ? (f.settlement.isNotEmpty
-                                    ? f.settlement
-                                    : f.name)
-                              : '${f.role} — ${f.name}';
+                          String title;
+                          if (f.folderKey == 'shooting_ranges' ||
+                              f.module == 'shooting_ranges' ||
+                              _selectedFolder == 'מטווחים 474' ||
+                              _selectedFolder == '474 Ranges' ||
+                              _selectedFolder == 'מטווחי ירי') {
+                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
+                          } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+                            title = '${f.role} — ${f.name}';
+                          } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+                                     _selectedFolder == 'תרגילי הפתעה כללי') {
+                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
+                          } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
+                                     _selectedFolder == 'סיכום אימון כללי') {
+                            title = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+                          } else {
+                            title = '${f.role} — ${f.name}';
+                          }
 
                           final date = f.createdAt.toLocal();
                           final dateStr =
@@ -16291,7 +16367,6 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
 
                           final metadataLines = <String>[];
                           if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
-                            // Special order for Defense Companies folder only
                             if (f.settlement.isNotEmpty) {
                               metadataLines.add('יישוב: ${f.settlement}');
                             }
@@ -16303,11 +16378,9 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                             }
                             metadataLines.add('תאריך: $dateStr');
                           } else {
-                            // Original order for all other folders
                             if (f.exercise.isNotEmpty) {
                               metadataLines.add('תרגיל: ${f.exercise}');
                             }
-                            // הוסף סוג אימון למשובי סיכום אימון 474
                             if ((f.folder == 'משוב סיכום אימון 474' ||
                                     f.module == 'training_summary') &&
                                 f.trainingType.isNotEmpty) {
@@ -16334,7 +16407,6 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                             feedbackData,
                           );
 
-                          // Check delete permissions - only admin for now (proper check requires async)
                           final canDelete = currentUser?.role == 'Admin';
 
                           final supportsSelectionMode =
