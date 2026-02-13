@@ -232,6 +232,24 @@ class FeedbackExportService {
           row.add(DoubleCellValue(value));
         } else if (value is bool) {
           row.add(TextCellValue(value ? 'כן' : 'לא'));
+        } else if (key == 'categoryNotes' && value is Map) {
+          // ✅ SPECIAL: Format categoryNotes as readable text
+          final notesMap = value as Map<String, dynamic>;
+          final notesText = <String>[];
+          final categories = [
+            'בוחן רמה',
+            'הדרכה טובה',
+            'הדרכת מבנה',
+            'יבשים',
+            'תרגיל הפתעה',
+          ];
+          for (final category in categories) {
+            final note = notesMap[category];
+            if (note != null && note.toString().trim().isNotEmpty) {
+              notesText.add('$category: ${note.toString().trim()}');
+            }
+          }
+          row.add(TextCellValue(notesText.join(' | ')));
         } else if (value is Map || value is List) {
           // המרת Map/List ל-JSON string
           row.add(TextCellValue(json.encode(value)));
@@ -317,6 +335,7 @@ class FeedbackExportService {
         'תרגיל הפתעה',
         'ממוצע',
         'אחוז הצלחה',
+        'הערות', // ✅ NEW: combined notes column
         'מדריך',
         'תאריך יצירה',
       ];
@@ -505,6 +524,35 @@ class FeedbackExportService {
           cell.value = TextCellValue('');
         }
         cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Center);
+
+        // ✅ NEW: Combined notes column
+        cell = sheet.cell(
+          CellIndex.indexByColumnRow(
+            columnIndex: colIndex++,
+            rowIndex: rowIndex,
+          ),
+        );
+        final categoryNotes =
+            feedback['categoryNotes'] as Map<String, dynamic>?;
+        final notesText = <String>[];
+        if (categoryNotes != null && categoryNotes.isNotEmpty) {
+          // Build combined notes string
+          final categories = [
+            'בוחן רמה',
+            'הדרכה טובה',
+            'הדרכת מבנה',
+            'יבשים',
+            'תרגיל הפתעה',
+          ];
+          for (final category in categories) {
+            final note = categoryNotes[category];
+            if (note != null && note.toString().trim().isNotEmpty) {
+              notesText.add('$category: ${note.toString().trim()}');
+            }
+          }
+        }
+        cell.value = TextCellValue(notesText.join(' | '));
+        cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
         // מדריך
         cell = sheet.cell(

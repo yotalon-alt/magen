@@ -1641,6 +1641,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const TrainingSummaryEntryPage(),
                 settings: settings,
               );
+            case '/personal_feedbacks':
+              return MaterialPageRoute(
+                builder: (_) => const PersonalFeedbacksPage(),
+                settings: settings,
+              );
             case '/feedback_form':
               final exercise = settings.arguments as String?;
               return MaterialPageRoute(
@@ -2487,9 +2492,7 @@ class ExercisesPage extends StatelessWidget {
     final exercises = [
       'מטווחים',
       'תרגילי הפתעה',
-      'מעגל פתוח',
-      'סריקות רחוב',
-      'מעגל פרוץ',
+      'משובים אישיים',
       'סיכום אימון',
       'מיונים לקורס מדריכים',
     ];
@@ -2530,6 +2533,8 @@ class ExercisesPage extends StatelessWidget {
                     Navigator.of(context).pushNamed('/surprise_drills');
                   } else if (ex == 'סיכום אימון') {
                     Navigator.of(context).pushNamed('/training_summary');
+                  } else if (ex == 'משובים אישיים') {
+                    Navigator.of(context).pushNamed('/personal_feedbacks');
                   } else {
                     Navigator.of(
                       context,
@@ -2552,6 +2557,65 @@ class ExercisesPage extends StatelessWidget {
                           textAlign: ex == 'תרגילי הפתעה'
                               ? TextAlign.right
                               : TextAlign.start,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/* ================== PERSONAL FEEDBACKS PAGE ================== */
+
+class PersonalFeedbacksPage extends StatelessWidget {
+  const PersonalFeedbacksPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final personalFeedbackTypes = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('משובים אישיים')),
+        body: ListView.builder(
+          itemCount: personalFeedbackTypes.length,
+          itemBuilder: (ctx, i) {
+            final feedbackType = personalFeedbackTypes[i];
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              elevation: 2,
+              child: InkWell(
+                onTap: () {
+                  debugPrint('⚡ פתח משוב אישי עבור "$feedbackType"');
+                  Navigator.of(
+                    context,
+                  ).pushNamed('/feedback_form', arguments: feedbackType);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.person, size: 32, color: Colors.green),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          feedbackType,
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w500,
@@ -3358,7 +3422,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
 class TrainingSummaryFormPage extends StatefulWidget {
   final String? draftId; // ✨ Optional draft ID for editing existing drafts
-  
+
   const TrainingSummaryFormPage({super.key, this.draftId});
 
   @override
@@ -3381,7 +3445,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   final Map<String, TextEditingController> _instructorNameControllers =
       {}; // בקרים לשמות מדריכים
   bool _isSaving = false;
-  
+
   // ✨ Autosave feature
   Timer? _autosaveTimer;
   String? _currentDraftId; // Track current draft document ID
@@ -3409,15 +3473,15 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _instructorsCountController = TextEditingController(
       text: instructorsCount.toString(),
     );
-    
+
     // ✨ Set draft ID if editing existing draft
     _currentDraftId = widget.draftId;
-    
+
     // ✨ Load draft if draftId is provided
     if (widget.draftId != null && widget.draftId!.isNotEmpty) {
       Future.microtask(() => _loadDraft(widget.draftId!));
     }
-    
+
     // ✅ CRITICAL: Load trainees on init if settlement already selected (from draft)
     Future.microtask(() {
       if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
@@ -3467,7 +3531,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   Future<void> _loadDraft(String draftId) async {
     try {
       debugPrint('📂 Loading training summary draft: $draftId');
-      
+
       final doc = await FirebaseFirestore.instance
           .collection('feedbacks')
           .doc(draftId)
@@ -3487,56 +3551,61 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       }
 
       final data = doc.data()!;
-      
+
       debugPrint('✅ Draft loaded successfully');
-      
+
       setState(() {
         trainingSummaryFolder = data['folder'] as String?;
         selectedSettlement = data['settlement'] as String? ?? '';
         trainingType = data['trainingType'] as String? ?? '';
         summary = data['summary'] as String? ?? '';
-        
+
         // Load attendees
         final attendees = (data['attendees'] as List?)?.cast<String>() ?? [];
         attendeesCount = attendees.length;
         _attendeesCountController.text = attendeesCount.toString();
-        
+
         _attendeeNameControllers.clear();
         for (int i = 0; i < attendees.length; i++) {
-          _attendeeNameControllers['attendee_$i'] = 
-              TextEditingController(text: attendees[i]);
+          _attendeeNameControllers['attendee_$i'] = TextEditingController(
+            text: attendees[i],
+          );
         }
-        
+
         // Load instructors
-        final instructors = (data['instructors'] as List?)?.cast<String>() ?? [];
+        final instructors =
+            (data['instructors'] as List?)?.cast<String>() ?? [];
         instructorsCount = instructors.length;
         _instructorsCountController.text = instructorsCount.toString();
-        
+
         _instructorNameControllers.clear();
         for (int i = 0; i < instructors.length; i++) {
-          _instructorNameControllers['instructor_$i'] = 
-              TextEditingController(text: instructors[i]);
+          _instructorNameControllers['instructor_$i'] = TextEditingController(
+            text: instructors[i],
+          );
         }
-        
+
         // Load linked feedbacks
-        final linkedIds = (data['linkedFeedbackIds'] as List?)?.cast<String>() ?? [];
+        final linkedIds =
+            (data['linkedFeedbackIds'] as List?)?.cast<String>() ?? [];
         _selectedFeedbackIds.clear();
         _selectedFeedbackIds.addAll(linkedIds);
       });
-      
+
       // Load trainees for autocomplete if needed
-      if (selectedSettlement.isNotEmpty && 
+      if (selectedSettlement.isNotEmpty &&
           trainingSummaryFolder == 'משוב סיכום אימון 474') {
         _loadTraineesForAutocomplete(selectedSettlement);
       }
-      
+
       // Load available feedbacks for linking
       if (selectedSettlement.isNotEmpty) {
         _loadAvailableFeedbacks();
       }
-      
-      debugPrint('📋 Draft state restored: $selectedSettlement / $trainingType / $attendeesCount attendees');
-      
+
+      debugPrint(
+        '📋 Draft state restored: $selectedSettlement / $trainingType / $attendeesCount attendees',
+      );
     } catch (e) {
       debugPrint('❌ Error loading draft: $e');
       if (mounted) {
@@ -5607,31 +5676,39 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   folderConfig['internalValue'] as String? ?? folder;
 
               // Count feedbacks: regular + old feedbacks without folder (assigned to "משובים – כללי")
+              // Only count final feedbacks (exclude drafts/temporary)
               int count;
               if (folder == 'משובים – כללי') {
                 count = feedbackStorage
-                    .where((f) => f.folder == folder || f.folder.isEmpty)
+                    .where(
+                      (f) =>
+                          (f.folder == folder || f.folder.isEmpty) &&
+                          !f.isTemporary,
+                    )
                     .length;
               } else if (folder == 'מיונים לקורס מדריכים') {
                 // Direct Firestore count - bypasses feedbackStorage loading issues
                 count = 0; // Will be loaded via FutureBuilder
               } else if (folder == 'הגמר חטיבה 474') {
-                // Special category: count all feedbacks from 4 sub-folders
+                // Special category: count all feedbacks from 4 sub-folders (only final)
                 count = feedbackStorage
                     .where(
                       (f) =>
-                          f.folder == 'מטווחים 474' ||
-                          f.folder == '474 Ranges' ||
-                          f.folder == 'מחלקות ההגנה – חטיבה 474' ||
-                          f.folder == 'משוב תרגילי הפתעה' ||
-                          f.folder == 'משוב סיכום אימון 474',
+                          !f.isTemporary &&
+                          (f.folder == 'מטווחים 474' ||
+                              f.folder == '474 Ranges' ||
+                              f.folder == 'מחלקות ההגנה – חטיבה 474' ||
+                              f.folder == 'משוב תרגילי הפתעה' ||
+                              f.folder == 'משוב סיכום אימון 474'),
                     )
                     .length;
               } else {
-                // Use internal value for filtering to match Firestore data
+                // Use internal value for filtering to match Firestore data (only final)
                 count = feedbackStorage
                     .where(
-                      (f) => f.folder == folder || f.folder == internalValue,
+                      (f) =>
+                          !f.isTemporary &&
+                          (f.folder == folder || f.folder == internalValue),
                     )
                     .length;
               }
@@ -13806,16 +13883,22 @@ class _Brigade474FinalFoldersPageState
               final icon = folder['icon'] as IconData;
               final color = folder['color'] as Color;
 
-              // Count feedbacks for this folder
+              // Count feedbacks for this folder (only final, exclude drafts)
               int count;
               if (title == 'משובים – כללי') {
                 count = feedbackStorage
-                    .where((f) => f.folder == title || f.folder.isEmpty)
+                    .where(
+                      (f) =>
+                          (f.folder == title || f.folder.isEmpty) &&
+                          !f.isTemporary,
+                    )
                     .length;
               } else {
                 count = feedbackStorage
                     .where(
-                      (f) => f.folder == title || f.folder == internalValue,
+                      (f) =>
+                          !f.isTemporary &&
+                          (f.folder == title || f.folder == internalValue),
                     )
                     .length;
               }

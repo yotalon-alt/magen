@@ -27,7 +27,7 @@ class TrainingSummaryEntryPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Icon
-                const Icon(Icons.summarize, size: 80, color: Colors.blueGrey),
+                const Icon(Icons.assessment, size: 80, color: Colors.green),
                 const SizedBox(height: 32),
 
                 // Title

@@ -479,6 +479,9 @@ class _InstructorCourseSelectionFeedbacksPageState
         data['scores'] = scores;
         data['averageScore'] = averageScore;
 
+        // ✅ NEW: Preserve categoryNotes for display and export
+        // (categoryNotes already exists in data from Firestore if it was saved)
+
         feedbacks.add(data);
         debugPrint(
           'DOC: ${doc.id} - ${data["candidateName"]} (suitable=${data["isSuitable"]}) avg=$averageScore scores=${scores.length}',
@@ -1639,16 +1642,55 @@ class _InstructorCourseSelectionFeedbacksPageState
       }
     }
 
+    // ✅ NEW: Get notes for this category
+    final categoryNotes = feedback?['categoryNotes'] as Map<String, dynamic>?;
+    final categoryNote = categoryNotes?[label] as String?;
+    final hasNote = categoryNote != null && categoryNote.trim().isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label),
-          Text(
-            '$prefix$displayValue',
-            style: const TextStyle(fontWeight: FontWeight.bold),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label),
+              Text(
+                '$prefix$displayValue',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
+          // ✅ NEW: Show notes if available
+          if (hasNote) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.note, size: 14, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      categoryNote,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black87,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

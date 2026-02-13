@@ -22,12 +22,16 @@ class RangeSelectionPage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Icon
+              const Icon(Icons.gps_fixed, size: 60, color: Colors.deepOrange),
+              const SizedBox(height: 20),
+
               const Text(
                 'בחר סוג מטווח',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 24),
 
               // טווח קצר
               _buildRangeTypeButton(
@@ -37,7 +41,7 @@ class RangeSelectionPage extends StatelessWidget {
                 color: Colors.blue,
                 rangeType: 'קצרים',
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               // טווח רחוק
               _buildRangeTypeButton(
@@ -47,7 +51,7 @@ class RangeSelectionPage extends StatelessWidget {
                 color: Colors.orange,
                 rangeType: 'ארוכים',
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               // משוב זמני
               _buildTempFeedbackButton(context),

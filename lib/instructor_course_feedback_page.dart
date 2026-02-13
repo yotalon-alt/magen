@@ -32,6 +32,9 @@ class _InstructorCourseFeedbackPageState
   final TextEditingController _hitsController = TextEditingController();
   final TextEditingController _timeSecondsController = TextEditingController();
 
+  // ✅ NEW: Notes controllers for each category
+  final Map<String, TextEditingController> _notesControllers = {};
+
   final Map<String, int> categories = {
     'בוחן רמה': 0,
     'הדרכה טובה': 0,
@@ -235,6 +238,11 @@ class _InstructorCourseFeedbackPageState
         'isSuitable': isSuitableForInstructorCourse,
         'module': 'instructor_course_selection',
         'type': 'instructor_course_feedback',
+        // ✅ NEW: Save category notes
+        'categoryNotes': {
+          for (var category in categories.keys)
+            category: _notesControllers[category]?.text.trim() ?? '',
+        },
       };
 
       // ✅ Add creator fields ONLY for new documents (preserve original creator)
@@ -509,12 +517,18 @@ class _InstructorCourseFeedbackPageState
     _candidateNameController.dispose();
     _hitsController.dispose();
     _timeSecondsController.dispose();
+    // ✅ Dispose all notes controllers
+    _notesControllers.forEach((_, controller) => controller.dispose());
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    // ✅ Initialize notes controllers for each category
+    categories.forEach((category, _) {
+      _notesControllers[category] = TextEditingController();
+    });
     _existingScreeningId = widget.screeningId;
     if (_existingScreeningId != null && _existingScreeningId!.isNotEmpty) {
       _loadExistingScreening(_existingScreeningId!);
@@ -575,6 +589,17 @@ class _InstructorCourseFeedbackPageState
         newCats.forEach((k, v) => categories[k] = v);
       });
       _updateLevelTestRating();
+
+      // ✅ NEW: Load category notes if available
+      final categoryNotes = data['categoryNotes'] as Map<String, dynamic>?;
+      if (categoryNotes != null) {
+        categoryNotes.forEach((category, note) {
+          final controller = _notesControllers[category];
+          if (controller != null && note is String) {
+            controller.text = note;
+          }
+        });
+      }
 
       // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins/instructors
       _startListeningToDraft(id);
@@ -677,6 +702,11 @@ class _InstructorCourseFeedbackPageState
           'candidateName': _candidateNameController.text.trim(),
           'candidateNumber': _candidateNumber ?? 0,
           'title': _candidateNameController.text.trim(),
+          // ✅ NEW: Save category notes
+          'categoryNotes': {
+            for (var category in categories.keys)
+              category: _notesControllers[category]?.text.trim() ?? '',
+          },
           // ✅ DON'T update createdBy* - preserve original creator!
         });
 
@@ -795,6 +825,24 @@ class _InstructorCourseFeedbackPageState
                 ],
               );
             }).toList(),
+          ),
+          const SizedBox(height: 12),
+          // ✅ NEW: Notes field for this category
+          TextField(
+            controller: _notesControllers[category],
+            enabled: !_isFormLocked,
+            decoration: const InputDecoration(
+              labelText: 'הערות',
+              hintText: 'הוסף הערות להגשה זו...',
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            maxLines: 2,
+            onChanged: (_) {
+              _markFormDirty();
+              _scheduleAutosave();
+            },
           ),
         ],
       ),
@@ -939,6 +987,24 @@ class _InstructorCourseFeedbackPageState
                   textAlign: TextAlign.center,
                 ),
               ],
+              const SizedBox(height: 12),
+              // ✅ NEW: Notes field for בוחן רמה
+              TextField(
+                controller: _notesControllers['בוחן רמה'],
+                enabled: !_isFormLocked,
+                decoration: const InputDecoration(
+                  labelText: 'הערות',
+                  hintText: 'הוסף הערות לבוחן רמה...',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                maxLines: 2,
+                onChanged: (_) {
+                  _markFormDirty();
+                  _scheduleAutosave();
+                },
+              ),
             ],
           ),
         ),
@@ -986,7 +1052,7 @@ class _InstructorCourseFeedbackPageState
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 100.0),
+            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1265,7 +1331,7 @@ class _InstructorCourseFeedbackPageState
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
                 // ✅ AUTOSAVE INFO: Show autosave status to user
                 if (_isAutosaving)
                   Padding(
@@ -1327,7 +1393,6 @@ class _InstructorCourseFeedbackPageState
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
               ],
             ),
           ),
