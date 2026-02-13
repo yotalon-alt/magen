@@ -5053,6 +5053,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   final Set<String> _selectedFeedbackIds = {};
   bool _isExporting = false;
 
+  // Collapsible filters state
+  bool _isFiltersExpanded = true;
+
   @override
   void initState() {
     super.initState();
@@ -6426,373 +6429,452 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Filter row
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            alignment: WrapAlignment.start,
-                            children: [
-                              // Settlement filter
-                              if (settlementOptions.length > 1)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'יישוב',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    SizedBox(
-                                      width: 200,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue:
-                                            settlementOptions.contains(
-                                              _filterSettlement,
-                                            )
-                                            ? _filterSettlement
-                                            : 'הכל',
-                                        isExpanded: true,
-                                        decoration: InputDecoration(
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 16,
-                                          ),
-                                        ),
-                                        items: settlementOptions
-                                            .map(
-                                              (s) => DropdownMenuItem(
-                                                value: s,
-                                                child: Text(
-                                                  s,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (v) => setState(
-                                          () => _filterSettlement = v ?? 'הכל',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              // Exercise filter (only for non-range folders)
-                              if (!isRangeFolder && exerciseOptions.length > 1)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      isTrainingSummaryFolder
-                                          ? 'סוג אימון'
-                                          : 'תרגיל',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    SizedBox(
-                                      width: 200,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue:
-                                            exerciseOptions.contains(
-                                              _filterExercise,
-                                            )
-                                            ? _filterExercise
-                                            : 'הכל',
-                                        isExpanded: true,
-                                        decoration: InputDecoration(
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 16,
-                                          ),
-                                        ),
-                                        items: exerciseOptions
-                                            .map(
-                                              (e) => DropdownMenuItem(
-                                                value: e,
-                                                child: Text(
-                                                  e,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (v) => setState(
-                                          () => _filterExercise = v ?? 'הכל',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              // Range type filter (only for range folders)
-                              if (isRangeFolder)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'מטווח',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    SizedBox(
-                                      width: 200,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue: _filterRangeType,
-                                        isExpanded: true,
-                                        decoration: InputDecoration(
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 16,
-                                          ),
-                                        ),
-                                        items: ['הכל', 'טווח קצר', 'טווח רחוק']
-                                            .map(
-                                              (t) => DropdownMenuItem(
-                                                value: t,
-                                                child: Text(
-                                                  t,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (v) => setState(
-                                          () => _filterRangeType = v ?? 'הכל',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              // Instructor filter (only for range folders)
-                              if (isRangeFolder && instructorOptions.length > 1)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'מדריך',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    SizedBox(
-                                      width: 200,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue:
-                                            instructorOptions.contains(
-                                              _filterInstructor,
-                                            )
-                                            ? _filterInstructor
-                                            : 'הכל',
-                                        isExpanded: true,
-                                        decoration: InputDecoration(
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 16,
-                                          ),
-                                        ),
-                                        items: instructorOptions
-                                            .map(
-                                              (i) => DropdownMenuItem(
-                                                value: i,
-                                                child: Text(
-                                                  i,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (v) => setState(
-                                          () => _filterInstructor = v ?? 'הכל',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              // Date filters (only for range folders)
-                              if (isRangeFolder)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'תאריך',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        SizedBox(
-                                          width: 120,
-                                          child: ElevatedButton(
-                                            onPressed: () async {
-                                              final now = DateTime.now();
-                                              final picked =
-                                                  await showDatePicker(
-                                                    context: context,
-                                                    initialDate:
-                                                        _filterDateFrom ?? now,
-                                                    firstDate: DateTime(2020),
-                                                    lastDate: now,
-                                                  );
-                                              if (picked != null) {
-                                                setState(
-                                                  () =>
-                                                      _filterDateFrom = picked,
-                                                );
-                                              }
-                                            },
-                                            style: ElevatedButton.styleFrom(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 12,
-                                                  ),
-                                            ),
-                                            child: Text(
-                                              _filterDateFrom == null
-                                                  ? 'מתאריך'
-                                                  : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
-                                              style: TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        SizedBox(
-                                          width: 120,
-                                          child: ElevatedButton(
-                                            onPressed: () async {
-                                              final now = DateTime.now();
-                                              final picked =
-                                                  await showDatePicker(
-                                                    context: context,
-                                                    initialDate:
-                                                        _filterDateTo ?? now,
-                                                    firstDate: DateTime(2020),
-                                                    lastDate: now,
-                                                  );
-                                              if (picked != null) {
-                                                setState(
-                                                  () => _filterDateTo = picked,
-                                                );
-                                              }
-                                            },
-                                            style: ElevatedButton.styleFrom(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 12,
-                                                  ),
-                                            ),
-                                            child: Text(
-                                              _filterDateTo == null
-                                                  ? 'עד תאריך'
-                                                  : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
-                                              style: TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              // Role filter (only for non-range and non-surprise-drills folders)
-                              if (!isRangeFolder &&
-                                  !isSurpriseDrillsFolder &&
-                                  roleOptions.length > 1)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'תפקיד',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    SizedBox(
-                                      width: 200,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue:
-                                            roleOptions.contains(_filterRole)
-                                            ? _filterRole
-                                            : 'הכל',
-                                        isExpanded: true,
-                                        decoration: InputDecoration(
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 16,
-                                          ),
-                                        ),
-                                        items: roleOptions
-                                            .map(
-                                              (r) => DropdownMenuItem(
-                                                value: r,
-                                                child: Text(
-                                                  r,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (v) => setState(
-                                          () => _filterRole = v ?? 'הכל',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              // Clear filters button (only show when filters are active)
-                              if (_hasActiveFilters)
-                                TextButton.icon(
-                                  onPressed: _clearFilters,
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  label: const Text('נקה פילטרים'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.orangeAccent,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          // Show filter status
-                          if (_hasActiveFilters) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'מציג ${finalFilteredFeedbacks.length} מתוך ${filteredFeedbacks.length} משובים',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white70,
-                              ),
+                          // Header row with toggle button
+                          InkWell(
+                            onTap: () => setState(
+                              () => _isFiltersExpanded = !_isFiltersExpanded,
                             ),
-                          ],
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.filter_list,
+                                      color: Colors.white70,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'סינון',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (_hasActiveFilters) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orangeAccent,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'פעיל',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                Icon(
+                                  _isFiltersExpanded
+                                      ? Icons.keyboard_arrow_up
+                                      : Icons.keyboard_arrow_down,
+                                  color: Colors.white70,
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Collapsible filter content
+                          if (_isFiltersExpanded) ...[
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              alignment: WrapAlignment.start,
+                              children: [
+                                // Settlement filter
+                                if (settlementOptions.length > 1)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'יישוב',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 200,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue:
+                                              settlementOptions.contains(
+                                                _filterSettlement,
+                                              )
+                                              ? _filterSettlement
+                                              : 'הכל',
+                                          isExpanded: true,
+                                          decoration: InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 16,
+                                                ),
+                                          ),
+                                          items: settlementOptions
+                                              .map(
+                                                (s) => DropdownMenuItem(
+                                                  value: s,
+                                                  child: Text(
+                                                    s,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                          onChanged: (v) => setState(
+                                            () =>
+                                                _filterSettlement = v ?? 'הכל',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                // Exercise filter (only for non-range folders)
+                                if (!isRangeFolder &&
+                                    exerciseOptions.length > 1)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        isTrainingSummaryFolder
+                                            ? 'סוג אימון'
+                                            : 'תרגיל',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 200,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue:
+                                              exerciseOptions.contains(
+                                                _filterExercise,
+                                              )
+                                              ? _filterExercise
+                                              : 'הכל',
+                                          isExpanded: true,
+                                          decoration: InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 16,
+                                                ),
+                                          ),
+                                          items: exerciseOptions
+                                              .map(
+                                                (e) => DropdownMenuItem(
+                                                  value: e,
+                                                  child: Text(
+                                                    e,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                          onChanged: (v) => setState(
+                                            () => _filterExercise = v ?? 'הכל',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                // Range type filter (only for range folders)
+                                if (isRangeFolder)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'מטווח',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 200,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue: _filterRangeType,
+                                          isExpanded: true,
+                                          decoration: InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 16,
+                                                ),
+                                          ),
+                                          items:
+                                              ['הכל', 'טווח קצר', 'טווח רחוק']
+                                                  .map(
+                                                    (t) => DropdownMenuItem(
+                                                      value: t,
+                                                      child: Text(
+                                                        t,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ),
+                                                  )
+                                                  .toList(),
+                                          onChanged: (v) => setState(
+                                            () => _filterRangeType = v ?? 'הכל',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                // Instructor filter (only for range folders)
+                                if (isRangeFolder &&
+                                    instructorOptions.length > 1)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'מדריך',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 200,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue:
+                                              instructorOptions.contains(
+                                                _filterInstructor,
+                                              )
+                                              ? _filterInstructor
+                                              : 'הכל',
+                                          isExpanded: true,
+                                          decoration: InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 16,
+                                                ),
+                                          ),
+                                          items: instructorOptions
+                                              .map(
+                                                (i) => DropdownMenuItem(
+                                                  value: i,
+                                                  child: Text(
+                                                    i,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                          onChanged: (v) => setState(
+                                            () =>
+                                                _filterInstructor = v ?? 'הכל',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                // Date filters (only for range folders)
+                                if (isRangeFolder)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'תאריך',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          SizedBox(
+                                            width: 120,
+                                            child: ElevatedButton(
+                                              onPressed: () async {
+                                                final now = DateTime.now();
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: context,
+                                                      initialDate:
+                                                          _filterDateFrom ??
+                                                          now,
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: now,
+                                                    );
+                                                if (picked != null) {
+                                                  setState(
+                                                    () => _filterDateFrom =
+                                                        picked,
+                                                  );
+                                                }
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              child: Text(
+                                                _filterDateFrom == null
+                                                    ? 'מתאריך'
+                                                    : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
+                                                style: TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          SizedBox(
+                                            width: 120,
+                                            child: ElevatedButton(
+                                              onPressed: () async {
+                                                final now = DateTime.now();
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: context,
+                                                      initialDate:
+                                                          _filterDateTo ?? now,
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: now,
+                                                    );
+                                                if (picked != null) {
+                                                  setState(
+                                                    () =>
+                                                        _filterDateTo = picked,
+                                                  );
+                                                }
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              child: Text(
+                                                _filterDateTo == null
+                                                    ? 'עד תאריך'
+                                                    : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
+                                                style: TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                // Role filter (only for non-range and non-surprise-drills folders)
+                                if (!isRangeFolder &&
+                                    !isSurpriseDrillsFolder &&
+                                    roleOptions.length > 1)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'תפקיד',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 200,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue:
+                                              roleOptions.contains(_filterRole)
+                                              ? _filterRole
+                                              : 'הכל',
+                                          isExpanded: true,
+                                          decoration: InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 16,
+                                                ),
+                                          ),
+                                          items: roleOptions
+                                              .map(
+                                                (r) => DropdownMenuItem(
+                                                  value: r,
+                                                  child: Text(
+                                                    r,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                          onChanged: (v) => setState(
+                                            () => _filterRole = v ?? 'הכל',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                // Clear filters button (only show when filters are active)
+                                if (_hasActiveFilters)
+                                  TextButton.icon(
+                                    onPressed: _clearFilters,
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    label: const Text('נקה פילטרים'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.orangeAccent,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            // Show filter status
+                            if (_hasActiveFilters) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'מציג ${finalFilteredFeedbacks.length} מתוך ${filteredFeedbacks.length} משובים',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ], // end of _isFiltersExpanded
                         ],
                       ),
                     ),
@@ -13205,6 +13287,15 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
     _feedbacks = List.from(widget.feedbacks);
   }
 
+  /// Extract folder type from title (e.g., "מטווחים 474 - ישוב" → "מטווחים 474")
+  String get _folderType {
+    final title = widget.title;
+    if (title.startsWith('מטווחים 474')) return 'מטווחים 474';
+    if (title.startsWith('תרגילי הפתעה 474')) return 'משוב תרגילי הפתעה';
+    if (title.startsWith('סיכום אימון 474')) return 'משוב סיכום אימון 474';
+    return '';
+  }
+
   String _formatTimeSince(Duration duration) {
     if (duration.inMinutes < 60) {
       return 'לפני ${duration.inMinutes} דקות';
@@ -13287,15 +13378,29 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
     );
   }
 
-  Widget _buildFeedbackCard(FeedbackModel f) {
+  Widget _buildDetailedFeedbackCard(FeedbackModel f) {
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
     final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
 
-    // Determine range type and color
-    final rangeSubType = f.rangeSubType;
-    final isShortRange = rangeSubType == 'טווח קצר';
-    final rangeLabel = rangeSubType.isNotEmpty ? rangeSubType : 'טווח';
-    final iconColor = isShortRange ? Colors.blue : Colors.orange;
+    // Determine icon and color based on folder type
+    IconData folderIcon = Icons.feedback;
+    Color iconColor = Colors.blue;
+    String typeLabel = '';
+
+    final folderType = _folderType;
+    if (folderType == 'מטווחים 474') {
+      folderIcon = Icons.adjust;
+      typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
+      iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
+    } else if (folderType == 'משוב תרגילי הפתעה') {
+      folderIcon = Icons.flash_on;
+      iconColor = Colors.yellow.shade700;
+      typeLabel = 'תרגיל הפתעה';
+    } else if (folderType == 'משוב סיכום אימון 474') {
+      folderIcon = Icons.summarize;
+      iconColor = Colors.teal;
+      typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+    }
 
     final isAdmin = currentUser?.role == 'Admin';
 
@@ -13325,16 +13430,17 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                       children: [
                         const Icon(
                           Icons.location_on,
-                          size: 16,
+                          size: 18,
                           color: Colors.blue,
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
                             style: const TextStyle(
-                              fontSize: 16,
+                              fontSize: 17,
                               fontWeight: FontWeight.bold,
+                              color: Colors.black87,
                             ),
                           ),
                         ),
@@ -13347,56 +13453,90 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
 
-              // Range type
+              // Type row
               Row(
                 children: [
-                  Icon(Icons.adjust, size: 16, color: iconColor),
-                  const SizedBox(width: 6),
+                  Icon(folderIcon, size: 18, color: iconColor),
+                  const SizedBox(width: 8),
                   Text(
-                    'סוג: $rangeLabel',
-                    style: const TextStyle(fontSize: 13),
+                    'סוג: $typeLabel',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
+
+              // Exercise row (if applicable)
+              if (f.exercise.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.fitness_center,
+                      size: 18,
+                      color: Colors.green,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'תרגיל: ${f.exercise}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
 
               // Trainees count
               if (f.attendeesCount > 0) ...[
                 Row(
                   children: [
-                    const Icon(Icons.people, size: 16, color: Colors.green),
-                    const SizedBox(width: 6),
+                    const Icon(Icons.people, size: 18, color: Colors.orange),
+                    const SizedBox(width: 8),
                     Text(
                       '${f.attendeesCount} משתתפים',
-                      style: const TextStyle(fontSize: 13),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
               ],
 
               // Instructor
               Row(
                 children: [
-                  const Icon(Icons.person, size: 16, color: Colors.purple),
-                  const SizedBox(width: 6),
+                  const Icon(Icons.person, size: 18, color: Colors.purple),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'מדריך: ${f.instructorName}',
-                      style: const TextStyle(fontSize: 13),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
 
               // Time since
               Text(
                 'שונה $timeSince',
                 style: const TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   color: Colors.grey,
                   fontStyle: FontStyle.italic,
                 ),
@@ -13404,9 +13544,9 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
 
               // Delete button (Admin only)
               if (isAdmin) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 const Divider(height: 1),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.center,
                   child: ElevatedButton.icon(
@@ -13458,7 +13598,8 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
             : ListView.builder(
                 padding: const EdgeInsets.all(8),
                 itemCount: _feedbacks.length,
-                itemBuilder: (ctx, i) => _buildFeedbackCard(_feedbacks[i]),
+                itemBuilder: (ctx, i) =>
+                    _buildDetailedFeedbackCard(_feedbacks[i]),
               ),
       ),
     );
@@ -14992,6 +15133,223 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     }
   }
 
+  String _formatTimeSince(Duration duration) {
+    if (duration.inMinutes < 60) {
+      return 'לפני ${duration.inMinutes} דקות';
+    } else if (duration.inHours < 24) {
+      return 'לפני ${duration.inHours} שעות';
+    } else {
+      return 'לפני ${duration.inDays} ימים';
+    }
+  }
+
+  Widget _buildDetailedFeedbackCard(FeedbackModel f) {
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
+    final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
+
+    // Determine icon and color based on folder
+    IconData folderIcon = Icons.feedback;
+    Color iconColor = Colors.blue;
+    String typeLabel = '';
+
+    if (_selectedFolder == 'מטווחים 474' ||
+        _selectedFolder == '474 Ranges' ||
+        _selectedFolder == 'מטווחי ירי') {
+      folderIcon = Icons.adjust;
+      typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
+      iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
+    } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+      folderIcon = Icons.shield;
+      iconColor = Colors.purple;
+      typeLabel = 'מחלקת הגנה';
+    } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
+        _selectedFolder == 'תרגילי הפתעה כללי') {
+      folderIcon = Icons.flash_on;
+      iconColor = Colors.yellow.shade700;
+      typeLabel = 'תרגיל הפתעה';
+    } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
+        _selectedFolder == 'סיכום אימון כללי') {
+      folderIcon = Icons.summarize;
+      iconColor = Colors.teal;
+      typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+    } else if (_selectedFolder == 'משובים – כללי') {
+      folderIcon = Icons.fitness_center;
+      iconColor = Colors.green;
+      typeLabel = f.exercise.isNotEmpty ? f.exercise : 'אימון';
+    }
+
+    final isAdmin = currentUser?.role == 'Admin';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => FeedbackDetailsPage(feedback: f)),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header: Settlement and date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          size: 18,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Type row
+              Row(
+                children: [
+                  Icon(folderIcon, size: 18, color: iconColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'סוג: $typeLabel',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Exercise row (if applicable)
+              if (f.exercise.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.fitness_center,
+                      size: 18,
+                      color: Colors.green,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'תרגיל: ${f.exercise}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Trainees count
+              if (f.attendeesCount > 0) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.people, size: 18, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${f.attendeesCount} משתתפים',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Instructor
+              Row(
+                children: [
+                  const Icon(Icons.person, size: 18, color: Colors.purple),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'מדריך: ${f.instructorName}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Time since
+              Text(
+                'שונה $timeSince',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+
+              // Delete button (Admin only)
+              if (isAdmin) ...[
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.center,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _confirmDeleteFeedback(
+                      f.id ?? '',
+                      f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
+                    ),
+                    icon: const Icon(Icons.delete, size: 16),
+                    label: const Text('מחק משוב'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = currentUser?.role == 'Admin';
@@ -15915,6 +16273,25 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                         itemBuilder: (_, i) {
                           final f = finalFilteredFeedbacks[i];
 
+                          // ✅ Use detailed card for Brigade 474 and General folders (when not in selection mode)
+                          final useDetailedCard =
+                              (_selectedFolder == 'מטווחים 474' ||
+                                  _selectedFolder == '474 Ranges' ||
+                                  _selectedFolder ==
+                                      'מחלקות ההגנה – חטיבה 474' ||
+                                  _selectedFolder == 'משוב תרגילי הפתעה' ||
+                                  _selectedFolder == 'משוב סיכום אימון 474' ||
+                                  _selectedFolder == 'מטווחי ירי' ||
+                                  _selectedFolder == 'משובים – כללי' ||
+                                  _selectedFolder == 'תרגילי הפתעה כללי' ||
+                                  _selectedFolder == 'סיכום אימון כללי') &&
+                              !_selectionMode;
+
+                          if (useDetailedCard) {
+                            return _buildDetailedFeedbackCard(f);
+                          }
+
+                          // Standard card for other folders or selection mode
                           final title =
                               (f.folderKey == 'shooting_ranges' ||
                                   f.module == 'shooting_ranges' ||
