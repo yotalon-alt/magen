@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'main.dart';
 import 'range_training_page.dart';
-import 'widgets/feedback_list_tile_card.dart';
 
 /// Surprise Drills Temporary Feedbacks List Page
 ///
@@ -202,6 +201,243 @@ class _SurpriseDrillsTempFeedbacksPageState
     }
   }
 
+  void _editFeedback(Map<String, dynamic> feedbackData) {
+    final id = feedbackData['id'] as String;
+
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => RangeTrainingPage(
+              rangeType: 'הפתעה',
+              mode: 'surprise',
+              feedbackId: id,
+            ),
+          ),
+        )
+        .then((_) => _loadTempFeedbacks());
+  }
+
+  String _formatTimeSince(Duration duration) {
+    if (duration.inMinutes < 60) {
+      return 'לפני ${duration.inMinutes} דקות';
+    } else if (duration.inHours < 24) {
+      return 'לפני ${duration.inHours} שעות';
+    } else {
+      return 'לפני ${duration.inDays} ימים';
+    }
+  }
+
+  Widget _buildFeedbackCard(Map<String, dynamic> feedback) {
+    final settlement = (feedback['settlement'] ?? '').toString();
+    final attendeesCount = (feedback['attendeesCount'] as num?)?.toInt() ?? 0;
+    final createdByName = (feedback['createdByName'] ?? '').toString();
+    final updatedByName = (feedback['updatedByName'] ?? '').toString();
+
+    final createdAt = (feedback['createdAt'] as Timestamp?)?.toDate();
+    final dateStr = createdAt != null
+        ? DateFormat('dd/MM/yyyy HH:mm').format(createdAt)
+        : 'לא ידוע';
+
+    final timeSince = createdAt != null
+        ? _formatTimeSince(DateTime.now().difference(createdAt))
+        : '';
+
+    // Check permissions
+    final canDelete =
+        currentUser?.role == 'Admin' ||
+        feedback['instructorId'] == currentUser?.uid;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _editFeedback(feedback),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header: Settlement and date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          size: 20,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            settlement.isNotEmpty ? settlement : 'ללא יישוב',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Type
+              Row(
+                children: [
+                  const Icon(Icons.whatshot, size: 18, color: Colors.purple),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'סוג: תרגילי הפתעה',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Attendees count
+              Row(
+                children: [
+                  const Icon(Icons.people, size: 18, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$attendeesCount נוכחים',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Instructor
+              if (createdByName.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.person, size: 18, color: Colors.purple),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'מדריך: $createdByName',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Last editor (if different)
+              if (updatedByName.isNotEmpty &&
+                  updatedByName != createdByName) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.edit, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'עדכון אחרון: $updatedByName',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              if (timeSince.isNotEmpty) ...[
+                Text(
+                  'שונה $timeSince',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+
+              // Actions
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _editFeedback(feedback),
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('המשך עריכה'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (canDelete) ...[
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => Directionality(
+                            textDirection: ui.TextDirection.rtl,
+                            child: AlertDialog(
+                              title: const Text('מחיקת משוב זמני'),
+                              content: const Text('האם למחוק משוב זמני זה?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('ביטול'),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _deleteTempFeedback(
+                                      feedback['id'] as String,
+                                    );
+                                  },
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                  ),
+                                  child: const Text('מחק'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.delete, size: 18),
+                      label: const Text('מחק'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -323,91 +559,7 @@ class _SurpriseDrillsTempFeedbacksPageState
       itemCount: _tempFeedbacks.length,
       itemBuilder: (context, index) {
         final feedback = _tempFeedbacks[index];
-        final id = feedback['id'] as String;
-        final settlement = (feedback['settlement'] ?? '').toString();
-        final attendeesCount =
-            (feedback['attendeesCount'] as num?)?.toInt() ?? 0;
-        final createdByName = (feedback['createdByName'] ?? '').toString();
-        final updatedByName = (feedback['updatedByName'] ?? '').toString();
-
-        final createdAt = feedback['createdAt'];
-        String dateStr = '';
-        if (createdAt is Timestamp) {
-          dateStr = DateFormat('dd/MM/yyyy HH:mm').format(createdAt.toDate());
-        } else if (createdAt is String) {
-          final dt = DateTime.tryParse(createdAt);
-          if (dt != null) {
-            dateStr = DateFormat('dd/MM/yyyy HH:mm').format(dt);
-          }
-        }
-
-        // Build metadata lines
-        final metadataLines = <String>[];
-        if (createdByName.isNotEmpty) {
-          metadataLines.add('מדריך ממשב: $createdByName');
-        }
-        // Show last editor only if different from creator
-        if (updatedByName.isNotEmpty && updatedByName != createdByName) {
-          metadataLines.add('מדריך אחרון שערך: $updatedByName');
-        }
-        metadataLines.add('נוכחים: $attendeesCount');
-        if (dateStr.isNotEmpty) {
-          metadataLines.add('נשמר: $dateStr');
-        }
-
-        // Get blue tag label
-        final blueTagLabel = getBlueTagLabelFromDoc(feedback);
-
-        // Check permissions - only owner (instructorId) or admin can delete temp feedbacks
-        final canDelete =
-            currentUser?.role == 'Admin' ||
-            feedback['instructorId'] == currentUser?.uid;
-
-        return FeedbackListTileCard(
-          title: settlement.isNotEmpty ? settlement : 'ללא יישוב',
-          metadataLines: metadataLines,
-          blueTagLabel: blueTagLabel,
-          canDelete: canDelete,
-          leadingIcon: Icons.edit_note,
-          iconColor: Colors.purple,
-          iconBackgroundColor: Colors.purple.withValues(alpha: 0.2),
-          onOpen: () {
-            Navigator.of(context)
-                .push(
-                  MaterialPageRoute(
-                    builder: (_) => RangeTrainingPage(
-                      rangeType: 'הפתעה',
-                      mode: 'surprise',
-                      feedbackId: id,
-                    ),
-                  ),
-                )
-                .then((_) => _loadTempFeedbacks());
-          },
-          onDelete: () {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('מחיקת משוב זמני'),
-                content: const Text('האם למחוק משוב זמני זה?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('ביטול'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _deleteTempFeedback(id);
-                    },
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                    child: const Text('מחק'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
+        return _buildFeedbackCard(feedback);
       },
     );
   }

@@ -1,9 +1,10 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'main.dart';
 import 'range_training_page.dart';
 import 'widgets/standard_back_button.dart';
-import 'widgets/feedback_list_tile_card.dart';
 
 /// מסך משובים זמניים למטווחים - Temporary Range Feedbacks List
 class RangeTempFeedbacksPage extends StatefulWidget {
@@ -163,7 +164,7 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: ui.TextDirection.rtl,
         child: AlertDialog(
           title: const Text('מחיקת משוב זמני'),
           content: Text('האם למחוק את המשוב הזמני עבור $settlement?'),
@@ -186,10 +187,220 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
     );
   }
 
+  void _editFeedback(Map<String, dynamic> feedbackData) {
+    final id = feedbackData['id'] as String;
+    final rangeType = feedbackData['rangeType'] as String? ?? 'קצרים';
+
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) =>
+                RangeTrainingPage(rangeType: rangeType, feedbackId: id),
+          ),
+        )
+        .then((_) => _loadTempFeedbacks());
+  }
+
+  String _formatTimeSince(Duration duration) {
+    if (duration.inMinutes < 60) {
+      return 'לפני ${duration.inMinutes} דקות';
+    } else if (duration.inHours < 24) {
+      return 'לפני ${duration.inHours} שעות';
+    } else {
+      return 'לפני ${duration.inDays} ימים';
+    }
+  }
+
+  Widget _buildFeedbackCard(Map<String, dynamic> feedback) {
+    final rangeType = feedback['rangeType'] as String? ?? 'קצרים';
+    final settlementField = feedback['settlement'] as String? ?? '';
+    final settlementNameField = feedback['settlementName'] as String? ?? '';
+    final settlement = settlementField.isNotEmpty
+        ? settlementField
+        : (settlementNameField.isNotEmpty ? settlementNameField : 'לא צוין');
+    final createdByName = feedback['createdByName'] as String? ?? 'לא ידוע';
+    final updatedByName = feedback['updatedByName'] as String? ?? '';
+    final attendeesCount = feedback['attendeesCount'] as int? ?? 0;
+
+    final createdAt = (feedback['createdAt'] as Timestamp?)?.toDate();
+    final dateStr = createdAt != null
+        ? DateFormat('dd/MM/yyyy HH:mm').format(createdAt)
+        : 'לא ידוע';
+
+    final timeSince = createdAt != null
+        ? _formatTimeSince(DateTime.now().difference(createdAt))
+        : '';
+
+    // Get blue tag label
+    final rangeTypeLabel = rangeType == 'קצרים' ? 'טווח קצר' : 'טווח רחוק';
+    final iconColor = rangeType == 'קצרים' ? Colors.blue : Colors.orange;
+
+    // Check permissions
+    final canDelete =
+        currentUser?.role == 'Admin' ||
+        feedback['instructorId'] == currentUser?.uid;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _editFeedback(feedback),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header: Settlement and date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(Icons.location_on, size: 20, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            settlement,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Range type
+              Row(
+                children: [
+                  Icon(Icons.adjust, size: 18, color: iconColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'סוג: $rangeTypeLabel',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Attendees count
+              Row(
+                children: [
+                  const Icon(Icons.people, size: 18, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$attendeesCount משתתפים',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Instructor
+              Row(
+                children: [
+                  const Icon(Icons.person, size: 18, color: Colors.purple),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'מדריך: $createdByName',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Last editor (if different)
+              if (updatedByName.isNotEmpty &&
+                  updatedByName != createdByName) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.edit, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'עדכון אחרון: $updatedByName',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              if (timeSince.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'שונה $timeSince',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+
+              // Actions
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _editFeedback(feedback),
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('המשך עריכה'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (canDelete) ...[
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () =>
+                          _confirmDelete(feedback['id'] as String, settlement),
+                      icon: const Icon(Icons.delete, size: 18),
+                      label: const Text('מחק'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: ui.TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('משוב זמני - מטווחים'),
@@ -306,86 +517,7 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                 itemCount: _tempFeedbacks.length,
                 itemBuilder: (ctx, i) {
                   final feedback = _tempFeedbacks[i];
-                  final id = feedback['id'] as String;
-                  final rangeType = feedback['rangeType'] as String? ?? 'קצרים';
-                  // ✅ FIX: Try both settlement and settlementName fields
-                  final settlementField =
-                      feedback['settlement'] as String? ?? '';
-                  final settlementNameField =
-                      feedback['settlementName'] as String? ?? '';
-                  final settlement = settlementField.isNotEmpty
-                      ? settlementField
-                      : (settlementNameField.isNotEmpty
-                            ? settlementNameField
-                            : 'לא צוין');
-                  final createdByName =
-                      feedback['createdByName'] as String? ?? '';
-                  final updatedByName =
-                      feedback['updatedByName'] as String? ?? '';
-                  final attendeesCount =
-                      feedback['attendeesCount'] as int? ?? 0;
-
-                  // Parse createdAt
-                  String dateStr = '';
-                  final createdAt = feedback['createdAt'];
-                  if (createdAt is Timestamp) {
-                    final date = createdAt.toDate().toLocal();
-                    dateStr =
-                        '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-                  }
-
-                  // Get blue tag label from document data
-                  final blueTagLabel = getBlueTagLabelFromDoc(feedback);
-
-                  // Build metadata lines
-                  final metadataLines = <String>[];
-                  if (createdByName.isNotEmpty) {
-                    metadataLines.add('מדריך ממשב: $createdByName');
-                  }
-                  // Show last editor only if different from creator
-                  if (updatedByName.isNotEmpty &&
-                      updatedByName != createdByName) {
-                    metadataLines.add('מדריך אחרון שערך: $updatedByName');
-                  }
-                  if (attendeesCount > 0) {
-                    metadataLines.add('משתתפים: $attendeesCount');
-                  }
-                  if (dateStr.isNotEmpty) {
-                    metadataLines.add('נשמר: $dateStr');
-                  }
-
-                  // Check permissions - only owner (instructorId) or admin can delete temp feedbacks
-                  final canDelete =
-                      currentUser?.role == 'Admin' ||
-                      feedback['instructorId'] == currentUser?.uid;
-
-                  return FeedbackListTileCard(
-                    title: settlement,
-                    metadataLines: metadataLines,
-                    blueTagLabel: blueTagLabel,
-                    canDelete: canDelete,
-                    leadingIcon: Icons.edit_note,
-                    iconColor: rangeType == 'קצרים'
-                        ? Colors.blue
-                        : Colors.orange,
-                    iconBackgroundColor: rangeType == 'קצרים'
-                        ? Colors.blue.withValues(alpha: 0.2)
-                        : Colors.orange.withValues(alpha: 0.2),
-                    onOpen: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => RangeTrainingPage(
-                            rangeType: rangeType,
-                            feedbackId: id,
-                          ),
-                        ),
-                      ).then((_) {
-                        _loadTempFeedbacks();
-                      });
-                    },
-                    onDelete: () => _confirmDelete(id, settlement),
-                  );
+                  return _buildFeedbackCard(feedback);
                 },
               ),
       ),

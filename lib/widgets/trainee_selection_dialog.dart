@@ -114,6 +114,73 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
     }
   }
 
+  /// 🗑️ מוחק חניך ממחלקת היישוב ב-Firestore
+  Future<void> _deleteTraineeFromSettlement(String traineeName) async {
+    // דיאלוג אישור
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת חניך'),
+          content: Text(
+            'האם אתה בטוח שברצונך למחוק את "$traineeName" ממחלקת ${widget.settlementName}?\n\n'
+            'פעולה זו תמחק את החניך לצמיתות מרשימת המחלקה.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('מחק', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // מחיקה מ-Firestore
+      await FirebaseFirestore.instance
+          .collection('settlements')
+          .doc(widget.settlementName)
+          .collection('trainees')
+          .doc(traineeName)
+          .delete();
+
+      // הסרה מהרשימה המקומית
+      setState(() {
+        widget.availableTrainees.remove(traineeName);
+        selectedTrainees.remove(traineeName);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🗑️ "$traineeName" נמחק ממחלקת ${widget.settlementName}',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ שגיאה במחיקה: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -295,13 +362,16 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                                   contentPadding: EdgeInsets.zero,
                                 ),
                               ),
-                              // ✨ שיפור 3: כפתור שמירה למחלקה
+                              // 🗑️ כפתור מחיקה מהמחלקה
                               IconButton(
-                                icon: const Icon(Icons.save, size: 18),
-                                tooltip: 'שמור למחלקה',
-                                color: Colors.blue,
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                ),
+                                tooltip: 'מחק חניך זה ממחלקת היישוב',
+                                color: Colors.red,
                                 onPressed: () async {
-                                  await _saveTraineeToSettlement(trainee);
+                                  await _deleteTraineeFromSettlement(trainee);
                                 },
                               ),
                             ],
