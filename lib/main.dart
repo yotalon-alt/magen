@@ -16,6 +16,7 @@ import 'export_selection_page.dart';
 import 'universal_export_page.dart';
 import 'surprise_drills_entry_page.dart';
 import 'training_summary_entry_page.dart';
+import 'weapon_reset_page.dart';
 import 'widgets/standard_back_button.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
@@ -1751,6 +1752,11 @@ class _MainScreenState extends State<MainScreen> {
             case '/sarikot':
               return MaterialPageRoute(
                 builder: (_) => const SarikotFixedPage(),
+                settings: settings,
+              );
+            case '/weapon':
+              return MaterialPageRoute(
+                builder: (_) => const WeaponResetPage(),
                 settings: settings,
               );
             case '/about':
@@ -15347,6 +15353,11 @@ class MaterialsPage extends StatelessWidget {
       },
       {'title': 'סעב"ל', 'subtitle': 'סדר עדיפויות בלחימה', 'route': 'saabal'},
       {
+        'title': 'איפוס נשק',
+        'subtitle': 'הליך איפוס ונקיון M16/M4',
+        'route': 'weapon',
+      },
+      {
         'title': 'אודות המערכת',
         'subtitle': 'מידע על האפליקציה',
         'route': 'about',
@@ -15384,6 +15395,8 @@ class MaterialsPage extends StatelessWidget {
                       Navigator.of(ctx).pushNamed('/poruz');
                     } else if (route == 'sarikot') {
                       Navigator.of(ctx).pushNamed('/sarikot');
+                    } else if (route == 'weapon') {
+                      Navigator.of(ctx).pushNamed('/weapon');
                     } else if (route == 'about') {
                       Navigator.of(ctx).pushNamed('/about');
                     }
