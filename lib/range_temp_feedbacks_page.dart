@@ -252,9 +252,10 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date
+              // Header: Settlement and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Row(
@@ -273,9 +274,42 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                       ],
                     ),
                   ),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (canDelete) ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _confirmDelete(
+                              feedback['id'] as String,
+                              settlement,
+                            ),
+                            icon: const Icon(Icons.delete, size: 14),
+                            label: const Text(
+                              'מחק',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -355,41 +389,6 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
                   ),
                 ),
               ],
-
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Actions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _editFeedback(feedback),
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const Text('המשך עריכה'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  if (canDelete) ...[
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () =>
-                          _confirmDelete(feedback['id'] as String, settlement),
-                      icon: const Icon(Icons.delete, size: 18),
-                      label: const Text('מחק'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
             ],
           ),
         ),

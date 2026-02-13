@@ -5387,9 +5387,10 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date
+              // Header: Settlement and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Row(
@@ -5412,9 +5413,42 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                       ],
                     ),
                   ),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (isAdmin && !_selectionMode) ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _confirmDeleteFeedback(
+                              f.id ?? '',
+                              f.settlement.isNotEmpty ? f.settlement : f.name,
+                            ),
+                            icon: const Icon(Icons.delete, size: 14),
+                            label: const Text(
+                              'מחק',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -5497,32 +5531,6 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   fontStyle: FontStyle.italic,
                 ),
               ),
-
-              // Delete button (Admin only)
-              if (isAdmin && !_selectionMode) ...[
-                const SizedBox(height: 6),
-                const Divider(height: 1),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.center,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _confirmDeleteFeedback(
-                      f.id ?? '',
-                      f.settlement.isNotEmpty ? f.settlement : f.name,
-                    ),
-                    icon: const Icon(Icons.delete, size: 16),
-                    label: const Text('מחק משוב'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -13421,9 +13429,10 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date
+              // Header: Settlement and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Row(
@@ -13447,9 +13456,45 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                       ],
                     ),
                   ),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (isAdmin) ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _confirmDeleteFeedback(
+                              f.id ?? '',
+                              f.settlement.isNotEmpty
+                                  ? f.settlement
+                                  : 'לא צוין',
+                              dateStr,
+                            ),
+                            icon: const Icon(Icons.delete, size: 14),
+                            label: const Text(
+                              'מחק',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -13541,33 +13586,6 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                   fontStyle: FontStyle.italic,
                 ),
               ),
-
-              // Delete button (Admin only)
-              if (isAdmin) ...[
-                const SizedBox(height: 8),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.center,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _confirmDeleteFeedback(
-                      f.id ?? '',
-                      f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
-                      dateStr,
-                    ),
-                    icon: const Icon(Icons.delete, size: 16),
-                    label: const Text('מחק משוב'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -15197,9 +15215,10 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date
+              // Header: Settlement and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Row(
@@ -15223,9 +15242,44 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                       ],
                     ),
                   ),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (isAdmin) ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _confirmDeleteFeedback(
+                              f.id ?? '',
+                              f.settlement.isNotEmpty
+                                  ? f.settlement
+                                  : 'לא צוין',
+                            ),
+                            icon: const Icon(Icons.delete, size: 14),
+                            label: const Text(
+                              'מחק',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -15317,32 +15371,6 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                   fontStyle: FontStyle.italic,
                 ),
               ),
-
-              // Delete button (Admin only)
-              if (isAdmin) ...[
-                const SizedBox(height: 8),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.center,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _confirmDeleteFeedback(
-                      f.id ?? '',
-                      f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
-                    ),
-                    icon: const Icon(Icons.delete, size: 16),
-                    label: const Text('מחק משוב'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),

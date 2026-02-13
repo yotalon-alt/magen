@@ -259,9 +259,10 @@ class _SurpriseDrillsTempFeedbacksPageState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date
+              // Header: Settlement and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Row(
@@ -284,9 +285,70 @@ class _SurpriseDrillsTempFeedbacksPageState
                       ],
                     ),
                   ),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (canDelete) ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => Directionality(
+                                  textDirection: ui.TextDirection.rtl,
+                                  child: AlertDialog(
+                                    title: const Text('מחיקת משוב זמני'),
+                                    content: const Text(
+                                      'האם למחוק משוב זמני זה?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('ביטול'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pop(context);
+                                          _deleteTempFeedback(
+                                            feedback['id'] as String,
+                                          );
+                                        },
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: Colors.red,
+                                        ),
+                                        child: const Text('מחק'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.delete, size: 14),
+                            label: const Text(
+                              'מחק',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -368,69 +430,6 @@ class _SurpriseDrillsTempFeedbacksPageState
                   ),
                 ),
               ],
-
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Actions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _editFeedback(feedback),
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const Text('המשך עריכה'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  if (canDelete) ...[
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => Directionality(
-                            textDirection: ui.TextDirection.rtl,
-                            child: AlertDialog(
-                              title: const Text('מחיקת משוב זמני'),
-                              content: const Text('האם למחוק משוב זמני זה?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('ביטול'),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _deleteTempFeedback(
-                                      feedback['id'] as String,
-                                    );
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                  ),
-                                  child: const Text('מחק'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.delete, size: 18),
-                      label: const Text('מחק'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
             ],
           ),
         ),
