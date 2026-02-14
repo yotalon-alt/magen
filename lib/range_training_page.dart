@@ -6636,11 +6636,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     hits,
                                                                   );
-                                                                  // ✅ UPDATE CONTROLLER: Sync UI to match model
-                                                                  _getController(
-                                                                    controllerKey,
-                                                                    hits.toString(),
-                                                                  ).text = hits.toString();
                                                                   setState(
                                                                     () {},
                                                                   ); // מאלץ רענון מיידי של הטבלה
@@ -6734,11 +6729,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     time,
                                                                   );
-                                                                  // ✅ UPDATE CONTROLLER: Sync UI to match model
-                                                                  _getController(
-                                                                    timeControllerKey,
-                                                                    time.toString(),
-                                                                  ).text = time.toString();
                                                                   setState(
                                                                     () {},
                                                                   ); // מאלץ רענון מיידי של הטבלה
@@ -7014,14 +7004,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                       stationIndex,
                                                                       score,
                                                                     );
-
-                                                                    // ✅ UPDATE CONTROLLER: Sync UI to match model (immediate visual feedback)
-                                                                    // Prevents stale values in TextField after edits
-                                                                    _getController(
-                                                                      controllerKey,
-                                                                      score
-                                                                          .toString(),
-                                                                    ).text = score.toString();
 
                                                                     // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
                                                                     if (_rangeType ==
@@ -7897,14 +7879,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           }
                                           // ✅ ONLY UPDATE DATA: No setState, no save
                                           row.setValue(stationIndex, score);
-                                          final numControllerKey =
-                                              'desktop_trainee_${traineeIndex}_station_$stationIndex';
-                                          _getController(
-                                            numControllerKey,
-                                            score > 0 ? score.toString() : '',
-                                          ).text = score > 0
-                                              ? score.toString()
-                                              : ''; // ✅ Update controller for immediate UI refresh
                                           _scheduleAutoSave();
                                         },
                                         onSubmitted: (v) {
