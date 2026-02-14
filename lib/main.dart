@@ -3462,6 +3462,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   // ✅ Autocomplete trainees for 474 folder
   List<String> _autocompleteTrainees = [];
+  String?
+  _originalCreatorUid; // ✅ Track original creator's UID for permission checks
 
   @override
   void initState() {
@@ -3485,6 +3487,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     // ✨ Load draft if draftId is provided
     if (widget.draftId != null && widget.draftId!.isNotEmpty) {
       Future.microtask(() => _loadDraft(widget.draftId!));
+    } else {
+      // ✅ New training summary: set creator UID to current user
+      _originalCreatorUid = FirebaseAuth.instance.currentUser?.uid;
     }
 
     // ✅ CRITICAL: Load trainees on init if settlement already selected (from draft)
@@ -3559,9 +3564,15 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
       final data = doc.data()!;
 
+      // ✅ Load creator UID for permissions
+      final createdByUid =
+          data['instructorId'] as String? ?? data['createdByUid'] as String?;
+
       debugPrint('✅ Draft loaded successfully');
 
       setState(() {
+        // ✅ Save creator UID for finalize permission check
+        _originalCreatorUid = createdByUid;
         trainingSummaryFolder = data['folder'] as String?;
         selectedSettlement = data['settlement'] as String? ?? '';
         trainingType = data['trainingType'] as String? ?? '';
@@ -4000,6 +4011,32 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         SnackBar(content: Text('רק מדריכים או מנהל יכולים לשמור משוב')),
       );
       return;
+    }
+
+    // ✅ PERMISSION CHECK: Only creator or admin can finalize feedback
+    // This check uses cached _originalCreatorUid (loaded during _loadDraft) - NO extra Firestore read
+    if (_currentDraftId != null && _currentDraftId!.isNotEmpty) {
+      final uid = currentUser?.uid ?? '';
+      final isAdmin = currentUser?.role == 'Admin';
+      final isCreator = _originalCreatorUid == uid;
+
+      if (!isAdmin && !isCreator) {
+        debugPrint(
+          '❌ PERMISSION DENIED: User $uid cannot finalize training summary created by $_originalCreatorUid',
+        );
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('רק היוצר של המשוב או אדמין יכולים לסיים משוב'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return; // ❌ Block finalize for collaborators
+      }
+      debugPrint(
+        '✅ PERMISSION GRANTED: User $uid (${isAdmin ? "Admin" : "Creator"}) can finalize training summary',
+      );
     }
 
     if (trainingSummaryFolder == null || trainingSummaryFolder!.isEmpty) {

@@ -23,6 +23,8 @@ class _InstructorCourseFeedbackPageState
   String? _selectedPikud;
   final List<String> _pikudOptions = ['פיקוד צפון', 'פיקוד מרכז', 'פיקוד דרום'];
   String? _originalCreatorName; // ✅ Track original creator's name
+  String?
+  _originalCreatorUid; // ✅ Track original creator's UID for permission checks
 
   final TextEditingController _hativaController = TextEditingController();
   final TextEditingController _candidateNameController =
@@ -533,8 +535,9 @@ class _InstructorCourseFeedbackPageState
     if (_existingScreeningId != null && _existingScreeningId!.isNotEmpty) {
       _loadExistingScreening(_existingScreeningId!);
     } else {
-      // ✅ New feedback: set creator name to current user
+      // ✅ New feedback: set creator name and UID to current user
       _originalCreatorName = currentUser?.name;
+      _originalCreatorUid = FirebaseAuth.instance.currentUser?.uid;
     }
   }
 
@@ -558,6 +561,9 @@ class _InstructorCourseFeedbackPageState
 
       // ✅ Load original creator's name (use stored name, no extra fetch)
       final createdByName = data['createdByName'] as String?;
+      final ownerUid =
+          data['ownerUid'] as String? ??
+          data['createdByUid'] as String?; // ✅ Load creator UID for permissions
       String? originalName = createdByName;
 
       setState(() {
@@ -567,8 +573,10 @@ class _InstructorCourseFeedbackPageState
         _candidateNumber = candNumber;
         // ✅ FIX: Preserve existing draft ID to prevent creating duplicate with current user's UID
         _stableDraftId = id;
-        // ✅ Save original creator name
+        // ✅ Save original creator name and UID
         _originalCreatorName = originalName;
+        _originalCreatorUid =
+            ownerUid; // ✅ Save creator UID for finalize permission check
       });
       final fields = (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
       final Map<String, int> newCats = Map<String, int>.from(categories);
@@ -649,6 +657,30 @@ class _InstructorCourseFeedbackPageState
 
       final draftId = _stableDraftId!;
       debugPrint('FINALIZE_START draftId=$draftId');
+
+      // ✅ PERMISSION CHECK: Only creator or admin can finalize feedback
+      // This check uses cached _originalCreatorUid (loaded during initState) - NO extra Firestore read
+      final isAdmin = currentUser?.role == 'Admin';
+      final isCreator = _originalCreatorUid == uid;
+
+      if (!isAdmin && !isCreator) {
+        debugPrint(
+          '❌ PERMISSION DENIED: User $uid cannot finalize evaluation created by $_originalCreatorUid',
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('רק היוצר של המשוב או אדמין יכולים לסיים משוב'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        setState(() => _isSaving = false);
+        return; // ❌ Block finalize for collaborators
+      }
+      debugPrint(
+        '✅ PERMISSION GRANTED: User $uid (${isAdmin ? "Admin" : "Creator"}) can finalize evaluation',
+      );
 
       // Build final feedback data
       final Map<String, dynamic> fields = {};

@@ -188,6 +188,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   String settlementName = ''; // unified settlement field
   String instructorName = '';
   String? _originalCreatorName; // ✅ Track original creator's name
+  String?
+  _originalCreatorUid; // ✅ Track original creator's UID for permission checks
   bool isManualLocation =
       false; // Track if "Manual Location" is selected for Surprise Drills
   String manualLocationText =
@@ -324,8 +326,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       _loadExistingTemporaryFeedback(_editingFeedbackId!);
     } else {
       debugPrint('INIT: Starting new feedback (clean slate)');
-      // ✅ New feedback: set creator name to current user
+      // ✅ New feedback: set creator name and UID to current user
       _originalCreatorName = currentUser?.name;
+      _originalCreatorUid = FirebaseAuth.instance.currentUser?.uid;
     }
     // ✅ Initialize autosave timer (will be scheduled on data changes)
     // ✅ Initialize persistent scroll controllers for table sync
@@ -592,6 +595,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             maxLines: 1,
             onChanged: (v) {
               row.name = v;
+              _getController(controllerKey, row.name).text =
+                  v; // ✅ Update controller for immediate UI refresh
               _scheduleAutoSave();
             },
             onSubmitted: (v) {
@@ -651,6 +656,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       maxLines: 1,
       onChanged: (v) {
         row.name = v;
+        _getController(controllerKey, row.name).text =
+            v; // ✅ Update controller for immediate UI refresh
         _scheduleAutoSave();
       },
       onSubmitted: (v) {
@@ -1684,6 +1691,30 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ),
       );
       return;
+    }
+
+    // ✅ PERMISSION CHECK: Only creator or admin can finalize feedback
+    // This check uses cached _originalCreatorUid (loaded during initState) - NO extra Firestore read
+    if (_editingFeedbackId != null && _editingFeedbackId!.isNotEmpty) {
+      final isAdmin = currentUser?.role == 'Admin';
+      final isCreator = _originalCreatorUid == uid;
+
+      if (!isAdmin && !isCreator) {
+        debugPrint(
+          '❌ PERMISSION DENIED: User $uid cannot finalize feedback created by $_originalCreatorUid',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('רק היוצר של המשוב או אדמין יכולים לסיים משוב'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return; // ❌ Block finalize for collaborators
+      }
+      debugPrint(
+        '✅ PERMISSION GRANTED: User $uid (${isAdmin ? "Admin" : "Creator"}) can finalize feedback',
+      );
     }
 
     setState(() => _isSaving = true);
@@ -3280,6 +3311,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // ✅ Load original creator's name (use stored name)
       final createdByName = data['createdByName'] as String?;
+      final createdByUid =
+          data['instructorId'] as String? ??
+          data['createdByUid'] as String?; // ✅ Load creator UID for permissions
 
       debugPrint('DRAFT_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
       debugPrint('DRAFT_LOAD: rawStations.length=${rawStations?.length ?? -1}');
@@ -3463,8 +3497,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // ✅ UPDATE STATE: Replace all data with loaded data
       setState(() {
-        // ✅ Save original creator name
+        // ✅ Save original creator name and UID
         _originalCreatorName = createdByName;
+        _originalCreatorUid =
+            createdByUid; // ✅ Save creator UID for finalize permission check
 
         // Update metadata
         selectedSettlement = rawSettlement ?? selectedSettlement;
@@ -5278,6 +5314,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           onChanged: (v) {
                                             final parsed = int.tryParse(v) ?? 0;
                                             row.setValue(stationIndex, parsed);
+                                            // ✅ UPDATE CONTROLLER: Sync UI to match model
+                                            _getController(
+                                              controllerKey,
+                                              parsed.toString(),
+                                            ).text = parsed
+                                                .toString();
                                             _scheduleAutoSave();
                                           },
                                           onSubmitted: (v) {
@@ -6154,6 +6196,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             stationIndex,
                                                             0,
                                                           );
+                                                          _getController(
+                                                                controllerKey,
+                                                                '',
+                                                              ).text =
+                                                              ''; // ✅ Update controller for immediate UI refresh
                                                         } else {
                                                           final score =
                                                               int.tryParse(v) ??
@@ -6162,6 +6209,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             stationIndex,
                                                             score,
                                                           );
+                                                          _getController(
+                                                            controllerKey,
+                                                            score.toString(),
+                                                          ).text = score
+                                                              .toString(); // ✅ Update controller for immediate UI refresh
                                                         }
                                                         _scheduleAutoSave();
                                                       },
@@ -6584,6 +6636,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     hits,
                                                                   );
+                                                                  // ✅ UPDATE CONTROLLER: Sync UI to match model
+                                                                  _getController(
+                                                                    controllerKey,
+                                                                    hits.toString(),
+                                                                  ).text = hits.toString();
                                                                   setState(
                                                                     () {},
                                                                   ); // מאלץ רענון מיידי של הטבלה
@@ -6677,6 +6734,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     stationIndex,
                                                                     time,
                                                                   );
+                                                                  // ✅ UPDATE CONTROLLER: Sync UI to match model
+                                                                  _getController(
+                                                                    timeControllerKey,
+                                                                    time.toString(),
+                                                                  ).text = time.toString();
                                                                   setState(
                                                                     () {},
                                                                   ); // מאלץ רענון מיידי של הטבלה
@@ -6952,6 +7014,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                       stationIndex,
                                                                       score,
                                                                     );
+
+                                                                    // ✅ UPDATE CONTROLLER: Sync UI to match model (immediate visual feedback)
+                                                                    // Prevents stale values in TextField after edits
+                                                                    _getController(
+                                                                      controllerKey,
+                                                                      score
+                                                                          .toString(),
+                                                                    ).text = score.toString();
 
                                                                     // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
                                                                     if (_rangeType ==
@@ -7511,6 +7581,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               onChanged: (v) {
                                 // ✅ ONLY UPDATE DATA: No setState, no save
                                 row.name = v;
+                                _getController(
+                                      'desktop_trainee_$traineeIndex',
+                                      row.name,
+                                    ).text =
+                                    v; // ✅ Update controller for immediate UI refresh
                                 _scheduleAutoSave();
                               },
                               onSubmitted: (v) {
@@ -7623,6 +7698,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       hits,
                                                     );
+                                                    // ✅ UPDATE CONTROLLER: Sync UI to match model
+                                                    _getController(
+                                                      controllerKey,
+                                                      hits.toString(),
+                                                    ).text = hits
+                                                        .toString();
                                                     setState(
                                                       () {},
                                                     ); // מאלץ רענון מיידי של הטבלה
@@ -7692,6 +7773,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       time,
                                                     );
+                                                    // ✅ UPDATE CONTROLLER: Sync UI to match model
+                                                    _getController(
+                                                      timeControllerKey,
+                                                      time.toString(),
+                                                    ).text = time
+                                                        .toString();
                                                     setState(
                                                       () {},
                                                     ); // מאלץ רענון מיידי של הטבלה
@@ -7810,6 +7897,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           }
                                           // ✅ ONLY UPDATE DATA: No setState, no save
                                           row.setValue(stationIndex, score);
+                                          final numControllerKey =
+                                              'desktop_trainee_${traineeIndex}_station_$stationIndex';
+                                          _getController(
+                                            numControllerKey,
+                                            score > 0 ? score.toString() : '',
+                                          ).text = score > 0
+                                              ? score.toString()
+                                              : ''; // ✅ Update controller for immediate UI refresh
                                           _scheduleAutoSave();
                                         },
                                         onSubmitted: (v) {
