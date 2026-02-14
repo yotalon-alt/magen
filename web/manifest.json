@@ -1,6 +1,8 @@
 {
     "name": "משוב מבצר",
     "short_name": "משוב מבצר",
+    "version": "2.2.0",
+    "version_code": 8,
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
