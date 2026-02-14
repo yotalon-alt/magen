@@ -5314,12 +5314,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           onChanged: (v) {
                                             final parsed = int.tryParse(v) ?? 0;
                                             row.setValue(stationIndex, parsed);
-                                            // ✅ UPDATE CONTROLLER: Sync UI to match model
-                                            _getController(
-                                              controllerKey,
-                                              parsed.toString(),
-                                            ).text = parsed
-                                                .toString();
                                             _scheduleAutoSave();
                                           },
                                           onSubmitted: (v) {
@@ -6196,11 +6190,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             stationIndex,
                                                             0,
                                                           );
-                                                          _getController(
-                                                                controllerKey,
-                                                                '',
-                                                              ).text =
-                                                              ''; // ✅ Update controller for immediate UI refresh
                                                         } else {
                                                           final score =
                                                               int.tryParse(v) ??
@@ -6209,11 +6198,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             stationIndex,
                                                             score,
                                                           );
-                                                          _getController(
-                                                            controllerKey,
-                                                            score.toString(),
-                                                          ).text = score
-                                                              .toString(); // ✅ Update controller for immediate UI refresh
                                                         }
                                                         _scheduleAutoSave();
                                                       },
@@ -7680,15 +7664,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       hits,
                                                     );
-                                                    // ✅ UPDATE CONTROLLER: Sync UI to match model
-                                                    _getController(
-                                                      controllerKey,
-                                                      hits.toString(),
-                                                    ).text = hits
-                                                        .toString();
-                                                    setState(
-                                                      () {},
-                                                    ); // מאלץ רענון מיידי של הטבלה
+                                                    setState(() {});
                                                     _scheduleAutoSave();
                                                   },
                                                   onSubmitted: (v) {
@@ -7755,12 +7731,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       stationIndex,
                                                       time,
                                                     );
-                                                    // ✅ UPDATE CONTROLLER: Sync UI to match model
-                                                    _getController(
-                                                      timeControllerKey,
-                                                      time.toString(),
-                                                    ).text = time
-                                                        .toString();
                                                     setState(
                                                       () {},
                                                     ); // מאלץ רענון מיידי של הטבלה
