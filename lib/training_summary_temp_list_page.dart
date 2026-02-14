@@ -361,6 +361,9 @@ class _TrainingSummaryTempListPageState
         ? _formatTimeSince(DateTime.now().difference(createdAt))
         : '';
 
+    // ✅ Check permissions - only Admin can delete temporary summaries
+    final canDelete = currentUser?.role == 'Admin';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12.0),
       elevation: 3,
@@ -409,27 +412,29 @@ class _TrainingSummaryTempListPageState
                           color: Colors.grey,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        height: 28,
-                        child: ElevatedButton.icon(
-                          onPressed: () =>
-                              _deleteSummary(summary['id'] as String),
-                          icon: const Icon(Icons.delete, size: 14),
-                          label: const Text(
-                            'מחק',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red.shade700,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                      if (canDelete) ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            onPressed: () =>
+                                _deleteSummary(summary['id'] as String),
+                            icon: const Icon(Icons.delete, size: 14),
+                            label: const Text(
+                              'מחק',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ],
