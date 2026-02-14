@@ -543,6 +543,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             traineeRows.add(TraineeRowModel(index: i, name: selectedName));
           }
         }
+
+        // ✅ נקה controllers כדי לאלץ יצירה מחדש עם אינדקסים מעודכנים
+        // כשמסירים/מוסיפים חניכים, האינדקסים משתנים ו-controllers ישנים
+        // עם keys כמו "trainee_1_station_0" לא תואמים יותר
+        debugPrint(
+          '🧹 Clearing ${_textControllers.length} controllers after trainee selection change',
+        );
+        for (final controller in _textControllers.values) {
+          controller.dispose();
+        }
+        _textControllers.clear();
       });
 
       // ✅ FIX: Save trainee names immediately after selection
@@ -957,6 +968,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       } else if (count < traineeRows.length) {
         // Remove excess rows
         traineeRows = traineeRows.sublist(0, count);
+
+        // ✅ נקה controllers כי האינדקסים השתנו במקרה של הסרה
+        debugPrint(
+          '🧹 Clearing ${_textControllers.length} controllers after attendees count change',
+        );
+        for (final controller in _textControllers.values) {
+          controller.dispose();
+        }
+        _textControllers.clear();
       }
     });
 
