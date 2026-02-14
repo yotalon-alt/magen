@@ -508,13 +508,40 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         attendeesCount = result.length;
         _attendeesCountController.text = attendeesCount.toString();
 
+        // ✅ שמירת נתונים קיימים - יוצרים Map של שם → TraineeRowModel
+        final existingDataMap = <String, TraineeRowModel>{};
+        for (final row in traineeRows) {
+          if (row.name.trim().isNotEmpty) {
+            existingDataMap[row.name] = row;
+          }
+        }
+
         // Clear existing trainees
         traineeRows.clear();
 
-        // Fill in selected trainees
+        // Fill in selected trainees - שמירת נתונים של חניכים קיימים
         for (int i = 0; i < result.length; i++) {
-          final newRow = TraineeRowModel(index: i, name: result[i]);
-          traineeRows.add(newRow);
+          final selectedName = result[i];
+
+          // אם החניך כבר היה ברשימה - שמור את הנתונים שלו
+          if (existingDataMap.containsKey(selectedName)) {
+            final existingRow = existingDataMap[selectedName]!;
+            traineeRows.add(
+              TraineeRowModel(
+                index: i,
+                name: selectedName,
+                values: Map<int, int>.from(existingRow.values),
+                timeValues: Map<int, double>.from(existingRow.timeValues),
+                valuesTouched: Map<int, bool>.from(existingRow.valuesTouched),
+                timeValuesTouched: Map<int, bool>.from(
+                  existingRow.timeValuesTouched,
+                ),
+              ),
+            );
+          } else {
+            // חניך חדש - צור שורה ריקה
+            traineeRows.add(TraineeRowModel(index: i, name: selectedName));
+          }
         }
       });
 
