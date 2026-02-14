@@ -5483,8 +5483,10 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies
-              if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
+              // Settlement for Defense Companies and Training Summary
+              if ((_selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
+                      _selectedFolder == 'משוב סיכום אימון 474' ||
+                      _selectedFolder == 'סיכום אימון כללי') &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
@@ -15307,8 +15309,10 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies
-              if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
+              // Settlement for Defense Companies and Training Summary
+              if ((_selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
+                      _selectedFolder == 'משוב סיכום אימון 474' ||
+                      _selectedFolder == 'סיכום אימון כללי') &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
