@@ -3442,6 +3442,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   int instructorsCount = 0; // מספר מדריכים
   late TextEditingController _attendeesCountController;
   late TextEditingController _instructorsCountController; // בקר מספר מדריכים
+  late TextEditingController _trainingTypeController; // ✅ בקר סוג אימון
+  late TextEditingController _summaryController; // ✅ בקר סיכום
   final Map<String, TextEditingController> _attendeeNameControllers = {};
   final Map<String, TextEditingController> _instructorNameControllers =
       {}; // בקרים לשמות מדריכים
@@ -3474,6 +3476,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _instructorsCountController = TextEditingController(
       text: instructorsCount.toString(),
     );
+    _trainingTypeController = TextEditingController(text: trainingType);
+    _summaryController = TextEditingController(text: summary);
 
     // ✨ Set draft ID if editing existing draft
     _currentDraftId = widget.draftId;
@@ -3497,6 +3501,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _autosaveTimer?.cancel(); // ✨ Cancel autosave timer
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
+    _trainingTypeController.dispose();
+    _summaryController.dispose();
     for (final controller in _attendeeNameControllers.values) {
       controller.dispose();
     }
@@ -3559,7 +3565,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         trainingSummaryFolder = data['folder'] as String?;
         selectedSettlement = data['settlement'] as String? ?? '';
         trainingType = data['trainingType'] as String? ?? '';
+        _trainingTypeController.text = trainingType; // ✅ עדכון controller
         summary = data['summary'] as String? ?? '';
+        _summaryController.text = summary; // ✅ עדכון controller
 
         // Load attendees
         final attendees = (data['attendees'] as List?)?.cast<String>() ?? [];
@@ -4276,6 +4284,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 8),
               TextField(
+                controller: _trainingTypeController,
                 decoration: const InputDecoration(
                   labelText: 'סוג אימון',
                   hintText: 'לדוגמה: אימון ירי, אימון שטח, תרגיל לילה',
@@ -4728,6 +4737,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 8),
               TextField(
+                controller: _summaryController,
                 decoration: const InputDecoration(
                   labelText: 'סיכום',
                   hintText: 'תאר את האימון, נקודות חשובות, הערות...',
@@ -5344,7 +5354,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     IconData folderIcon = Icons.feedback;
     Color iconColor = Colors.blue;
     String typeLabel = '';
-    String mainTitle = '';  // ✅ כותרת ראשית שתשתנה לפי תיקייה
+    String mainTitle = ''; // ✅ כותרת ראשית שתשתנה לפי תיקייה
 
     if (_selectedFolder == 'מטווחים 474' ||
         _selectedFolder == '474 Ranges' ||
@@ -5352,24 +5362,26 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       folderIcon = Icons.adjust;
       typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
       iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
-      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // יישוב
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // יישוב
     } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
       folderIcon = Icons.shield;
       iconColor = Colors.purple;
       typeLabel = '${f.role} - ${f.name}';
-      mainTitle = '${f.role} — ${f.name}';  // תפקיד — שם
+      mainTitle = '${f.role} — ${f.name}'; // תפקיד — שם
     } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
         _selectedFolder == 'תרגילי הפתעה כללי') {
       folderIcon = Icons.flash_on;
       iconColor = Colors.yellow.shade700;
       typeLabel = 'תרגיל הפתעה';
-      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // רק יישוב
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // רק יישוב
     } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
         _selectedFolder == 'סיכום אימון כללי') {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';  // סוג אימון
+      mainTitle = f.trainingType.isNotEmpty
+          ? f.trainingType
+          : 'סיכום אימון'; // סוג אימון
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -5412,7 +5424,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            mainTitle,  // ✅ כותרת דינמית לפי תיקייה
+                            mainTitle, // ✅ כותרת דינמית לפי תיקייה
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -5439,7 +5451,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           child: ElevatedButton.icon(
                             onPressed: () => _confirmDeleteFeedback(
                               f.id ?? '',
-                              mainTitle,  // ✅ שימוש בכותרת הנכונה לפי תיקייה
+                              mainTitle, // ✅ שימוש בכותרת הנכונה לפי תיקייה
                             ),
                             icon: const Icon(Icons.delete, size: 14),
                             label: const Text(
@@ -7039,15 +7051,23 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               _selectedFolder == 'מטווחים 474' ||
                               _selectedFolder == '474 Ranges' ||
                               _selectedFolder == 'מטווחי ירי') {
-                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
-                          } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+                            title = f.settlement.isNotEmpty
+                                ? f.settlement
+                                : f.name;
+                          } else if (_selectedFolder ==
+                              'מחלקות ההגנה – חטיבה 474') {
                             title = '${f.role} — ${f.name}';
                           } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
-                                     _selectedFolder == 'תרגילי הפתעה כללי') {
-                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
-                          } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
-                                     _selectedFolder == 'סיכום אימון כללי') {
-                            title = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+                              _selectedFolder == 'תרגילי הפתעה כללי') {
+                            title = f.settlement.isNotEmpty
+                                ? f.settlement
+                                : f.name;
+                          } else if (_selectedFolder ==
+                                  'משוב סיכום אימון 474' ||
+                              _selectedFolder == 'סיכום אימון כללי') {
+                            title = f.trainingType.isNotEmpty
+                                ? f.trainingType
+                                : 'סיכום אימון';
                           } else {
                             title = '${f.role} — ${f.name}';
                           }
@@ -15167,7 +15187,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     IconData folderIcon = Icons.feedback;
     Color iconColor = Colors.blue;
     String typeLabel = '';
-    String mainTitle = '';  // ✅ כותרת ראשית שתשתנה לפי תיקייה
+    String mainTitle = ''; // ✅ כותרת ראשית שתשתנה לפי תיקייה
 
     if (_selectedFolder == 'מטווחים 474' ||
         _selectedFolder == '474 Ranges' ||
@@ -15175,24 +15195,26 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       folderIcon = Icons.adjust;
       typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
       iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
-      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // יישוב
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // יישוב
     } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
       folderIcon = Icons.shield;
       iconColor = Colors.purple;
       typeLabel = '${f.role} - ${f.name}';
-      mainTitle = '${f.role} — ${f.name}';  // תפקיד — שם
+      mainTitle = '${f.role} — ${f.name}'; // תפקיד — שם
     } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
         _selectedFolder == 'תרגילי הפתעה כללי') {
       folderIcon = Icons.flash_on;
       iconColor = Colors.yellow.shade700;
       typeLabel = 'תרגיל הפתעה';
-      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;  // רק יישוב
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // רק יישוב
     } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
         _selectedFolder == 'סיכום אימון כללי') {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';  // סוג אימון
+      mainTitle = f.trainingType.isNotEmpty
+          ? f.trainingType
+          : 'סיכום אימון'; // סוג אימון
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -15238,7 +15260,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            mainTitle,  // ✅ כותרת דינמית לפי תיקייה
+                            mainTitle, // ✅ כותרת דינמית לפי תיקייה
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -15265,7 +15287,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                           child: ElevatedButton.icon(
                             onPressed: () => _confirmDeleteFeedback(
                               f.id ?? '',
-                              mainTitle,  // ✅ שימוש בכותרת הנכונה לפי תיקייה
+                              mainTitle, // ✅ שימוש בכותרת הנכונה לפי תיקייה
                             ),
                             icon: const Icon(Icons.delete, size: 14),
                             label: const Text(
@@ -16352,15 +16374,23 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                               _selectedFolder == 'מטווחים 474' ||
                               _selectedFolder == '474 Ranges' ||
                               _selectedFolder == 'מטווחי ירי') {
-                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
-                          } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
+                            title = f.settlement.isNotEmpty
+                                ? f.settlement
+                                : f.name;
+                          } else if (_selectedFolder ==
+                              'מחלקות ההגנה – חטיבה 474') {
                             title = '${f.role} — ${f.name}';
                           } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
-                                     _selectedFolder == 'תרגילי הפתעה כללי') {
-                            title = f.settlement.isNotEmpty ? f.settlement : f.name;
-                          } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
-                                     _selectedFolder == 'סיכום אימון כללי') {
-                            title = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+                              _selectedFolder == 'תרגילי הפתעה כללי') {
+                            title = f.settlement.isNotEmpty
+                                ? f.settlement
+                                : f.name;
+                          } else if (_selectedFolder ==
+                                  'משוב סיכום אימון 474' ||
+                              _selectedFolder == 'סיכום אימון כללי') {
+                            title = f.trainingType.isNotEmpty
+                                ? f.trainingType
+                                : 'סיכום אימון';
                           } else {
                             title = '${f.role} — ${f.name}';
                           }

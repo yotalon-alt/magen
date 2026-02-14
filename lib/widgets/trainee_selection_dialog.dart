@@ -30,6 +30,13 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
   void initState() {
     super.initState();
     selectedTrainees = Set<String>.from(widget.preSelectedTrainees);
+
+    // ✅ זיהוי שמות ידניים: שמות שנבחרו אבל לא ברשימה הזמינה
+    for (final name in widget.preSelectedTrainees) {
+      if (!widget.availableTrainees.contains(name)) {
+        manuallyAddedTrainees.add(name);
+      }
+    }
   }
 
   @override
@@ -183,13 +190,18 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // 📱 Dynamic sizing for better mobile experience
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.92).clamp(320.0, 600.0);
+    final dialogHeight = (screenSize.height * 0.88).clamp(550.0, 900.0);
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Dialog(
         child: Container(
-          width: 500,
-          height: 600,
-          padding: const EdgeInsets.all(16.0),
+          width: dialogWidth,
+          height: dialogHeight,
+          padding: const EdgeInsets.all(14.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -200,9 +212,11 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                     child: Text(
                       'בחר חניכים - ${widget.settlementName}',
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
@@ -211,7 +225,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               // Search field
               TextField(
@@ -219,10 +233,12 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                   hintText: 'חפש חניך...',
                   prefixIcon: Icon(Icons.search),
                   border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(vertical: 10),
+                  isDense: true,
                 ),
                 onChanged: (v) => setState(() => searchQuery = v),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               // ✨ שיפור 1: הצגת חניכים שנוספו ידנית
               if (manuallyAddedTrainees.isNotEmpty) ...[
@@ -240,42 +256,47 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                               size: 20,
                               color: Colors.green,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Text(
                               'חניכים שנוספו ידנית (${manuallyAddedTrainees.length})',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: 13,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         ...manuallyAddedTrainees.map((trainee) {
                           return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2.0),
+                            padding: const EdgeInsets.symmetric(vertical: 1.0),
                             child: Row(
                               children: [
                                 const Icon(
                                   Icons.check_circle,
-                                  size: 16,
+                                  size: 14,
                                   color: Colors.green,
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
                                     trainee,
-                                    style: const TextStyle(fontSize: 14),
+                                    style: const TextStyle(fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 IconButton(
                                   icon: const Icon(
                                     Icons.close,
-                                    size: 18,
+                                    size: 16,
                                     color: Colors.red,
                                   ),
                                   padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 28,
+                                    minHeight: 28,
+                                  ),
                                   onPressed: () {
                                     setState(() {
                                       manuallyAddedTrainees.remove(trainee);
@@ -292,7 +313,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
               ],
 
               // Select all / Clear buttons
@@ -305,10 +326,14 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                           selectedTrainees.addAll(widget.availableTrainees);
                         });
                       },
-                      icon: const Icon(Icons.check_box),
-                      label: const Text('בחר הכל'),
+                      icon: const Icon(Icons.check_box, size: 18),
+                      label: const Text(
+                        'בחר הכל',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
                     ),
                   ),
@@ -321,17 +346,21 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                           manuallyAddedTrainees.clear(); // ✨ נקה גם שמות ידניים
                         });
                       },
-                      icon: const Icon(Icons.clear),
-                      label: const Text('נקה הכל'),
+                      icon: const Icon(Icons.clear, size: 18),
+                      label: const Text(
+                        'נקה הכל',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              const Divider(),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
 
               // Trainees list
               Expanded(
@@ -344,9 +373,11 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                           final isSelected = selectedTrainees.contains(trainee);
 
                           return Row(
+                            key: ValueKey('row_$trainee'),
                             children: [
                               Expanded(
                                 child: CheckboxListTile(
+                                  key: ValueKey('checkbox_$trainee'),
                                   value: isSelected,
                                   onChanged: (checked) {
                                     setState(() {
@@ -357,19 +388,31 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                                       }
                                     });
                                   },
-                                  title: Text(trainee),
+                                  title: Text(
+                                    trainee,
+                                    style: const TextStyle(fontSize: 14),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                   activeColor: Colors.green,
                                   contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                  visualDensity: VisualDensity.compact,
                                 ),
                               ),
                               // 🗑️ כפתור מחיקה מהמחלקה
                               IconButton(
                                 icon: const Icon(
                                   Icons.delete_outline,
-                                  size: 18,
+                                  size: 16,
                                 ),
                                 tooltip: 'מחק חניך זה ממחלקת היישוב',
                                 color: Colors.red,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 36,
+                                  minHeight: 36,
+                                ),
                                 onPressed: () async {
                                   await _deleteTraineeFromSettlement(trainee);
                                 },
