@@ -6800,39 +6800,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                             .toString(),
                                                                 );
 
-                                                                // � WEB-ONLY FIX: Force controller text sync for Long Range
-                                                                // Root cause: On WEB, after save/load cycle, controller.text may contain stale values
-                                                                // Solution: Explicitly set controller.text to match model value on every build
-                                                                // This ensures WEB uses same raw-value rendering as mobile
-                                                                if (kIsWeb &&
-                                                                    _rangeType ==
-                                                                        'ארוכים') {
-                                                                  final expectedText =
-                                                                      currentValue ==
-                                                                          0
-                                                                      ? ''
-                                                                      : currentValue
-                                                                            .toString();
-                                                                  if (controller
-                                                                          .text !=
-                                                                      expectedText) {
-                                                                    debugPrint(
-                                                                      '🌐 LR_WEB_SYNC: Correcting controller.text from "${controller.text}" to "$expectedText" (raw points)',
-                                                                    );
-                                                                    controller
-                                                                            .text =
-                                                                        expectedText;
-                                                                  }
-                                                                }
-
-                                                                // �🐛 DEBUG: Verify controller text AFTER getting it
-                                                                if (_rangeType ==
-                                                                    'ארוכים') {
-                                                                  debugPrint(
-                                                                    '   📱 Controller.text after _getController="${controller.text}"',
-                                                                  );
-                                                                }
-
                                                                 return TextField(
                                                                   controller:
                                                                       controller,
