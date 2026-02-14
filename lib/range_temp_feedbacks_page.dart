@@ -235,10 +235,8 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
     final rangeTypeLabel = rangeType == 'קצרים' ? 'טווח קצר' : 'טווח רחוק';
     final iconColor = rangeType == 'קצרים' ? Colors.blue : Colors.orange;
 
-    // Check permissions
-    final canDelete =
-        currentUser?.role == 'Admin' ||
-        feedback['instructorId'] == currentUser?.uid;
+    // ✅ Check permissions - only Admin can delete temporary feedbacks
+    final canDelete = currentUser?.role == 'Admin';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12.0),

@@ -242,10 +242,8 @@ class _SurpriseDrillsTempFeedbacksPageState
         ? _formatTimeSince(DateTime.now().difference(createdAt))
         : '';
 
-    // Check permissions
-    final canDelete =
-        currentUser?.role == 'Admin' ||
-        feedback['instructorId'] == currentUser?.uid;
+    // ✅ Check permissions - only Admin can delete temporary feedbacks
+    final canDelete = currentUser?.role == 'Admin';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12.0),

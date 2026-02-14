@@ -3835,6 +3835,12 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   void _updateAttendeesCount(int count) {
     setState(() {
       attendeesCount = count;
+      // ✅ יצירת קונטרולרים חסרים לנוכחים חדשים
+      for (int i = 0; i < count; i++) {
+        if (!_attendeeNameControllers.containsKey('attendee_$i')) {
+          _attendeeNameControllers['attendee_$i'] = TextEditingController();
+        }
+      }
     });
     _triggerAutosave(); // ✨ Autosave
   }
@@ -4352,7 +4358,17 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                   final count = int.tryParse(v) ?? 0;
                   setState(() {
                     instructorsCount = count;
+                    // ✅ יצירת קונטרולרים חסרים למדריכים חדשים
+                    for (int i = 0; i < count; i++) {
+                      if (!_instructorNameControllers.containsKey(
+                        'instructor_$i',
+                      )) {
+                        _instructorNameControllers['instructor_$i'] =
+                            TextEditingController();
+                      }
+                    }
                   });
+                  _triggerAutosave(); // ✅ שמירה אוטומטית
                 },
               ),
               const SizedBox(height: 12),
@@ -4457,6 +4473,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                           '',
                                         ).text = selection;
                                       });
+                                      _triggerAutosave(); // ✅ שמירה אוטומטית
                                     },
                                     fieldViewBuilder:
                                         (
@@ -4507,6 +4524,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                               color: Colors.black87,
                                               fontSize: 14,
                                             ),
+                                            onChanged: (v) {
+                                              _triggerAutosave(); // ✅ שמירה אוטומטית בעת הקלדה
+                                            },
                                           );
                                         },
                                   ),
@@ -4679,6 +4699,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                                 '',
                                               ).text = selection;
                                             });
+                                            _triggerAutosave(); // ✅ שמירה אוטומטית
                                           },
                                           fieldViewBuilder:
                                               (
@@ -4731,6 +4752,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                                     color: Colors.black87,
                                                     fontSize: 14,
                                                   ),
+                                                  onChanged: (v) {
+                                                    _triggerAutosave(); // ✅ שמירה אוטומטית
+                                                  },
                                                 );
                                               },
                                         )
@@ -4754,6 +4778,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                             color: Colors.black87,
                                             fontSize: 14,
                                           ),
+                                          onChanged: (v) {
+                                            _triggerAutosave(); // ✅ שמירה אוטומטית
+                                          },
                                         ),
                                 ),
                               ],
