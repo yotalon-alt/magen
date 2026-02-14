@@ -13482,6 +13482,73 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(f.createdAt);
     final timeSince = _formatTimeSince(DateTime.now().difference(f.createdAt));
 
+    // ✅ Determine folder type from feedback data (identical to FeedbacksPage logic)
+    String folderType = '';
+    if (f.folder == 'מטווחים 474' ||
+        f.folder == '474 Ranges' ||
+        f.folderKey == 'ranges_474' ||
+        f.folder == 'מטווחי ירי' ||
+        f.folderKey == 'shooting_ranges' ||
+        f.module == 'shooting_ranges') {
+      folderType = 'ranges';
+    } else if (f.folder == 'מחלקות ההגנה – חטיבה 474') {
+      folderType = 'defense';
+    } else if (f.folder == 'משוב תרגילי הפתעה' ||
+        f.folder == 'תרגילי הפתעה כללי' ||
+        f.module == 'surprise_drill' ||
+        f.folderKey == 'surprise_drills_general') {
+      folderType = 'surprise';
+    } else if (f.folder == 'משוב סיכום אימון 474' ||
+        f.folder == 'סיכום אימון כללי' ||
+        f.module == 'training_summary' ||
+        f.folderKey == 'training_summary_474' ||
+        f.folderKey == 'training_summary_general') {
+      folderType = 'training_summary';
+    } else if (f.folder == 'משובים – כללי') {
+      folderType = 'general';
+    }
+
+    // Determine icon, color, and main title based on folder type
+    IconData folderIcon = Icons.feedback;
+    Color iconColor = Colors.blue;
+    String typeLabel = '';
+    String mainTitle = '';
+
+    switch (folderType) {
+      case 'ranges':
+        folderIcon = Icons.adjust;
+        typeLabel = f.rangeSubType.isNotEmpty ? f.rangeSubType : 'מטווח';
+        iconColor = f.rangeSubType == 'טווח קצר' ? Colors.blue : Colors.orange;
+        mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+        break;
+      case 'defense':
+        folderIcon = Icons.shield;
+        iconColor = Colors.purple;
+        typeLabel = '${f.role} - ${f.name}';
+        mainTitle = '${f.role} — ${f.name}';
+        break;
+      case 'surprise':
+        folderIcon = Icons.flash_on;
+        iconColor = Colors.yellow.shade700;
+        typeLabel = 'תרגיל הפתעה';
+        mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+        break;
+      case 'training_summary':
+        folderIcon = Icons.summarize;
+        iconColor = Colors.teal;
+        typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+        mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+        break;
+      case 'general':
+        folderIcon = Icons.fitness_center;
+        iconColor = Colors.green;
+        typeLabel = f.exercise.isNotEmpty ? f.exercise : 'אימון';
+        mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+        break;
+      default:
+        mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
+    }
+
     final isAdmin = currentUser?.role == 'Admin';
 
     return Card(
@@ -13501,7 +13568,7 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date with delete button
+              // Header: Main title and date with delete button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -13511,17 +13578,16 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                       children: [
                         const Icon(
                           Icons.location_on,
-                          size: 18,
+                          size: 16,
                           color: Colors.blue,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            f.settlement.isNotEmpty ? f.settlement : 'לא צוין',
+                            mainTitle,
                             style: const TextStyle(
-                              fontSize: 17,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
                             ),
                           ),
                         ),
@@ -13570,73 +13636,81 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
 
-              // Exercise row (if applicable)
-              if (f.exercise.isNotEmpty) ...[
+              // Type/Exercise - Only show if different from main title
+              if (typeLabel.isNotEmpty &&
+                  folderType != 'defense' &&
+                  folderType != 'training_summary') ...[
                 Row(
                   children: [
-                    const Icon(
-                      Icons.fitness_center,
-                      size: 18,
-                      color: Colors.green,
-                    ),
-                    const SizedBox(width: 8),
+                    Icon(folderIcon, size: 16, color: iconColor),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'תרגיל: ${f.exercise}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
+                        'סוג: $typeLabel',
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
+              ],
+
+              // Settlement for Defense Companies and Training Summary
+              if ((folderType == 'defense' ||
+                      folderType == 'training_summary') &&
+                  f.settlement.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'יישוב: ${f.settlement}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
               ],
 
               // Trainees count
               if (f.attendeesCount > 0) ...[
                 Row(
                   children: [
-                    const Icon(Icons.people, size: 18, color: Colors.orange),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.people, size: 16, color: Colors.orange),
+                    const SizedBox(width: 6),
                     Text(
                       '${f.attendeesCount} משתתפים',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                      ),
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
               ],
 
               // Instructor
               Row(
                 children: [
-                  const Icon(Icons.person, size: 18, color: Colors.purple),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.person, size: 16, color: Colors.purple),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       'מדריך: ${f.instructorName}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                      ),
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Time since
               Text(
                 'שונה $timeSince',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: Colors.grey,
                   fontStyle: FontStyle.italic,
                 ),
