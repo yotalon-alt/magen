@@ -631,14 +631,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12),
             maxLines: 1,
-            onChanged: (v) {
-              row.name = v;
-              _getController(controllerKey, row.name).text =
-                  v; // ✅ Update controller for immediate UI refresh
+            onChanged: (_) {
+              row.name = controller.text;
               _scheduleAutoSave();
             },
-            onSubmitted: (v) {
-              row.name = v;
+            onSubmitted: (_) {
+              row.name = controller.text;
               onFieldSubmitted();
               _saveImmediately();
             },
@@ -692,14 +690,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       textAlign: TextAlign.center,
       style: const TextStyle(fontSize: 12),
       maxLines: 1,
-      onChanged: (v) {
-        row.name = v;
-        _getController(controllerKey, row.name).text =
-            v; // ✅ Update controller for immediate UI refresh
+      onChanged: (_) {
+        final currentController = _getController(controllerKey, row.name);
+        row.name = currentController.text;
         _scheduleAutoSave();
       },
-      onSubmitted: (v) {
-        row.name = v;
+      onSubmitted: (_) {
+        final currentController = _getController(controllerKey, row.name);
+        row.name = currentController.text;
         _saveImmediately();
       },
     );
@@ -3239,17 +3237,25 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           if (traineeRows[i].name.trim().isEmpty && remoteName.isNotEmpty) {
             debugPrint('     ✅ Taking remote name');
             traineeRows[i].name = remoteName;
+
+            // ✅ FIX: Update name TextField controller explicitly to prevent display mismatch
+            // This ensures the UI shows the merged name immediately
+            final nameControllerKey = 'trainee_$i';
+            if (_textControllers.containsKey(nameControllerKey)) {
+              _textControllers[nameControllerKey]!.text = remoteName;
+              debugPrint('     🔄 Updated name controller to: "$remoteName"');
+            }
           } else if (traineeRows[i].name.trim().isNotEmpty &&
               remoteName.isEmpty) {
             debugPrint('     ✅ Keeping local name');
-            // Keep local name
+            // Keep local name - controller already correct
           } else if (traineeRows[i].name.trim().isNotEmpty &&
               remoteName.isNotEmpty &&
               traineeRows[i].name != remoteName) {
             debugPrint(
               '     ⚠️ Both have names - keeping local (user is editing)',
             );
-            // Keep local (current user is typing)
+            // Keep local (current user is typing) - don't update controller
           }
 
           // MERGE VALUES: Take non-zero values from either side
@@ -7559,17 +7565,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ),
                               textAlign: TextAlign.center,
                               onChanged: (v) {
-                                // ✅ ONLY UPDATE DATA: No setState, no save
                                 row.name = v;
-                                _getController(
-                                      'desktop_trainee_$traineeIndex',
-                                      row.name,
-                                    ).text =
-                                    v; // ✅ Update controller for immediate UI refresh
                                 _scheduleAutoSave();
                               },
                               onSubmitted: (v) {
-                                // ✅ IMMEDIATE SAVE: User pressed Enter
                                 row.name = v;
                                 _saveImmediately();
                               },
