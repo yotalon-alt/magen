@@ -437,8 +437,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                       decoration: const InputDecoration(
                         labelText: 'ישוב',
                         border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
                         contentPadding: EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
@@ -463,8 +461,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                       decoration: const InputDecoration(
                         labelText: 'סוג אימון',
                         border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
                         contentPadding: EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
@@ -489,8 +485,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                       decoration: const InputDecoration(
                         labelText: 'מדריך',
                         border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
                         contentPadding: EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
@@ -516,8 +510,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                         labelText: 'מיקום',
                         hintText: 'חיפוש חלקי...',
                         border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
                         contentPadding: EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
@@ -543,8 +535,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                         decoration: const InputDecoration(
                           labelText: 'מתאריך',
                           border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.white,
                           prefixIcon: Icon(Icons.calendar_today, size: 20),
                         ),
                         child: Text(
@@ -572,8 +562,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                         decoration: const InputDecoration(
                           labelText: 'עד תאריך',
                           border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.white,
                           prefixIcon: Icon(Icons.calendar_today, size: 20),
                         ),
                         child: Text(
