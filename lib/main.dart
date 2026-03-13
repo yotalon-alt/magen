@@ -2393,7 +2393,7 @@ class _HomePageState extends State<HomePage>
                             label: const Text(
                               'תוכנית אימונים הגמ"ר 474',
                               style: TextStyle(
-                                fontSize: 20,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
