@@ -22,6 +22,7 @@ import 'widgets/standard_back_button.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
 import 'services/trainee_autocomplete_service.dart';
+import 'pages/training_program_474_page.dart';
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -1612,10 +1613,18 @@ class _MainScreenState extends State<MainScreen> {
       Navigator(
         key: _homeNavigatorKey,
         onGenerateRoute: (settings) {
-          return MaterialPageRoute(
-            builder: (_) => const HomePage(),
-            settings: settings,
-          );
+          switch (settings.name) {
+            case '/training_program_474':
+              return MaterialPageRoute(
+                builder: (_) => const TrainingProgram474Page(),
+                settings: settings,
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (_) => const HomePage(),
+                settings: settings,
+              );
+          }
         },
       ),
       Navigator(
@@ -2363,6 +2372,43 @@ class _HomePageState extends State<HomePage>
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        // TRAINING PROGRAM 474 BUTTON
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: 280,
+                            maxWidth: 520,
+                          ),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(
+                                context,
+                              ).pushNamed('/training_program_474');
+                            },
+                            icon: const Icon(Icons.calendar_month, size: 28),
+                            label: const Text(
+                              'תוכנית אימונים הגמ"ר 474',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(
+                                0xFF2E7D32,
+                              ), // Military green
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 20,
+                              ),
+                              elevation: 6,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
                             ),
                           ),

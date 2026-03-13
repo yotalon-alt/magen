@@ -139,6 +139,23 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // ===== TRAINING PROGRAMS 474 COLLECTION =====
+    // תוכנית אימונים הגמ"ר 474
+    // ✅ All instructors/admins can read all events
+    // ✅ All instructors/admins can create new events
+    // ✅ All instructors/admins can update events (with role-specific restrictions in app)
+    // ✅ Only admins can delete events
+    match /training_programs_474/{eventId} {
+      // קריאה: כל מי שמחובר (instructor או admin)
+      allow read: if request.auth != null && (isInstructor() || isAdmin());
+      
+      // יצירה ועדכון: instructor או admin
+      allow create, update: if request.auth != null && (isInstructor() || isAdmin());
+      
+      // מחיקה: רק admin
+      allow delete: if isAdmin();
+    }
+
     // Nested screenings under courses/{courseId}/screenings/{screeningId}
     match /courses/{courseId}/screenings/{screeningId} {
       function isSignedIn() {
