@@ -424,158 +424,250 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
             // Collapsible filter content
             if (_isFiltersExpanded) ...[
               const SizedBox(height: 12),
-              // Row 1: Settlement, Training Type, Instructor
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
                   // Settlement filter
-                  SizedBox(
-                    width: 200,
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _filterSettlement,
-                      decoration: const InputDecoration(
-                        labelText: 'ישוב',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'ישוב',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
                         ),
                       ),
-                      items: [
-                        const DropdownMenuItem(value: null, child: Text('הכל')),
-                        ...settlements.map(
-                          (s) => DropdownMenuItem(value: s, child: Text(s)),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 200,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _filterSettlement,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 16,
+                            ),
+                          ),
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('הכל'),
+                            ),
+                            ...settlements.map(
+                              (s) => DropdownMenuItem(value: s, child: Text(s)),
+                            ),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => _filterSettlement = val),
                         ),
-                      ],
-                      onChanged: (val) =>
-                          setState(() => _filterSettlement = val),
-                    ),
+                      ),
+                    ],
                   ),
 
                   // Training type filter
-                  SizedBox(
-                    width: 200,
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _filterTrainingType,
-                      decoration: const InputDecoration(
-                        labelText: 'סוג אימון',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'סוג אימון',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
                         ),
                       ),
-                      items: [
-                        const DropdownMenuItem(value: null, child: Text('הכל')),
-                        ...trainingTypes.map(
-                          (t) => DropdownMenuItem(value: t, child: Text(t)),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 200,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _filterTrainingType,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 16,
+                            ),
+                          ),
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('הכל'),
+                            ),
+                            ...trainingTypes.map(
+                              (t) => DropdownMenuItem(value: t, child: Text(t)),
+                            ),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => _filterTrainingType = val),
                         ),
-                      ],
-                      onChanged: (val) =>
-                          setState(() => _filterTrainingType = val),
-                    ),
+                      ),
+                    ],
                   ),
 
                   // Instructor filter
-                  SizedBox(
-                    width: 200,
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _filterInstructor,
-                      decoration: const InputDecoration(
-                        labelText: 'מדריך',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'מדריך',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
                         ),
                       ),
-                      items: [
-                        const DropdownMenuItem(value: null, child: Text('הכל')),
-                        ...instructors.map(
-                          (i) => DropdownMenuItem(value: i, child: Text(i)),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 200,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _filterInstructor,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 16,
+                            ),
+                          ),
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('הכל'),
+                            ),
+                            ...instructors.map(
+                              (i) => DropdownMenuItem(value: i, child: Text(i)),
+                            ),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => _filterInstructor = val),
                         ),
-                      ],
-                      onChanged: (val) =>
-                          setState(() => _filterInstructor = val),
-                    ),
+                      ),
+                    ],
                   ),
 
                   // Location filter
-                  SizedBox(
-                    width: 200,
-                    child: TextField(
-                      controller: _filterLocationController,
-                      decoration: const InputDecoration(
-                        labelText: 'מיקום',
-                        hintText: 'חיפוש חלקי...',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'מיקום',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
                         ),
                       ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Row 2: Date range
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  // Start date
-                  SizedBox(
-                    width: 200,
-                    child: InkWell(
-                      onTap: _pickStartDate,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'מתאריך',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today, size: 20),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 200,
+                        child: TextField(
+                          controller: _filterLocationController,
+                          decoration: const InputDecoration(
+                            hintText: 'חיפוש חלקי...',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 16,
+                            ),
+                          ),
+                          onChanged: (_) => setState(() {}),
                         ),
-                        child: Text(
-                          _filterStartDate != null
-                              ? DateFormat(
-                                  'dd/MM/yyyy',
-                                ).format(_filterStartDate!)
-                              : 'לא נבחר',
-                          style: TextStyle(
-                            color: _filterStartDate != null
-                                ? Colors.black
-                                : Colors.grey,
+                      ),
+                    ],
+                  ),
+
+                  // Start date
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'מתאריך',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 200,
+                        child: InkWell(
+                          onTap: _pickStartDate,
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.calendar_today, size: 20),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                            ),
+                            child: Text(
+                              _filterStartDate != null
+                                  ? DateFormat(
+                                      'dd/MM/yyyy',
+                                    ).format(_filterStartDate!)
+                                  : 'לא נבחר',
+                              style: TextStyle(
+                                color: _filterStartDate != null
+                                    ? Colors.black
+                                    : Colors.grey,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
 
                   // End date
-                  SizedBox(
-                    width: 200,
-                    child: InkWell(
-                      onTap: _pickEndDate,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'עד תאריך',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today, size: 20),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'עד תאריך',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
                         ),
-                        child: Text(
-                          _filterEndDate != null
-                              ? DateFormat('dd/MM/yyyy').format(_filterEndDate!)
-                              : 'לא נבחר',
-                          style: TextStyle(
-                            color: _filterEndDate != null
-                                ? Colors.black
-                                : Colors.grey,
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 200,
+                        child: InkWell(
+                          onTap: _pickEndDate,
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.calendar_today, size: 20),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                            ),
+                            child: Text(
+                              _filterEndDate != null
+                                  ? DateFormat(
+                                      'dd/MM/yyyy',
+                                    ).format(_filterEndDate!)
+                                  : 'לא נבחר',
+                              style: TextStyle(
+                                color: _filterEndDate != null
+                                    ? Colors.black
+                                    : Colors.grey,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
