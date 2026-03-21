@@ -9,7 +9,14 @@ import 'training_event_form_page.dart';
 
 /// דף תוכנית אימונים 474 - טבלה + סינונים + ייצוא
 class TrainingProgram474Page extends StatefulWidget {
-  const TrainingProgram474Page({super.key});
+  final String collectionName;
+  final String folderDisplayName;
+
+  const TrainingProgram474Page({
+    super.key,
+    required this.collectionName,
+    required this.folderDisplayName,
+  });
 
   @override
   State<TrainingProgram474Page> createState() => _TrainingProgram474PageState();
@@ -87,7 +94,11 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
   Future<void> _addEvent() async {
     await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (ctx) => const TrainingEventFormPage()),
+      MaterialPageRoute(
+        builder: (ctx) => TrainingEventFormPage(
+          collectionName: widget.collectionName,
+        ),
+      ),
     );
     // רענון אוטומטי מ-StreamBuilder
   }
@@ -97,7 +108,10 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
     await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (ctx) => TrainingEventFormPage(eventId: eventId),
+        builder: (ctx) => TrainingEventFormPage(
+          eventId: eventId,
+          collectionName: widget.collectionName,
+        ),
       ),
     );
     // רענון אוטומטי מ-StreamBuilder
@@ -131,6 +145,7 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
 
     if (confirmed == true && event.id != null) {
       final success = await TrainingProgram474Service.deleteTrainingEvent(
+        widget.collectionName,
         event.id!,
       );
       if (mounted) {
@@ -141,6 +156,45 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           ),
         );
       }
+    }
+  }
+
+  /// שינוי סטטוס ביצוע אימון (רק אדמין)
+  Future<void> _toggleCompleted(TrainingEvent event) async {
+    if (event.id == null) return;
+
+    final userName = currentUser?.name ?? 'Admin';
+    final bool success;
+
+    if (event.isCompleted) {
+      // ביטול סימון "בוצע"
+      success = await TrainingProgram474Service.markAsNotCompleted(
+        widget.collectionName,
+        event.id!,
+      );
+    } else {
+      // סימון כ"בוצע"
+      success = await TrainingProgram474Service.markAsCompleted(
+        widget.collectionName,
+        event.id!,
+        userName,
+      );
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? (event.isCompleted
+                    ? 'האימון סומן כלא בוצע'
+                    : 'האימון סומן כבוצע')
+                : 'שגיאה בעדכון הסטטוס',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -227,7 +281,7 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('תוכנית אימונים הגמ"ר 474'),
+          title: Text('תוכנית אימונים - ${widget.folderDisplayName}'),
           backgroundColor: Colors.green[800],
           actions: [
             IconButton(
@@ -247,7 +301,9 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           ],
         ),
         body: StreamBuilder<List<TrainingEvent>>(
-          stream: TrainingProgram474Service.getTrainingEventsStream(),
+          stream: TrainingProgram474Service.getTrainingEventsStream(
+            widget.collectionName,
+          ),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -686,7 +742,9 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                   ),
                   const SizedBox(width: 12),
                   StreamBuilder<List<TrainingEvent>>(
-                    stream: TrainingProgram474Service.getTrainingEventsStream(),
+                    stream: TrainingProgram474Service.getTrainingEventsStream(
+                      widget.collectionName,
+                    ),
                     builder: (context, snapshot) {
                       final allEvents = snapshot.data ?? [];
                       final filteredEvents =
@@ -773,6 +831,13 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
             if (isAdmin)
               const DataColumn(
                 label: Text(
+                  'בוצע',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            if (isAdmin)
+              const DataColumn(
+                label: Text(
                   'מחיקה',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
@@ -780,6 +845,9 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           ],
           rows: events.map((event) {
             return DataRow(
+              color: event.isCompleted
+                  ? WidgetStateProperty.all(Colors.grey[300])
+                  : null,
               onSelectChanged: (selected) {
                 if (selected == true && event.id != null) {
                   _editEvent(event.id!);
@@ -808,6 +876,14 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                     ),
                   ),
                 ),
+                if (isAdmin)
+                  DataCell(
+                    Checkbox(
+                      value: event.isCompleted,
+                      onChanged: (_) => _toggleCompleted(event),
+                      activeColor: Colors.green[700],
+                    ),
+                  ),
                 if (isAdmin)
                   DataCell(
                     IconButton(

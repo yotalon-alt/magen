@@ -13,6 +13,9 @@ class TrainingEvent {
   final DateTime createdAt;
   final DateTime? lastModified;
   final String? lastModifiedBy;
+  final bool isCompleted;
+  final DateTime? completedAt;
+  final String? completedBy;
 
   const TrainingEvent({
     this.id,
@@ -25,6 +28,9 @@ class TrainingEvent {
     required this.createdAt,
     this.lastModified,
     this.lastModifiedBy,
+    this.isCompleted = false,
+    this.completedAt,
+    this.completedBy,
   });
 
   /// Create from Firestore document
@@ -41,6 +47,9 @@ class TrainingEvent {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastModified: (data['lastModified'] as Timestamp?)?.toDate(),
       lastModifiedBy: data['lastModifiedBy'] as String?,
+      isCompleted: data['isCompleted'] as bool? ?? false,
+      completedAt: (data['completedAt'] as Timestamp?)?.toDate(),
+      completedBy: data['completedBy'] as String?,
     );
   }
 
@@ -58,6 +67,9 @@ class TrainingEvent {
           ? Timestamp.fromDate(lastModified!)
           : FieldValue.serverTimestamp(),
       'lastModifiedBy': lastModifiedBy ?? createdBy,
+      'isCompleted': isCompleted,
+      'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'completedBy': completedBy,
     };
   }
 
@@ -73,6 +85,9 @@ class TrainingEvent {
     DateTime? createdAt,
     DateTime? lastModified,
     String? lastModifiedBy,
+    bool? isCompleted,
+    DateTime? completedAt,
+    String? completedBy,
   }) {
     return TrainingEvent(
       id: id ?? this.id,
@@ -85,33 +100,50 @@ class TrainingEvent {
       createdAt: createdAt ?? this.createdAt,
       lastModified: lastModified ?? this.lastModified,
       lastModifiedBy: lastModifiedBy ?? this.lastModifiedBy,
+      isCompleted: isCompleted ?? this.isCompleted,
+      completedAt: completedAt ?? this.completedAt,
+      completedBy: completedBy ?? this.completedBy,
     );
   }
 }
 
 /// Service לניהול תוכנית אימונים 474 ב-Firestore
 class TrainingProgram474Service {
-  static const String _collection = 'training_programs_474';
+  /// Get Firestore collection reference by name
+  static CollectionReference _getCollectionRef(String collectionName) =>
+      FirebaseFirestore.instance.collection(collectionName);
 
-  /// Get Firestore collection reference
-  static CollectionReference get _collectionRef =>
-      FirebaseFirestore.instance.collection(_collection);
-
-  /// Fetch all training events (sorted by date, newest first)
-  static Stream<List<TrainingEvent>> getTrainingEventsStream() {
-    return _collectionRef.orderBy('date', descending: false).snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs
+  /// Fetch all training events (sorted: incomplete first, then completed)
+  static Stream<List<TrainingEvent>> getTrainingEventsStream(
+    String collectionName,
+  ) {
+    return _getCollectionRef(collectionName).snapshots().map((snapshot) {
+      final events = snapshot.docs
           .map((doc) => TrainingEvent.fromFirestore(doc))
           .toList();
+      
+      // Sort in Dart: incomplete events first, then completed events
+      // Within each group, sort by date (earliest first)
+      events.sort((a, b) {
+        // Primary criterion: completed status (false = not completed = -1 = top)
+        if (a.isCompleted != b.isCompleted) {
+          return a.isCompleted ? 1 : -1;
+        }
+        // Secondary criterion: date (earliest first)
+        return a.date.compareTo(b.date);
+      });
+      
+      return events;
     });
   }
 
   /// Fetch single training event by ID
-  static Future<TrainingEvent?> getTrainingEventById(String id) async {
+  static Future<TrainingEvent?> getTrainingEventById(
+    String collectionName,
+    String id,
+  ) async {
     try {
-      final doc = await _collectionRef.doc(id).get();
+      final doc = await _getCollectionRef(collectionName).doc(id).get();
       if (!doc.exists) return null;
       return TrainingEvent.fromFirestore(doc);
     } catch (e) {
@@ -121,9 +153,13 @@ class TrainingProgram474Service {
   }
 
   /// Add new training event
-  static Future<String?> addTrainingEvent(TrainingEvent event) async {
+  static Future<String?> addTrainingEvent(
+    String collectionName,
+    TrainingEvent event,
+  ) async {
     try {
-      final docRef = await _collectionRef.add(event.toFirestore());
+      final docRef =
+          await _getCollectionRef(collectionName).add(event.toFirestore());
       debugPrint('✅ Training event added: ${docRef.id}');
       return docRef.id;
     } catch (e) {
@@ -133,14 +169,19 @@ class TrainingProgram474Service {
   }
 
   /// Update existing training event
-  static Future<bool> updateTrainingEvent(TrainingEvent event) async {
+  static Future<bool> updateTrainingEvent(
+    String collectionName,
+    TrainingEvent event,
+  ) async {
     if (event.id == null) {
       debugPrint('❌ Cannot update event without ID');
       return false;
     }
 
     try {
-      await _collectionRef.doc(event.id).update(event.toFirestore());
+      await _getCollectionRef(collectionName)
+          .doc(event.id)
+          .update(event.toFirestore());
       debugPrint('✅ Training event updated: ${event.id}');
       return true;
     } catch (e) {
@@ -150,13 +191,55 @@ class TrainingProgram474Service {
   }
 
   /// Delete training event (Admin only)
-  static Future<bool> deleteTrainingEvent(String id) async {
+  static Future<bool> deleteTrainingEvent(
+    String collectionName,
+    String id,
+  ) async {
     try {
-      await _collectionRef.doc(id).delete();
+      await _getCollectionRef(collectionName).doc(id).delete();
       debugPrint('✅ Training event deleted: $id');
       return true;
     } catch (e) {
       debugPrint('❌ Error deleting training event: $e');
+      return false;
+    }
+  }
+
+  /// Mark training event as completed (Admin only)
+  static Future<bool> markAsCompleted(
+    String collectionName,
+    String eventId,
+    String userName,
+  ) async {
+    try {
+      await _getCollectionRef(collectionName).doc(eventId).update({
+        'isCompleted': true,
+        'completedAt': FieldValue.serverTimestamp(),
+        'completedBy': userName,
+      });
+      debugPrint('✅ Training event marked as completed: $eventId');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error marking event as completed: $e');
+      return false;
+    }
+  }
+
+  /// Mark training event as not completed (Admin only)
+  static Future<bool> markAsNotCompleted(
+    String collectionName,
+    String eventId,
+  ) async {
+    try {
+      await _getCollectionRef(collectionName).doc(eventId).update({
+        'isCompleted': false,
+        'completedAt': null,
+        'completedBy': null,
+      });
+      debugPrint('✅ Training event marked as not completed: $eventId');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error marking event as not completed: $e');
       return false;
     }
   }

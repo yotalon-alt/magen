@@ -6,8 +6,13 @@ import '../services/training_program_474_service.dart';
 /// טופס הוספה/עריכה של אירוע אימון
 class TrainingEventFormPage extends StatefulWidget {
   final String? eventId; // null = הוספה חדשה, לא null = עריכה
+  final String collectionName; // Collection name in Firestore
 
-  const TrainingEventFormPage({super.key, this.eventId});
+  const TrainingEventFormPage({
+    super.key,
+    this.eventId,
+    required this.collectionName,
+  });
 
   @override
   State<TrainingEventFormPage> createState() => _TrainingEventFormPageState();
@@ -68,6 +73,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
     setState(() => _isLoading = true);
 
     final event = await TrainingProgram474Service.getTrainingEventById(
+      widget.collectionName,
       widget.eventId!,
     );
 
@@ -78,12 +84,19 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
         _locationController.text = event.location;
         _selectedInstructors.addAll(event.instructors);
 
-        // Settlement
-        if (golanSettlements.contains(event.settlement)) {
-          _selectedSettlement = event.settlement;
+        // Settlement - different logic based on collection
+        final isGolanCollection = widget.collectionName == 'training_programs_474';
+        if (isGolanCollection) {
+          // מחלקות הגנה 474: dropdown עם רשימת ישובים
+          if (golanSettlements.contains(event.settlement)) {
+            _selectedSettlement = event.settlement;
+          } else {
+            _selectedSettlement = 'אחר...';
+            _showCustomSettlement = true;
+            _customSettlementController.text = event.settlement;
+          }
         } else {
-          _selectedSettlement = 'אחר...';
-          _showCustomSettlement = true;
+          // אימונים כללי: שדה טקסט חופשי
           _customSettlementController.text = event.settlement;
         }
 
@@ -162,9 +175,12 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
 
     try {
       // קבל ערכים
-      final settlement = _showCustomSettlement
-          ? _customSettlementController.text.trim()
-          : _selectedSettlement ?? '';
+      final isGolanCollection = widget.collectionName == 'training_programs_474';
+      final settlement = isGolanCollection
+          ? (_showCustomSettlement
+              ? _customSettlementController.text.trim()
+              : _selectedSettlement ?? '')
+          : _customSettlementController.text.trim();
 
       final trainingType = _showCustomTrainingType
           ? _customTrainingTypeController.text.trim()
@@ -191,9 +207,15 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
 
       bool success;
       if (_isEditMode) {
-        success = await TrainingProgram474Service.updateTrainingEvent(event);
+        success = await TrainingProgram474Service.updateTrainingEvent(
+          widget.collectionName,
+          event,
+        );
       } else {
-        final id = await TrainingProgram474Service.addTrainingEvent(event);
+        final id = await TrainingProgram474Service.addTrainingEvent(
+          widget.collectionName,
+          event,
+        );
         success = id != null;
       }
 
@@ -354,6 +376,31 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
 
   Widget _buildSettlementField() {
     final isLocked = _isFieldLocked();
+    final isGolanCollection = widget.collectionName == 'training_programs_474';
+
+    // אימונים כללי: רק שדה טקסט חופשי
+    if (!isGolanCollection) {
+      return TextFormField(
+        controller: _customSettlementController,
+        enabled: !isLocked,
+        decoration: InputDecoration(
+          labelText: 'ישוב',
+          hintText: 'הזן שם ישוב',
+          border: const OutlineInputBorder(),
+          prefixIcon: Icon(
+            Icons.location_city,
+            color: isLocked ? Colors.grey : null,
+          ),
+          suffixIcon: isLocked
+              ? const Icon(Icons.lock, color: Colors.grey)
+              : null,
+        ),
+        validator: (val) =>
+            val == null || val.trim().isEmpty ? 'נא להזין ישוב' : null,
+      );
+    }
+
+    // מחלקות הגנה 474: dropdown עם רשימת ישובי הגולן
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
