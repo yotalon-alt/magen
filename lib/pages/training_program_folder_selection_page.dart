@@ -111,11 +111,7 @@ class TrainingProgramFolderSelectionPage extends StatelessWidget {
                   ),
                 ],
               ),
-              const Icon(
-                Icons.arrow_back,
-                color: Colors.white,
-                size: 28,
-              ),
+              const Icon(Icons.arrow_back, color: Colors.white, size: 28),
             ],
           ),
         ),

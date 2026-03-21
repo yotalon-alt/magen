@@ -68,7 +68,9 @@ class TrainingEvent {
           : FieldValue.serverTimestamp(),
       'lastModifiedBy': lastModifiedBy ?? createdBy,
       'isCompleted': isCompleted,
-      'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'completedAt': completedAt != null
+          ? Timestamp.fromDate(completedAt!)
+          : null,
       'completedBy': completedBy,
     };
   }
@@ -121,7 +123,7 @@ class TrainingProgram474Service {
       final events = snapshot.docs
           .map((doc) => TrainingEvent.fromFirestore(doc))
           .toList();
-      
+
       // Sort in Dart: incomplete events first, then completed events
       // Within each group, sort by date (earliest first)
       events.sort((a, b) {
@@ -132,7 +134,7 @@ class TrainingProgram474Service {
         // Secondary criterion: date (earliest first)
         return a.date.compareTo(b.date);
       });
-      
+
       return events;
     });
   }
@@ -158,8 +160,9 @@ class TrainingProgram474Service {
     TrainingEvent event,
   ) async {
     try {
-      final docRef =
-          await _getCollectionRef(collectionName).add(event.toFirestore());
+      final docRef = await _getCollectionRef(
+        collectionName,
+      ).add(event.toFirestore());
       debugPrint('✅ Training event added: ${docRef.id}');
       return docRef.id;
     } catch (e) {
@@ -179,9 +182,9 @@ class TrainingProgram474Service {
     }
 
     try {
-      await _getCollectionRef(collectionName)
-          .doc(event.id)
-          .update(event.toFirestore());
+      await _getCollectionRef(
+        collectionName,
+      ).doc(event.id).update(event.toFirestore());
       debugPrint('✅ Training event updated: ${event.id}');
       return true;
     } catch (e) {

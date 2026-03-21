@@ -85,7 +85,8 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
         _selectedInstructors.addAll(event.instructors);
 
         // Settlement - different logic based on collection
-        final isGolanCollection = widget.collectionName == 'training_programs_474';
+        final isGolanCollection =
+            widget.collectionName == 'training_programs_474';
         if (isGolanCollection) {
           // מחלקות הגנה 474: dropdown עם רשימת ישובים
           if (golanSettlements.contains(event.settlement)) {
@@ -175,11 +176,12 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
 
     try {
       // קבל ערכים
-      final isGolanCollection = widget.collectionName == 'training_programs_474';
+      final isGolanCollection =
+          widget.collectionName == 'training_programs_474';
       final settlement = isGolanCollection
           ? (_showCustomSettlement
-              ? _customSettlementController.text.trim()
-              : _selectedSettlement ?? '')
+                ? _customSettlementController.text.trim()
+                : _selectedSettlement ?? '')
           : _customSettlementController.text.trim();
 
       final trainingType = _showCustomTrainingType

@@ -95,9 +95,8 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
     await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (ctx) => TrainingEventFormPage(
-          collectionName: widget.collectionName,
-        ),
+        builder: (ctx) =>
+            TrainingEventFormPage(collectionName: widget.collectionName),
       ),
     );
     // רענון אוטומטי מ-StreamBuilder
@@ -187,8 +186,8 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           content: Text(
             success
                 ? (event.isCompleted
-                    ? 'האימון סומן כלא בוצע'
-                    : 'האימון סומן כבוצע')
+                      ? 'האימון סומן כלא בוצע'
+                      : 'האימון סומן כבוצע')
                 : 'שגיאה בעדכון הסטטוס',
           ),
           backgroundColor: success ? Colors.green : Colors.red,
