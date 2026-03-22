@@ -779,122 +779,229 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
     );
   }
 
-  Widget _buildEventsTable(List<TrainingEvent> events) {
+  /// כותרת של קטע טבלה
+  Widget _buildSectionHeader(String title, int count, {required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(8),
+          topRight: Radius.circular(8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            title.contains('לביצוע')
+                ? Icons.pending_actions
+                : Icons.check_circle,
+            color: Colors.white,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '$title ($count)',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// טבלה בודדת
+  Widget _buildSingleTable(List<TrainingEvent> events) {
     final isAdmin = currentUser?.role == 'Admin';
     final isMobile = MediaQuery.of(context).size.width < 600;
     final fontSize = isMobile ? 12.0 : 14.0;
 
+    if (events.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        child: DataTable(
-          showCheckboxColumn: false,
-          headingRowColor: WidgetStateProperty.all(Colors.green[100]),
-          headingTextStyle: TextStyle(
-            fontSize: fontSize + 1,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-          dataTextStyle: TextStyle(fontSize: fontSize, color: Colors.black87),
-          columns: [
-            const DataColumn(
-              label: Text(
-                'תאריך',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const DataColumn(
-              label: Text(
-                'ישוב',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const DataColumn(
-              label: Text(
-                'סוג אימון',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const DataColumn(
-              label: Text(
-                'מדריכים',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const DataColumn(
-              label: Text(
-                'מיקום',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            if (isAdmin)
-              const DataColumn(
-                label: Text(
-                  'בוצע',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            if (isAdmin)
-              const DataColumn(
-                label: Text(
-                  'מחיקה',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-          ],
-          rows: events.map((event) {
-            return DataRow(
-              color: event.isCompleted
-                  ? WidgetStateProperty.all(Colors.grey[300])
-                  : null,
-              onSelectChanged: (selected) {
-                if (selected == true && event.id != null) {
-                  _editEvent(event.id!);
-                }
-              },
-              cells: [
-                DataCell(Text(DateFormat('dd/MM/yyyy').format(event.date))),
-                DataCell(Text(event.settlement)),
-                DataCell(Text(event.trainingType)),
-                DataCell(
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 200),
-                    child: Text(
-                      event.instructors.join(', '),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text(
-                      event.location,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                if (isAdmin)
-                  DataCell(
-                    Checkbox(
-                      value: event.isCompleted,
-                      onChanged: (_) => _toggleCompleted(event),
-                      activeColor: Colors.green[700],
-                    ),
-                  ),
-                if (isAdmin)
-                  DataCell(
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteEvent(event),
-                      tooltip: 'מחק',
-                    ),
-                  ),
-              ],
-            );
-          }).toList(),
+      child: DataTable(
+        showCheckboxColumn: false,
+        headingRowColor: WidgetStateProperty.all(Colors.green[100]),
+        headingTextStyle: TextStyle(
+          fontSize: fontSize + 1,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
         ),
+        dataTextStyle: TextStyle(fontSize: fontSize, color: Colors.black87),
+        columns: [
+          const DataColumn(
+            label: Text('תאריך', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const DataColumn(
+            label: Text('ישוב', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const DataColumn(
+            label: Text(
+              'סוג אימון',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const DataColumn(
+            label: Text(
+              'מדריכים',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const DataColumn(
+            label: Text('מיקום', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          if (isAdmin)
+            const DataColumn(
+              label: Text(
+                'בוצע',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          if (isAdmin)
+            const DataColumn(
+              label: Text(
+                'מחיקה',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+        ],
+        rows: events.map((event) {
+          return DataRow(
+            onSelectChanged: (selected) {
+              if (selected == true && event.id != null) {
+                _editEvent(event.id!);
+              }
+            },
+            cells: [
+              DataCell(Text(DateFormat('dd/MM/yyyy').format(event.date))),
+              DataCell(Text(event.settlement)),
+              DataCell(Text(event.trainingType)),
+              DataCell(
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 200),
+                  child: Text(
+                    event.instructors.join(', '),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+              ),
+              DataCell(
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 150),
+                  child: Text(event.location, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+              if (isAdmin)
+                DataCell(
+                  Checkbox(
+                    value: event.isCompleted,
+                    onChanged: (_) => _toggleCompleted(event),
+                    activeColor: Colors.green[700],
+                  ),
+                ),
+              if (isAdmin)
+                DataCell(
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () => _deleteEvent(event),
+                    tooltip: 'מחק',
+                  ),
+                ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// טבלה ראשית מחולקת לשתי טבלאות
+  Widget _buildEventsTable(List<TrainingEvent> events) {
+    // חלוקת האימונים לשתי קטגוריות
+    final notCompletedEvents = events.where((e) => !e.isCompleted).toList();
+    final completedEvents = events.where((e) => e.isCompleted).toList();
+
+    // מיון לפי תאריך
+    notCompletedEvents.sort((a, b) => a.date.compareTo(b.date));
+    completedEvents.sort(
+      (a, b) => b.date.compareTo(a.date),
+    ); // הפוכה - חדשים קודם
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // אימונים לביצוע
+          if (notCompletedEvents.isNotEmpty) ...[
+            _buildSectionHeader(
+              'אימונים לביצוע',
+              notCompletedEvents.length,
+              color: Colors.green[700]!,
+            ),
+            Card(
+              margin: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+              elevation: 3,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(8),
+                  bottomRight: Radius.circular(8),
+                ),
+              ),
+              child: _buildSingleTable(notCompletedEvents),
+            ),
+          ] else ...[
+            Card(
+              margin: const EdgeInsets.all(16),
+              color: Colors.green[50],
+              child: const Padding(
+                padding: EdgeInsets.all(24.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 32),
+                    SizedBox(width: 12),
+                    Text(
+                      'כל האימונים בוצעו! 🎉',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 24),
+
+          // אימונים שבוצעו
+          if (completedEvents.isNotEmpty) ...[
+            _buildSectionHeader(
+              'אימונים שבוצעו',
+              completedEvents.length,
+              color: Colors.blueGrey[600]!,
+            ),
+            Card(
+              margin: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+              elevation: 3,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(8),
+                  bottomRight: Radius.circular(8),
+                ),
+              ),
+              child: _buildSingleTable(completedEvents),
+            ),
+          ],
+        ],
       ),
     );
   }

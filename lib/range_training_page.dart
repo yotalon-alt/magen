@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'main.dart'; // for currentUser and golanSettlements
 import 'widgets/standard_back_button.dart';
 import 'widgets/trainee_selection_dialog.dart';
@@ -248,6 +249,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // ✅ SUMMARY FIELD: For instructor to write training summary
   String trainingSummary = '';
   late TextEditingController _trainingSummaryController;
+
+  // ✅ DATE SELECTION: Allow admin (Yotam) to set custom feedback date
+  DateTime _selectedDateTime = DateTime.now();
+  bool _dateManuallySet = false;
 
   // ✅ AUTOSAVE TIMER: Debounced autosave (700ms delay)
   Timer? _autoSaveTimer;
@@ -756,6 +761,48 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _autoSaveTimer?.cancel(); // Cancel pending debounced save
     debugPrint('⚡ IMMEDIATE SAVE: Saving now');
     _saveTemporarily();
+  }
+
+  /// ✅ תאריך מותאם אישית - רק עבור אדמין יותם
+  Future<void> _selectDateTime() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (pickedDate == null) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+    );
+
+    if (pickedTime == null) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedDateTime = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+      _dateManuallySet = true;
+    });
+
+    _scheduleAutoSave();
   }
 
   @override
@@ -2036,7 +2083,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'instructorEmail': email,
         'instructorRole': currentUser?.role ?? 'Instructor',
         'instructorUsername': currentUser?.username ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': _dateManuallySet
+            ? Timestamp.fromDate(_selectedDateTime)
+            : FieldValue.serverTimestamp(),
         'createdByName':
             currentUser?.name ?? '', // ✅ Use local name (no Firestore fetch)
         'createdByUid': uid,
@@ -2976,7 +3025,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'instructorsCount': instructorsCount, // מספר מדריכים
         'instructors': _collectInstructorNames(), // רשימת מדריכים
         'updatedAt': FieldValue.serverTimestamp(),
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': _dateManuallySet
+            ? Timestamp.fromDate(_selectedDateTime)
+            : FieldValue.serverTimestamp(),
         'selectedShortRangeStage': selectedShortRangeStage,
         'manualStageName': manualStageName,
         'summary': trainingSummary, // ✅ סיכום האימון מהמדריך
@@ -4084,6 +4135,40 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 enabled: false,
               ),
               const SizedBox(height: 16),
+
+              // ✅ תאריך - עריכה רק עבור אדמין יותם
+              if (currentUser?.name == 'יותם אלון' &&
+                  currentUser?.role == 'Admin') ...[
+                InkWell(
+                  onTap: _selectDateTime,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'תאריך',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          DateFormat(
+                            'dd/MM/yyyy HH:mm',
+                          ).format(_selectedDateTime),
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.edit_calendar,
+                          color: Colors.blue,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // מספר מדריכים באימון
               TextField(

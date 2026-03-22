@@ -2764,6 +2764,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   // Prevent double-submission
   bool _isSaving = false;
 
+  // ✨ Date selection for Yotam only
+  DateTime _selectedDateTime = DateTime.now();
+  bool _dateManuallySet = false;
+
   // Initialize criteria maps for current exercise
   void _initializeCriteriaForExercise() {
     // Clear existing maps
@@ -2792,6 +2796,52 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     }
     _initializeCriteriaForExercise();
     _loadCustomSettlements();
+  }
+
+  /// ✨ Select custom date/time (Yotam only)
+  Future<void> _selectDateTime() async {
+    final canEdit =
+        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
+    if (!canEdit) return;
+
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('he', 'IL'),
+      helpText: 'בחר תאריך למשוב',
+      cancelText: 'ביטול',
+      confirmText: 'אישור',
+    );
+
+    if (selectedDate == null) return;
+    if (!mounted) {
+      return;
+    }
+
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+      helpText: 'בחר שעה',
+      cancelText: 'ביטול',
+      confirmText: 'אישור',
+    );
+
+    if (selectedTime == null) return;
+
+    final newDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    setState(() {
+      _selectedDateTime = newDateTime;
+      _dateManuallySet = true;
+    });
   }
 
   @override
@@ -3009,7 +3059,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'scores': finalScores,
         'notes': finalNotes,
         'criteriaList': criteriaList,
-        'createdAt': now,
+        'createdAt': _dateManuallySet ? _selectedDateTime : now,
+        'dateManuallySet': _dateManuallySet,
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'instructorName': resolvedInstructorName,
@@ -3096,6 +3147,58 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               Text(
                 'תפקיד: ${instructorRoleDisplay.isNotEmpty ? instructorRoleDisplay : 'לא מוגדר'}',
               ),
+              const SizedBox(height: 12),
+              // ✨ Date selection widget (Yotam only)
+              (() {
+                final canEditDate =
+                    currentUser?.name == 'יותם אלון' &&
+                    currentUser?.role == 'Admin';
+                final dateStr = DateFormat(
+                  'dd/MM/yyyy HH:mm',
+                ).format(_selectedDateTime);
+
+                if (canEditDate) {
+                  return InkWell(
+                    onTap: _selectDateTime,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8.0,
+                        horizontal: 12.0,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.blue, width: 1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'תאריך: $dateStr',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.edit, size: 16, color: Colors.blue),
+                        ],
+                      ),
+                    ),
+                  );
+                } else {
+                  return Text(
+                    'תאריך: $dateStr',
+                    style: const TextStyle(fontSize: 14),
+                  );
+                }
+              })(),
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 12),
@@ -3499,6 +3602,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   Timer? _autosaveTimer;
   String? _currentDraftId; // Track current draft document ID
 
+  // ✨ Date selection for Yotam only
+  DateTime _selectedDateTime = DateTime.now();
+  bool _dateManuallySet = false;
+
   // ✨ NEW: Linked feedbacks feature
   List<FeedbackModel> _availableFeedbacks = []; // Feedbacks available to link
   final Set<String> _selectedFeedbackIds = {}; // Selected feedback IDs to link
@@ -3693,6 +3800,52 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     });
   }
 
+  /// ✨ Select custom date/time (Yotam only)
+  Future<void> _selectDateTime() async {
+    final canEdit =
+        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
+    if (!canEdit) return;
+
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('he', 'IL'),
+      helpText: 'בחר תאריך למשוב',
+      cancelText: 'ביטול',
+      confirmText: 'אישור',
+    );
+
+    if (selectedDate == null) return;
+    if (!mounted) {
+      return;
+    }
+
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+      helpText: 'בחר שעה',
+      cancelText: 'ביטול',
+      confirmText: 'אישור',
+    );
+
+    if (selectedTime == null) return;
+
+    final newDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    setState(() {
+      _selectedDateTime = newDateTime;
+      _dateManuallySet = true;
+    });
+  }
+
   /// ✨ Save current state as draft (isTemporary: true)
   Future<void> _saveDraft() async {
     // Skip if insufficient data
@@ -3755,7 +3908,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'instructorName': resolvedInstructorName,
         'instructorRole': instructorRoleDisplay,
         'instructorId': uid,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': _dateManuallySet
+            ? _selectedDateTime
+            : FieldValue.serverTimestamp(),
+        'dateManuallySet': _dateManuallySet,
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         'role': '',
@@ -4187,7 +4343,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'instructorName': resolvedInstructorName,
         'instructorRole': instructorRoleDisplay,
         'instructorId': uid,
-        'createdAt': now,
+        'createdAt': _dateManuallySet ? _selectedDateTime : now,
+        'dateManuallySet': _dateManuallySet,
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
         // For compatibility with existing feedback system
@@ -4283,6 +4440,58 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                 'תפקיד: ${instructorRoleDisplay.isNotEmpty ? instructorRoleDisplay : 'לא מוגדר'}',
                 style: const TextStyle(fontSize: 14),
               ),
+              const SizedBox(height: 12),
+              // ✨ Date selection widget (Yotam only)
+              (() {
+                final canEditDate =
+                    currentUser?.name == 'יותם אלון' &&
+                    currentUser?.role == 'Admin';
+                final dateStr = DateFormat(
+                  'dd/MM/yyyy HH:mm',
+                ).format(_selectedDateTime);
+
+                if (canEditDate) {
+                  return InkWell(
+                    onTap: _selectDateTime,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8.0,
+                        horizontal: 12.0,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.blue, width: 1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'תאריך: $dateStr',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.edit, size: 16, color: Colors.blue),
+                        ],
+                      ),
+                    ),
+                  );
+                } else {
+                  return Text(
+                    'תאריך: $dateStr',
+                    style: const TextStyle(fontSize: 14),
+                  );
+                }
+              })(),
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 12),
@@ -7390,6 +7599,102 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     });
   }
 
+  /// ✨ Edit feedback date (Yotam only)
+  Future<void> _editFeedbackDate() async {
+    // Only allow Yotam Alon (Admin) to edit dates
+    final canEdit =
+        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
+
+    if (!canEdit) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה לעריכת תאריך')));
+      return;
+    }
+
+    if (feedback.id == null || feedback.id!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('לא ניתן לערוך משוב ללא ID')),
+      );
+      return;
+    }
+
+    // Show date picker
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: feedback.createdAt,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('he', 'IL'),
+      helpText: 'בחר תאריך חדש למשוב',
+      cancelText: 'ביטול',
+      confirmText: 'אישור',
+    );
+
+    if (selectedDate == null) return;
+    if (!mounted) {
+      return; // ✅ Check widget is still mounted before using context
+    }
+
+    // Show time picker to preserve time or set new time
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(feedback.createdAt),
+      helpText: 'בחר שעה',
+      cancelText: 'ביטול',
+      confirmText: 'אישור',
+    );
+
+    if (selectedTime == null) return;
+
+    // Combine date and time
+    final newDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    try {
+      // Update Firestore
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({'createdAt': Timestamp.fromDate(newDateTime)});
+
+      // Update local state
+      setState(() {
+        feedback = feedback.copyWith(createdAt: newDateTime);
+      });
+
+      // Update in-memory cache
+      final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
+      if (index != -1) {
+        feedbackStorage[index] = feedback;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'תאריך עודכן ל-${DateFormat('dd/MM/yyyy HH:mm').format(newDateTime)}',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Error updating feedback date: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בעדכון תאריך: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   bool _isExporting = false;
 
   void _showStationDetailsModal(
@@ -7683,7 +7988,41 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                     );
                   },
                 ),
-              Text('תאריך: $date'),
+              // Date display with edit capability for Yotam Alon
+              (() {
+                final canEditDate =
+                    currentUser?.name == 'יותם אלון' &&
+                    currentUser?.role == 'Admin';
+
+                if (canEditDate) {
+                  return InkWell(
+                    onTap: _editFeedbackDate,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 4.0,
+                        horizontal: 8.0,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'תאריך: $date',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.edit, size: 16, color: Colors.blue),
+                        ],
+                      ),
+                    ),
+                  );
+                } else {
+                  return Text('תאריך: $date');
+                }
+              })(),
               const SizedBox(height: 8),
               Text('תרגיל: ${feedback.exercise}'),
               const SizedBox(height: 8),
