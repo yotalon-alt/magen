@@ -2800,19 +2800,11 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   /// ✨ Select custom date/time (Yotam only)
   Future<void> _selectDateTime() async {
-    final canEdit =
-        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
-    if (!canEdit) return;
-
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('he', 'IL'),
-      helpText: 'בחר תאריך למשוב',
-      cancelText: 'ביטול',
-      confirmText: 'אישור',
     );
 
     if (selectedDate == null) return;
@@ -2823,9 +2815,6 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     final selectedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-      helpText: 'בחר שעה',
-      cancelText: 'ביטול',
-      confirmText: 'אישור',
     );
 
     if (selectedTime == null) return;
@@ -3059,7 +3048,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'scores': finalScores,
         'notes': finalNotes,
         'criteriaList': criteriaList,
-        'createdAt': _dateManuallySet ? _selectedDateTime : now,
+        'createdAt': _dateManuallySet
+            ? Timestamp.fromDate(_selectedDateTime)
+            : Timestamp.fromDate(now),
         'dateManuallySet': _dateManuallySet,
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
@@ -3802,19 +3793,11 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   /// ✨ Select custom date/time (Yotam only)
   Future<void> _selectDateTime() async {
-    final canEdit =
-        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
-    if (!canEdit) return;
-
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('he', 'IL'),
-      helpText: 'בחר תאריך למשוב',
-      cancelText: 'ביטול',
-      confirmText: 'אישור',
     );
 
     if (selectedDate == null) return;
@@ -3825,9 +3808,6 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     final selectedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-      helpText: 'בחר שעה',
-      cancelText: 'ביטול',
-      confirmText: 'אישור',
     );
 
     if (selectedTime == null) return;
@@ -4343,7 +4323,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'instructorName': resolvedInstructorName,
         'instructorRole': instructorRoleDisplay,
         'instructorId': uid,
-        'createdAt': _dateManuallySet ? _selectedDateTime : now,
+        'createdAt': _dateManuallySet
+            ? Timestamp.fromDate(_selectedDateTime)
+            : Timestamp.fromDate(now),
         'dateManuallySet': _dateManuallySet,
         'createdByName': resolvedInstructorName,
         'createdByUid': uid,
@@ -7601,17 +7583,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
   /// ✨ Edit feedback date (Yotam only)
   Future<void> _editFeedbackDate() async {
-    // Only allow Yotam Alon (Admin) to edit dates
-    final canEdit =
-        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
-
-    if (!canEdit) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('אין הרשאה לעריכת תאריך')));
-      return;
-    }
-
     if (feedback.id == null || feedback.id!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('לא ניתן לערוך משוב ללא ID')),
@@ -7625,10 +7596,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
       initialDate: feedback.createdAt,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('he', 'IL'),
-      helpText: 'בחר תאריך חדש למשוב',
-      cancelText: 'ביטול',
-      confirmText: 'אישור',
     );
 
     if (selectedDate == null) return;
@@ -7640,9 +7607,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     final selectedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(feedback.createdAt),
-      helpText: 'בחר שעה',
-      cancelText: 'ביטול',
-      confirmText: 'אישור',
     );
 
     if (selectedTime == null) return;
