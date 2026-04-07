@@ -7737,74 +7737,91 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             ),
                           ),
                         ],
-                        rows: trainees.map((t) {
-                          final name = (t['name'] ?? '').toString();
-                          final hitsMap =
-                              (t['hits'] as Map?)?.cast<String, dynamic>() ??
-                              {};
-                          final hits =
-                              (hitsMap['station_$stationIndex'] as num?)
-                                  ?.toInt() ??
-                              0;
-                          final bullets = bulletsPerTrainee;
-                          final pct = bullets > 0
-                              ? ((hits / bullets) * 100).toStringAsFixed(1)
-                              : '0.0';
+                        rows: trainees
+                            .map((t) {
+                              final name = (t['name'] ?? '').toString();
+                              final hitsMap =
+                                  (t['hits'] as Map?)
+                                      ?.cast<String, dynamic>() ??
+                                  {};
 
-                          // Get time value for בוחן רמה
-                          final timeValuesMap =
-                              (t['timeValues'] as Map?)
-                                  ?.cast<String, dynamic>() ??
-                              {};
-                          final timeInSeconds =
-                              (timeValuesMap['station_${stationIndex}_time']
-                                      as num?)
-                                  ?.toDouble() ??
-                              0.0;
-                          final timeDisplay = timeInSeconds > 0
-                              ? '${timeInSeconds}s'
-                              : '';
+                              // ✅ FIX: Check if key exists - only show if trainee performed this station
+                              if (!hitsMap.containsKey(
+                                'station_$stationIndex',
+                              )) {
+                                // Skip this trainee - they didn't perform this station
+                                return null;
+                              }
 
-                          // Check if this is a בוחן רמה station by station name
-                          final isLevelTester = stationName.contains(
-                            'בוחן רמה',
-                          );
+                              final hits =
+                                  (hitsMap['station_$stationIndex'] as num?)
+                                      ?.toInt() ??
+                                  0;
+                              final bullets = bulletsPerTrainee;
+                              final pct = bullets > 0
+                                  ? ((hits / bullets) * 100).toStringAsFixed(1)
+                                  : '0.0';
 
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                Text(
-                                  name,
-                                  style: const TextStyle(color: Colors.white),
-                                ),
-                              ),
-                              DataCell(
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
+                              // Get time value for בוחן רמה
+                              final timeValuesMap =
+                                  (t['timeValues'] as Map?)
+                                      ?.cast<String, dynamic>() ??
+                                  {};
+                              final timeInSeconds =
+                                  (timeValuesMap['station_${stationIndex}_time']
+                                          as num?)
+                                      ?.toDouble() ??
+                                  0.0;
+                              final timeDisplay = timeInSeconds > 0
+                                  ? '${timeInSeconds}s'
+                                  : '';
+
+                              // Check if this is a בוחן רמה station by station name
+                              final isLevelTester = stationName.contains(
+                                'בוחן רמה',
+                              );
+
+                              return DataRow(
+                                cells: [
+                                  DataCell(
                                     Text(
-                                      '$hits מתוך $bullets • $pct%',
+                                      name,
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    // Show time for בוחן רמה stations
-                                    if (isLevelTester && timeDisplay.isNotEmpty)
-                                      Text(
-                                        'זמן: $timeDisplay',
-                                        style: const TextStyle(
-                                          color: Colors.lightBlueAccent,
-                                          fontSize: 12,
+                                  ),
+                                  DataCell(
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '$hits מתוך $bullets • $pct%',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
+                                        // Show time for בוחן רמה stations
+                                        if (isLevelTester &&
+                                            timeDisplay.isNotEmpty)
+                                          Text(
+                                            'זמן: $timeDisplay',
+                                            style: const TextStyle(
+                                              color: Colors.lightBlueAccent,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            })
+                            .whereType<DataRow>()
+                            .toList(),
                       ),
                     ),
                   ),
@@ -9022,13 +9039,26 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               totalValue +=
                                   (trainee['totalHits'] as num?)?.toInt() ?? 0;
                             }
-                            int totalBulletsPerTrainee = 0;
-                            for (final station in stations) {
-                              totalBulletsPerTrainee +=
-                                  (station['bulletsCount'] as num?)?.toInt() ??
+
+                            // ✅ FIX: Count max bullets per station based on actual performers
+                            totalMax = 0;
+                            for (int i = 0; i < stations.length; i++) {
+                              int traineesWhoPerformed = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null &&
+                                    hits.containsKey('station_$i')) {
+                                  traineesWhoPerformed++;
+                                }
+                              }
+                              final bulletsPerStation =
+                                  (stations[i]['bulletsCount'] as num?)
+                                      ?.toInt() ??
                                   0;
+                              totalMax +=
+                                  traineesWhoPerformed * bulletsPerStation;
                             }
-                            totalMax = trainees.length * totalBulletsPerTrainee;
                           }
 
                           // חישוב אחוז כללי
@@ -9206,10 +9236,14 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
                                 // חישוב סך פגיעות/נקודות למקצה
                                 int stationValue = 0;
+                                // ✅ FIX: Count only trainees who performed this station
+                                int traineesWhoPerformed = 0;
                                 for (final trainee in trainees) {
                                   final hits =
                                       trainee['hits'] as Map<String, dynamic>?;
-                                  if (hits != null) {
+                                  if (hits != null &&
+                                      hits.containsKey('station_$index')) {
+                                    traineesWhoPerformed++;
                                     stationValue +=
                                         (hits['station_$index'] as num?)
                                             ?.toInt() ??
@@ -9217,9 +9251,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   }
                                 }
 
-                                // חישוב נכון: מספר חניכים × max per trainee
+                                // ✅ FIX: Calculate max only for trainees who performed
                                 final totalStationMax =
-                                    trainees.length * stationMaxPerTrainee;
+                                    traineesWhoPerformed * stationMaxPerTrainee;
 
                                 // חישוב אחוז פגיעות למקצה
                                 final stationPercentage = totalStationMax > 0
@@ -9228,11 +9262,12 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                     : '0.0';
 
                                 // ✅ LONG RANGE: Calculate stage bullets fired (tracking only)
+                                // Only count bullets for trainees who actually performed
                                 final stageBulletsFired = isLongRange
                                     ? ((station['bulletsCount'] as num?)
                                                   ?.toInt() ??
                                               0) *
-                                          trainees.length
+                                          traineesWhoPerformed
                                     : 0;
 
                                 return InkWell(
@@ -9632,6 +9667,8 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 // ✅ CONDITIONAL: Points for long range, hits for short range
                                 int stationValue = 0;
                                 int stationMax = 0;
+                                // ✅ FIX: Count only trainees who performed this station
+                                int traineesWhoPerformed = 0;
 
                                 if (isLongRange) {
                                   // LONG RANGE: Use points (raw values)
@@ -9639,7 +9676,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                     final hits =
                                         trainee['hits']
                                             as Map<String, dynamic>?;
-                                    if (hits != null) {
+                                    if (hits != null &&
+                                        hits.containsKey('station_$index')) {
+                                      traineesWhoPerformed++;
                                       stationValue +=
                                           (hits['station_$index'] as num?)
                                               ?.toInt() ??
@@ -9650,7 +9689,8 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   final maxPoints =
                                       (station['maxPoints'] as num?)?.toInt() ??
                                       0;
-                                  stationMax = trainees.length * maxPoints;
+                                  // ✅ FIX: Count only performers
+                                  stationMax = traineesWhoPerformed * maxPoints;
                                 } else {
                                   // SHORT RANGE: Use hits/bullets
                                   final stationBulletsPerTrainee =
@@ -9662,7 +9702,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                     final hits =
                                         trainee['hits']
                                             as Map<String, dynamic>?;
-                                    if (hits != null) {
+                                    if (hits != null &&
+                                        hits.containsKey('station_$index')) {
+                                      traineesWhoPerformed++;
                                       stationValue +=
                                           (hits['station_$index'] as num?)
                                               ?.toInt() ??
@@ -9670,9 +9712,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                     }
                                   }
 
-                                  // ✅ חישוב נכון: מספר חניכים × כדורים במקצה
+                                  // ✅ FIX: Count only performers
                                   stationMax =
-                                      trainees.length *
+                                      traineesWhoPerformed *
                                       stationBulletsPerTrainee;
                                 }
 
@@ -11676,18 +11718,25 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
             rangeSubType == 'טווח רחוק';
         isLongRangePerSettlement[f.settlement] = isLongRange;
 
+        // ✅ FIX: Count only bullets/points from stations that were actually performed
         int feedbackTotalBullets = 0;
-        for (final station in stations) {
-          if (isLongRange) {
-            // ✅ LONG RANGE: Use maxPoints instead of bulletsCount
-            feedbackTotalBullets +=
-                ((station['maxPoints'] as num?)?.toInt() ?? 0) *
-                trainees.length;
-          } else {
-            // ✅ SHORT RANGE: Keep using bulletsCount (unchanged)
-            feedbackTotalBullets +=
-                ((station['bulletsCount'] as num?)?.toInt() ?? 0) *
-                trainees.length;
+        for (final trainee in trainees) {
+          final hitsMap =
+              (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
+          for (int i = 0; i < stations.length; i++) {
+            // Only count if this trainee has data for this station
+            if (hitsMap.containsKey('station_$i')) {
+              final station = stations[i];
+              if (isLongRange) {
+                // ✅ LONG RANGE: Use maxPoints for performed stations
+                feedbackTotalBullets +=
+                    (station['maxPoints'] as num?)?.toInt() ?? 0;
+              } else {
+                // ✅ SHORT RANGE: Use bulletsCount for performed stations
+                feedbackTotalBullets +=
+                    (station['bulletsCount'] as num?)?.toInt() ?? 0;
+              }
+            }
           }
         }
         totalBulletsPerSettlement[f.settlement] =
@@ -11774,22 +11823,27 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                               final bulletsPerTrainee =
                                   (station['bulletsCount'] as num?)?.toInt() ??
                                   0;
-                              final totalBulletsForStation =
-                                  trainees.length * bulletsPerTrainee;
-                              totalBulletsPerStation[stationName] =
-                                  (totalBulletsPerStation[stationName] ?? 0) +
-                                  totalBulletsForStation;
 
+                              // ✅ FIX: Count only bullets from trainees who performed this station
                               int stationHits = 0;
+                              int traineesPerformed = 0;
                               for (final trainee in trainees) {
                                 final hits =
                                     trainee['hits'] as Map<String, dynamic>?;
-                                if (hits != null) {
+                                if (hits != null &&
+                                    hits.containsKey('station_$i')) {
                                   stationHits +=
                                       (hits['station_$i'] as num?)?.toInt() ??
                                       0;
+                                  traineesPerformed++;
                                 }
                               }
+
+                              final totalBulletsForStation =
+                                  traineesPerformed * bulletsPerTrainee;
+                              totalBulletsPerStation[stationName] =
+                                  (totalBulletsPerStation[stationName] ?? 0) +
+                                  totalBulletsForStation;
                               totalHitsPerStation[stationName] =
                                   (totalHitsPerStation[stationName] ?? 0) +
                                   stationHits;
@@ -12410,20 +12464,24 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                   0 // ✅ LONG: points
                             : (station['bulletsCount'] as num?)?.toInt() ??
                                   0; // ✅ SHORT: bullets
+
+                        // ✅ FIX: Count only bullets/points from trainees who performed this station
+                        int stationHits = 0;
+                        int traineesPerformed = 0;
+                        for (final trainee in trainees) {
+                          final hits = trainee['hits'] as Map<String, dynamic>?;
+                          if (hits != null && hits.containsKey('station_$i')) {
+                            stationHits +=
+                                (hits['station_$i'] as num?)?.toInt() ?? 0;
+                            traineesPerformed++;
+                          }
+                        }
+
                         final totalBulletsForStation =
-                            trainees.length * stationMaxValue;
+                            traineesPerformed * stationMaxValue;
                         totalBulletsPerStation[stationName] =
                             (totalBulletsPerStation[stationName] ?? 0) +
                             totalBulletsForStation;
-
-                        int stationHits = 0;
-                        for (final trainee in trainees) {
-                          final hits = trainee['hits'] as Map<String, dynamic>?;
-                          if (hits != null) {
-                            stationHits +=
-                                (hits['station_$i'] as num?)?.toInt() ?? 0;
-                          }
-                        }
                         totalHitsPerStation[stationName] =
                             (totalHitsPerStation[stationName] ?? 0) +
                             stationHits;

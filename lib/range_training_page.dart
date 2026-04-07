@@ -1225,9 +1225,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return total;
   }
 
-  /// Get total bullets - SHORT RANGE AND SURPRISE ONLY
+  /// Get total bullets for ALL stages - SHORT RANGE AND SURPRISE ONLY (FOR FORM DISPLAY)
+  /// Used during form editing to show total possible bullets
   /// Long range has its own tracking function: _getTotalBulletsLongRangeTracking()
-  int _getTotalBullets() {
+  int _getTotalBulletsAllStages() {
     // For Short Range, use shortRangeStagesList
     if (_rangeType == 'קצרים' && shortRangeStagesList.isNotEmpty) {
       int total = 0;
@@ -1238,12 +1239,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
     // ⚠️ LONG RANGE: Should NOT call this function - use points instead
     if (_rangeType == 'ארוכים') {
-      debugPrint(
-        '⚠️ WARNING: _getTotalBullets called for long range - should use points!',
-      );
-      return 0; // Return 0 to prevent incorrect calculations
+      return 0;
     }
-    // For Surprise or legacy, use stations list
+    // For Surprise, use stations list
     int total = 0;
     for (var station in stations) {
       total += station.bulletsCount;
@@ -1506,8 +1504,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   }
 
   /// Get total max points across all Long Range stages
-  /// Formula: N * SUM(stage.maxPoints) where N = number of trainees
-  /// Example: 3 trainees, 3 stages (100,100,100) → 3 * 300 = 900
+  /// ✅ FIX: Formula: SUM(stage.maxPoints * trainees_who_performed_this_stage)
+  /// Only count max points for stages that trainees actually performed
+  /// Example: 3 trainees, 3 stages (100,100,100), only 2 performed stage 1 → 2*100 + 3*100 + 3*100 = 800
   int _getTotalMaxPointsLongRange() {
     if (_rangeType != 'ארוכים') return 0;
     if (longRangeStagesList.isEmpty) return 0;
@@ -1516,25 +1515,34 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final N = traineeRows.length;
     if (N == 0) return 0;
 
-    // Sum all stage maxPoints
-    int sumOfStageMaxPoints = 0;
-    final List<int> stageMaxPointsList = [];
-    for (var stage in longRangeStagesList) {
-      sumOfStageMaxPoints += stage.maxPoints;
-      stageMaxPointsList.add(stage.maxPoints);
+    // ✅ FIX: Count max points only for stages performed
+    int totalMaxPoints = 0;
+    final List<String> debugLog = [];
+
+    for (int stageIdx = 0; stageIdx < longRangeStagesList.length; stageIdx++) {
+      final stage = longRangeStagesList[stageIdx];
+      // Count how many trainees performed this stage
+      int traineesPerformed = 0;
+      for (final trainee in traineeRows) {
+        if (trainee.valuesTouched[stageIdx] == true) {
+          traineesPerformed++;
+        }
+      }
+
+      final stageMaxPoints = stage.maxPoints * traineesPerformed;
+      totalMaxPoints += stageMaxPoints;
+      debugLog.add(
+        'Stage $stageIdx: ${stage.maxPoints} × $traineesPerformed = $stageMaxPoints',
+      );
     }
 
-    // Total = N * SUM(stage.maxPoints)
-    final totalMaxPoints = N * sumOfStageMaxPoints;
-
     // 🔍 DEBUG: Log calculation breakdown
-    debugPrint('\n🎯 LONG-RANGE SUMMARY DENOMINATOR CALCULATION:');
-    debugPrint('   N (trainees) = $N');
-    debugPrint('   Stage maxPoints = $stageMaxPointsList');
-    debugPrint('   SUM(stage.maxPoints) = $sumOfStageMaxPoints');
-    debugPrint(
-      '   totalMaxPoints = N * SUM = $N * $sumOfStageMaxPoints = $totalMaxPoints',
-    );
+    debugPrint('\n🎯 LONG-RANGE SUMMARY DENOMINATOR CALCULATION (FIXED):');
+    debugPrint('   Total trainees = $N');
+    for (final log in debugLog) {
+      debugPrint('   $log');
+    }
+    debugPrint('   totalMaxPoints = $totalMaxPoints (only performed stages)');
     debugPrint('   Expected format: achieved/$totalMaxPoints\n');
 
     return totalMaxPoints;
@@ -6292,10 +6300,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                     child: TextField(
                                                       controller: _getController(
                                                         controllerKey,
-                                                        currentValue == 0
-                                                            ? ''
-                                                            : currentValue
-                                                                  .toString(),
+                                                        row.values.containsKey(
+                                                              stationIndex,
+                                                            )
+                                                            ? currentValue
+                                                                  .toString()
+                                                            : '',
                                                       ),
                                                       focusNode: _getFocusNode(
                                                         focusKey,
@@ -6657,11 +6667,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               child: TextField(
                                                                 controller: _getController(
                                                                   controllerKey,
-                                                                  currentValue ==
-                                                                          0
-                                                                      ? ''
-                                                                      : currentValue
-                                                                            .toString(),
+                                                                  row.values.containsKey(
+                                                                        stationIndex,
+                                                                      )
+                                                                      ? currentValue
+                                                                            .toString()
+                                                                      : '',
                                                                 ),
                                                                 focusNode:
                                                                     _getFocusNode(
@@ -6931,11 +6942,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               builder: (context) {
                                                                 final controller = _getController(
                                                                   controllerKey,
-                                                                  currentValue ==
-                                                                          0
-                                                                      ? ''
-                                                                      : currentValue
-                                                                            .toString(),
+                                                                  row.values.containsKey(
+                                                                        stationIndex,
+                                                                      )
+                                                                      ? currentValue
+                                                                            .toString()
+                                                                      : '',
                                                                 );
 
                                                                 return TextField(
@@ -7313,7 +7325,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       alignment:
                                                           Alignment.center,
                                                       child: Text(
-                                                        '${_getTraineeTotalHits(traineeIdx)}/${_getTotalBullets()}',
+                                                        '${_getTraineeTotalHits(traineeIdx)}/${_getTotalBulletsAllStages()}',
                                                         style: const TextStyle(
                                                           fontWeight:
                                                               FontWeight.bold,
@@ -7342,7 +7354,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                 traineeIdx,
                                                               );
                                                           final totalBullets =
-                                                              _getTotalBullets();
+                                                              _getTotalBulletsAllStages();
                                                           final percentage =
                                                               totalBullets > 0
                                                               ? (totalHits /
@@ -8055,7 +8067,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     SizedBox(
                                       width: 100,
                                       child: Text(
-                                        '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBullets()}',
+                                        '${_getTraineeTotalHits(traineeIndex)}/${_getTotalBulletsAllStages()}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: Colors.blue,
@@ -8073,7 +8085,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 traineeIndex,
                                               );
                                           final totalBullets =
-                                              _getTotalBullets();
+                                              _getTotalBulletsAllStages();
                                           final percentage = totalBullets > 0
                                               ? (totalHits / totalBullets * 100)
                                               : 0.0;
@@ -8142,18 +8154,20 @@ class TraineeRowModel {
 
   // Set value for a specific station/principle
   void setValue(int stationIndex, int value) {
-    // Mark as touched when user explicitly changes the field
-    valuesTouched[stationIndex] = true;
-
-    if (value == 0) {
-      values.remove(stationIndex);
-    } else {
+    // ✅ FIX: Only store values > 0
+    // Existence of key in map = trainee performed this station
+    // No key = not performed
+    if (value > 0) {
       values[stationIndex] = value;
+      debugPrint(
+        '💾 setValue: stationIndex=$stationIndex, value=$value, stored=true',
+      );
+    } else {
+      values.remove(stationIndex);
+      debugPrint(
+        '💾 setValue: stationIndex=$stationIndex, value=$value, removed from map',
+      );
     }
-    // 🐛 DEBUG: Log what was stored (no filtering - always log for verification)
-    debugPrint(
-      '💾 setValue: stationIndex=$stationIndex, value=$value, touched=true, stored=${values[stationIndex]}',
-    );
   }
 
   // Get time value for a specific station (for בוחן רמה)
@@ -8171,28 +8185,24 @@ class TraineeRowModel {
     }
   }
 
-  // Check if has any non-zero data
+  // Check if has any data
   bool hasData() =>
-      name.trim().isNotEmpty ||
-      values.values.any((v) => v != 0) ||
-      timeValues.values.any((v) => v != 0);
+      name.trim().isNotEmpty || values.isNotEmpty || timeValues.isNotEmpty;
 
   // Check if a specific stage should be included in FINAL statistics
-  // (must have at least one field touched AND not null)
-  // 0 is VALID if explicitly entered (touched=true)
+  // Existence of key in values or timeValues map = stage was performed
   bool shouldIncludeStageInFinalStats(int stationIndex) {
-    final valueTouched = valuesTouched[stationIndex] ?? false;
-    final timeTouched = timeValuesTouched[stationIndex] ?? false;
-
-    // Include if ANY field was touched (even if value is 0)
-    return valueTouched || timeTouched;
+    // Include if trainee has value OR time for this stage
+    return values.containsKey(stationIndex) ||
+        timeValues.containsKey(stationIndex);
   }
 
   // Serialize to Firestore format
   Map<String, dynamic> toFirestore() {
     final valuesMap = <String, int>{};
+    // ✅ Only save stations that were actually performed (non-zero values)
     values.forEach((stationIdx, val) {
-      if (val != 0) {
+      if (val > 0) {
         valuesMap['station_$stationIdx'] = val;
       }
     });
@@ -8242,7 +8252,8 @@ class TraineeRowModel {
           );
         }
 
-        if (stationIdx != null && value != 0) {
+        // ✅ Only load non-zero values (if 0 was stored, it means not performed)
+        if (stationIdx != null && value > 0) {
           values[stationIdx] = value;
         }
       }

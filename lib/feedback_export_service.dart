@@ -1636,17 +1636,19 @@ class FeedbackExportService {
         cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
 
         // Columns C+: Hits for each drill (numbers only), plus time for בוחן רמה
-        // Also compute total hits and count stages for average
+        // ✅ FIX: count stages performed (including 0 hits) for accurate average
         int traineeTotalHits = 0;
-        int stagesWithHits = 0;
+        int stagesPerformed = 0;
 
         for (final stationCol in stationColumns) {
           final si = stationCol['stationIndex'] as int;
           final hitsColumn = stationCol['hitsColumn'] as int;
           final hasTime = stationCol['hasTime'] as bool;
 
-          // Get hits for this station from trainee record
-          final hits = (hitsMap['station_$si'] as num?)?.toInt();
+          // ✅ FIX: Check if station was performed (even if 0 hits)
+          final hits = hitsMap.containsKey('station_$si')
+              ? (hitsMap['station_$si'] as num?)?.toInt() ?? 0
+              : null;
 
           // Hits column
           cell = sheet.cell(
@@ -1656,12 +1658,13 @@ class FeedbackExportService {
             ),
           );
 
-          if (hits != null && hits > 0) {
+          if (hits != null) {
+            // Station was performed - show value (even if 0)
             cell.value = IntCellValue(hits);
             traineeTotalHits += hits;
-            stagesWithHits++;
+            stagesPerformed++;
           } else {
-            // Leave blank if missing data
+            // Station not performed - leave blank
             cell.value = TextCellValue('');
           }
           cell.cellStyle = CellStyle(horizontalAlign: HorizontalAlign.Right);
@@ -1705,8 +1708,8 @@ class FeedbackExportService {
             rowIndex: rowIndex,
           ),
         );
-        if (stagesWithHits > 0) {
-          final traineeAverage = traineeTotalHits / stagesWithHits;
+        if (stagesPerformed > 0) {
+          final traineeAverage = traineeTotalHits / stagesPerformed;
           // Round to 2 decimal places
           cell.value = DoubleCellValue(
             double.parse(traineeAverage.toStringAsFixed(2)),
@@ -3750,14 +3753,19 @@ class FeedbackExportService {
 
           for (int stageIdx = 0; stageIdx < stages.length; stageIdx++) {
             final stage = stages[stageIdx];
-            final hits = (hitsMap['station_$stageIdx'] as num?)?.toInt() ?? 0;
+            final hits = hitsMap.containsKey('station_$stageIdx')
+                ? (hitsMap['station_$stageIdx'] as num?)?.toInt() ?? 0
+                : null;
             final bullets = (stage['bulletsCount'] as num?)?.toInt() ?? 0;
 
-            traineeHitsTotal += hits;
-            traineeBulletsTotal += bullets;
+            // ✅ FIX: Only count bullets for stages this trainee performed
+            if (hits != null) {
+              traineeHitsTotal += hits;
+              traineeBulletsTotal += bullets;
+            }
 
             // Show as "hits/bullets"
-            if (hits > 0 || bullets > 0) {
+            if (hits != null) {
               traineeRow.add(TextCellValue('$hits/$bullets'));
             } else {
               traineeRow.add(TextCellValue(''));
@@ -3792,11 +3800,14 @@ class FeedbackExportService {
           final hitsMap =
               (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
           for (int stageIdx = 0; stageIdx < stages.length; stageIdx++) {
-            final hits = (hitsMap['station_$stageIdx'] as num?)?.toInt() ?? 0;
-            final bullets =
-                (stages[stageIdx]['bulletsCount'] as num?)?.toInt() ?? 0;
-            grandTotalHits += hits;
-            grandTotalBullets += bullets;
+            // ✅ FIX: Only count if trainee performed this stage
+            if (hitsMap.containsKey('station_$stageIdx')) {
+              final hits = (hitsMap['station_$stageIdx'] as num?)?.toInt() ?? 0;
+              final bullets =
+                  (stages[stageIdx]['bulletsCount'] as num?)?.toInt() ?? 0;
+              grandTotalHits += hits;
+              grandTotalBullets += bullets;
+            }
           }
         }
 
