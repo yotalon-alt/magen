@@ -434,13 +434,18 @@ class _InstructorCourseSelectionFeedbacksPageState
           'בוחן רמה': 'levelTest',
           'הדרכה טובה': 'goodInstruction',
           'הדרכת מבנה': 'structureInstruction',
-          'יבשים': 'dryPractice',
+          'הדרכת יבשים': 'dryPractice',
           'תרגיל הפתעה': 'surpriseExercise',
         };
 
         fields.forEach((hebrewName, fieldData) {
-          if (fieldData is Map && fieldData.containsKey('value')) {
-            final value = fieldData['value'];
+          if (fieldData is Map &&
+              (fieldData.containsKey('value') ||
+                  fieldData.containsKey('average'))) {
+            // Support both old structure ('value') and new multi-field structure ('average')
+            final value = fieldData.containsKey('value')
+                ? fieldData['value']
+                : fieldData['average'];
             final numValue = (value is num) ? value.toDouble() : 0.0;
 
             // Store with English key for UI compatibility
@@ -1273,11 +1278,11 @@ class _InstructorCourseSelectionFeedbacksPageState
                             children: [
                               // Percentage (left side)
                               Text(
-                                '${((averageScore / 5.0) * 100).toStringAsFixed(0)}%',
+                                '${((averageScore / 10.0) * 100).toStringAsFixed(0)}%',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
-                                  color: averageScore > 3.6
+                                  color: averageScore >= 7.0
                                       ? Colors.green
                                       : Colors.red,
                                 ),
@@ -1495,7 +1500,7 @@ class _InstructorCourseSelectionFeedbacksPageState
                   feedback,
                 ),
                 _buildScoreRow(
-                  'יבשים',
+                  'הדרכה יבשים',
                   scores['dryPractice'],
                   'dryPractice',
                   feedback,
@@ -1527,11 +1532,13 @@ class _InstructorCourseSelectionFeedbacksPageState
                         ),
                       ),
                       Text(
-                        '${((averageScore / 5.0) * 100).toStringAsFixed(0)}%',
+                        '${((averageScore / 10.0) * 100).toStringAsFixed(0)}%',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: averageScore > 3.6 ? Colors.green : Colors.red,
+                          color: averageScore >= 7.0
+                              ? Colors.green
+                              : Colors.red,
                         ),
                       ),
                     ],

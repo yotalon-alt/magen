@@ -23,7 +23,7 @@ class _InstructorCourseFeedbackPageState
   String? _selectedPikud;
   final List<String> _pikudOptions = ['פיקוד צפון', 'פיקוד מרכז', 'פיקוד דרום'];
   String? _selectedHativa; // ✅ NEW: Brigade selection for פיקוד צפון
-  final List<String> _hativaOptions = ['חטיבת 474', 'חטיבת 769', 'חטיבת 300'];
+  final List<String> _hativaOptions = ['חטיבה 474', 'חטיבה 769', 'חטיבה 300'];
   String? _originalCreatorName; // ✅ Track original creator's name
   String?
   _originalCreatorUid; // ✅ Track original creator's UID for permission checks
@@ -67,11 +67,12 @@ class _InstructorCourseFeedbackPageState
       'איכות הדגמה': 0,
     },
     'תרגיל הפתעה': {
-      'ידע': 0,
-      'עמידה מול קהל': 0,
-      'מתודיקה': 0,
-      'איכות הדרכה': 0,
-      'איכות הדגמה': 0,
+      'תקשורת': 0,
+      'ציר התקדמות': 0,
+      'קשר עין': 0,
+      'קצב אש מרחק': 0,
+      'וידוא נטרול': 0,
+      'איכות ביצוע': 0,
     },
   };
 
