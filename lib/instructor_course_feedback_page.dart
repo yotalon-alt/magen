@@ -22,6 +22,8 @@ class _InstructorCourseFeedbackPageState
   bool _isFormLocked = false;
   String? _selectedPikud;
   final List<String> _pikudOptions = ['פיקוד צפון', 'פיקוד מרכז', 'פיקוד דרום'];
+  String? _selectedHativa; // ✅ NEW: Brigade selection for פיקוד צפון
+  final List<String> _hativaOptions = ['חטיבת 474', 'חטיבת 769', 'חטיבת 300'];
   String? _originalCreatorName; // ✅ Track original creator's name
   String?
   _originalCreatorUid; // ✅ Track original creator's UID for permission checks
@@ -37,11 +39,48 @@ class _InstructorCourseFeedbackPageState
   // ✅ NEW: Notes controllers for each category
   final Map<String, TextEditingController> _notesControllers = {};
 
+  // ✅ בוחן רמה: Simple score 1-10 (changed from 1-5)
+  int levelTestScore = 0;
+
+  // ✅ Multi-field categories: Each has 5 fields (1-10 each)
+  // Categories: הדרכה טובה, הדרכת מבנה, הדרכת יבשים, תרגיל הפתעה
+  final Map<String, Map<String, int>> multiFieldCategories = {
+    'הדרכה טובה': {
+      'ידע': 0,
+      'עמידה מול קהל': 0,
+      'מתודיקה': 0,
+      'איכות הדרכה': 0,
+      'איכות הדגמה': 0,
+    },
+    'הדרכת מבנה': {
+      'ידע': 0,
+      'עמידה מול קהל': 0,
+      'מתודיקה': 0,
+      'איכות הדרכה': 0,
+      'איכות הדגמה': 0,
+    },
+    'הדרכת יבשים': {
+      'ידע': 0,
+      'עמידה מול קהל': 0,
+      'מתודיקה': 0,
+      'איכות הדרכה': 0,
+      'איכות הדגמה': 0,
+    },
+    'תרגיל הפתעה': {
+      'ידע': 0,
+      'עמידה מול קהל': 0,
+      'מתודיקה': 0,
+      'איכות הדרכה': 0,
+      'איכות הדגמה': 0,
+    },
+  };
+
+  // ✅ Legacy Map for backwards compatibility during migration
   final Map<String, int> categories = {
     'בוחן רמה': 0,
     'הדרכה טובה': 0,
     'הדרכת מבנה': 0,
-    'יבשים': 0,
+    'הדרכת יבשים': 0,
     'תרגיל הפתעה': 0,
   };
 
@@ -49,31 +88,37 @@ class _InstructorCourseFeedbackPageState
   /// NEW LOGIC for hits 4/5/6: 4→1, 5→2, 6→3
   /// EXISTING LOGIC for other values: scaled 1-5 based on hits (6-10 range)
   double _calculateHitsScore(int hits) {
-    // ✅ NEW: Special scoring for hits 4, 5, 6
+    // ✅ NEW: Special scoring for hits 4, 5, 6 (1-10 scale)
     if (hits == 4) {
-      debugPrint('🎯 BOHEN_REMA: hits=4 → hitsScore=1 (NEW LOGIC)');
-      return 1.0;
-    }
-    if (hits == 5) {
-      debugPrint('🎯 BOHEN_REMA: hits=5 → hitsScore=2 (NEW LOGIC)');
+      debugPrint(
+        '🎯 BOHEN_REMA: hits=4 → hitsScore=2 (NEW LOGIC - 1-10 scale)',
+      );
       return 2.0;
     }
+    if (hits == 5) {
+      debugPrint(
+        '🎯 BOHEN_REMA: hits=5 → hitsScore=4 (NEW LOGIC - 1-10 scale)',
+      );
+      return 4.0;
+    }
     if (hits == 6) {
-      debugPrint('🎯 BOHEN_REMA: hits=6 → hitsScore=3 (NEW LOGIC)');
-      return 3.0;
+      debugPrint(
+        '🎯 BOHEN_REMA: hits=6 → hitsScore=6 (NEW LOGIC - 1-10 scale)',
+      );
+      return 6.0;
     }
 
-    // ✅ EXISTING LOGIC for other hits values (0-3, 7-10+)
+    // ✅ EXISTING LOGIC for other hits values (0-3, 7-10+) - scaled to 1-10
     if (hits <= 0) return 0.0;
-    if (hits < 4) return 1.0; // hits 1-3 → score 1
-    if (hits >= 10) return 5.0; // hits 10+ → score 5
-    // hits 7-9: interpolate between 3.5 and 5
-    // Linear scale: 7→4, 8→4.5, 9→5 (approx)
-    final hitsScore = 3.0 + ((hits - 6) / 4.0) * 2.0; // 7→3.5, 8→4, 9→4.5
+    if (hits < 4) return 2.0; // hits 1-3 → score 2 (was 1)
+    if (hits >= 10) return 10.0; // hits 10+ → score 10 (was 5)
+    // hits 7-9: interpolate between 6 and 10
+    // Linear scale: 7→7, 8→8, 9→9
+    final hitsScore = 6.0 + ((hits - 6) / 4.0) * 4.0; // 7→7, 8→8, 9→9
     debugPrint(
-      '🎯 BOHEN_REMA: hits=$hits → hitsScore=${hitsScore.toStringAsFixed(2)} (EXISTING LOGIC)',
+      '🎯 BOHEN_REMA: hits=$hits → hitsScore=${hitsScore.toStringAsFixed(2)} (EXISTING LOGIC - 1-10 scale)',
     );
-    return hitsScore.clamp(1.0, 5.0);
+    return hitsScore.clamp(2.0, 10.0);
   }
 
   /// Calculate timeScore for בוחן רמה (MODIFIED - accepts decimal seconds)
@@ -82,23 +127,23 @@ class _InstructorCourseFeedbackPageState
     if (timeSeconds <= 0) return 0.0;
     if (timeSeconds <= 7) {
       debugPrint(
-        '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=5 (EXISTING LOGIC)',
+        '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=10 (EXISTING LOGIC - 1-10 scale)',
       );
-      return 5.0;
+      return 10.0;
     }
     if (timeSeconds >= 15) {
       debugPrint(
-        '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=1 (EXISTING LOGIC)',
+        '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=2 (EXISTING LOGIC - 1-10 scale)',
       );
-      return 1.0;
+      return 2.0;
     }
-    // Linear interpolation between 7s (score 5) and 15s (score 1)
+    // Linear interpolation between 7s (score 10) and 15s (score 2)
     final timeFactor = (timeSeconds - 7) / (15 - 7); // 0 at 7s, 1 at 15s
-    final timeScore = 5.0 - (timeFactor * 4.0); // 5 at 7s, 1 at 15s
+    final timeScore = 10.0 - (timeFactor * 8.0); // 10 at 7s, 2 at 15s
     debugPrint(
-      '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=${timeScore.toStringAsFixed(2)} (EXISTING LOGIC)',
+      '⏱️ BOHEN_REMA: time=${timeSeconds}s → timeScore=${timeScore.toStringAsFixed(2)} (EXISTING LOGIC - 1-10 scale)',
     );
-    return timeScore.clamp(1.0, 5.0);
+    return timeScore.clamp(2.0, 10.0);
   }
 
   int _calculateLevelTestRating() {
@@ -117,7 +162,7 @@ class _InstructorCourseFeedbackPageState
 
     // Debug log for verification
     debugPrint('');
-    debugPrint('🔵🔵🔵 BOHEN_REMA FINAL CALCULATION 🔵🔵🔵');
+    debugPrint('🔵🔵🔵 BOHEN_REMA FINAL CALCULATION (1-10 scale new)🔵🔵🔵');
     debugPrint('   hits=$hits → hitsScore=${hitsScore.toStringAsFixed(2)}');
     debugPrint(
       '   time=${timeSeconds}s → timeScore=${timeScore.toStringAsFixed(2)}',
@@ -125,16 +170,17 @@ class _InstructorCourseFeedbackPageState
     debugPrint(
       '   finalScore = (0.5 × ${hitsScore.toStringAsFixed(2)}) + (0.5 × ${timeScore.toStringAsFixed(2)}) = ${finalScore.toStringAsFixed(2)}',
     );
-    debugPrint('   rounded = ${finalScore.round().clamp(1, 5)}');
+    debugPrint('   rounded = ${finalScore.round().clamp(1, 10)}');
     debugPrint('🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵');
     debugPrint('');
 
-    return finalScore.round().clamp(1, 5);
+    return finalScore.round().clamp(1, 10);
   }
 
   void _updateLevelTestRating() {
     setState(() {
-      categories['בוחן רמה'] = _calculateLevelTestRating();
+      levelTestScore =
+          _calculateLevelTestRating(); // ✅ NEW: Use levelTestScore instead of categories
       if (!_isFormLocked) {
         _hasUnsavedChanges = true;
         _scheduleAutosave();
@@ -195,22 +241,36 @@ class _InstructorCourseFeedbackPageState
         debugPrint('AUTOSAVE: Using evalId=$_stableDraftId');
       }
 
-      // Build fields map
+      // Build fields map (NEW STRUCTURE: multi-field categories)
       final Map<String, dynamic> fields = {};
-      categories.forEach((name, score) {
-        if (score > 0) {
+
+      // ✅ בוחן רמה - simple 1-10 score
+      if (levelTestScore > 0) {
+        final Map<String, dynamic> meta = {
+          'value': levelTestScore,
+          'filledBy': uid,
+          'filledAt': FieldValue.serverTimestamp(),
+        };
+        final hits = int.tryParse(_hitsController.text);
+        final time = double.tryParse(_timeSecondsController.text);
+        if (hits != null) meta['hits'] = hits;
+        if (time != null) meta['timeSeconds'] = time;
+        fields['בוחן רמה'] = meta;
+      }
+
+      // ✅ Multi-field categories (5 fields each)
+      multiFieldCategories.forEach((categoryName, categoryFields) {
+        // Only save if at least one field is filled
+        if (categoryFields.values.any((v) => v > 0)) {
           final Map<String, dynamic> meta = {
-            'value': score,
+            'fields': categoryFields, // Save all 5 field scores
+            'average': _getCategoryAverage(
+              categoryName,
+            ), // Save computed average
             'filledBy': uid,
             'filledAt': FieldValue.serverTimestamp(),
           };
-          if (name == 'בוחן רמה') {
-            final hits = int.tryParse(_hitsController.text);
-            final time = double.tryParse(_timeSecondsController.text);
-            if (hits != null) meta['hits'] = hits;
-            if (time != null) meta['timeSeconds'] = time;
-          }
-          fields[name] = meta;
+          fields[categoryName] = meta;
         }
       });
 
@@ -231,7 +291,8 @@ class _InstructorCourseFeedbackPageState
             currentUser?.name ??
             '', // ✅ Track last editor name (no Firestore fetch)
         'command': _selectedPikud ?? '',
-        'brigade': _hativaController.text.trim(),
+        'brigade':
+            _selectedHativa ?? '', // ✅ NEW: Save brigade dropdown selection
         'candidateName': _candidateNameController.text.trim(),
         'candidateNumber': _candidateNumber ?? 0,
         'title': _candidateNameController.text.trim(),
@@ -240,9 +301,9 @@ class _InstructorCourseFeedbackPageState
         'isSuitable': isSuitableForInstructorCourse,
         'module': 'instructor_course_selection',
         'type': 'instructor_course_feedback',
-        // ✅ NEW: Save category notes
+        // ✅ NEW: Save category notes (multi-field categories)
         'categoryNotes': {
-          for (var category in categories.keys)
+          for (var category in multiFieldCategories.keys)
             category: _notesControllers[category]?.text.trim() ?? '',
         },
       };
@@ -396,28 +457,65 @@ class _InstructorCourseFeedbackPageState
       }
 
       setState(() {
-        // Merge category scores - KEEP NON-ZERO VALUES from both sides
+        // Merge category scores - SMART MERGE for NEW multi-field structure
         remoteFields.forEach((categoryName, fieldData) {
           if (fieldData is Map<String, dynamic>) {
-            final remoteValue = (fieldData['value'] as num?)?.toInt() ?? 0;
-            final localValue = categories[categoryName] ?? 0;
+            // ✅ בוחן רמה - simple score (1-10)
+            if (categoryName == 'בוחן רמה') {
+              final remoteValue = (fieldData['value'] as num?)?.toInt() ?? 0;
+              final localValue = levelTestScore;
 
-            debugPrint(
-              '   Category "$categoryName": local=$localValue remote=$remoteValue',
-            );
+              debugPrint(
+                '   Category "$categoryName": local=$localValue remote=$remoteValue',
+              );
 
-            // SMART MERGE: Take non-zero value
-            if (localValue == 0 && remoteValue > 0) {
-              categories[categoryName] = remoteValue;
-              debugPrint('     → Taking remote value');
-            } else if (localValue > 0 && remoteValue == 0) {
-              // Keep local
-              debugPrint('     → Keeping local value');
-            } else if (localValue > 0 &&
-                remoteValue > 0 &&
-                localValue != remoteValue) {
-              // Both have values - keep local (user is actively editing)
-              debugPrint('     → Both non-zero, keeping local');
+              // SMART MERGE: Take non-zero value
+              if (localValue == 0 && remoteValue > 0) {
+                levelTestScore = remoteValue;
+                debugPrint('     → Taking remote value');
+              } else if (localValue > 0 && remoteValue == 0) {
+                // Keep local
+                debugPrint('     → Keeping local value');
+              } else if (localValue > 0 &&
+                  remoteValue > 0 &&
+                  localValue != remoteValue) {
+                // Both have values - keep local (user is actively editing)
+                debugPrint('     → Both non-zero, keeping local');
+              }
+            }
+            // ✅ Multi-field categories (5 fields each)
+            else if (multiFieldCategories.containsKey(categoryName)) {
+              final remoteFields = fieldData['fields'] as Map<String, dynamic>?;
+              if (remoteFields != null) {
+                final localCategoryFields = multiFieldCategories[categoryName]!;
+
+                debugPrint(
+                  '   Category "$categoryName": merging multi-field data',
+                );
+
+                remoteFields.forEach((fieldName, remoteValue) {
+                  final remoteInt = (remoteValue as num?)?.toInt() ?? 0;
+                  final localInt = localCategoryFields[fieldName] ?? 0;
+
+                  debugPrint(
+                    '     Field "$fieldName": local=$localInt remote=$remoteInt',
+                  );
+
+                  // SMART MERGE: Take non-zero value
+                  if (localInt == 0 && remoteInt > 0) {
+                    localCategoryFields[fieldName] = remoteInt;
+                    debugPrint('       → Taking remote value');
+                  } else if (localInt > 0 && remoteInt == 0) {
+                    // Keep local
+                    debugPrint('       → Keeping local value');
+                  } else if (localInt > 0 &&
+                      remoteInt > 0 &&
+                      localInt != remoteInt) {
+                    // Both have values - keep local (user is actively editing)
+                    debugPrint('       → Both non-zero, keeping local');
+                  }
+                });
+              }
             }
           }
         });
@@ -432,10 +530,10 @@ class _InstructorCourseFeedbackPageState
         }
 
         final remoteBrigade = remoteData['brigade'] as String?;
-        if (_hativaController.text.isEmpty &&
+        if ((_selectedHativa == null || _selectedHativa!.isEmpty) &&
             remoteBrigade != null &&
             remoteBrigade.isNotEmpty) {
-          _hativaController.text = remoteBrigade;
+          _selectedHativa = remoteBrigade;
           debugPrint('   ✅ Merged brigade: $remoteBrigade');
         }
 
@@ -465,7 +563,7 @@ class _InstructorCourseFeedbackPageState
   static const Map<String, double> _categoryWeights = {
     'בוחן רמה': 0.15,
     'תרגיל הפתעה': 0.25,
-    'יבשים': 0.20,
+    'הדרכת יבשים': 0.20,
     'הדרכה טובה': 0.20,
     'הדרכת מבנה': 0.20,
   };
@@ -480,29 +578,71 @@ class _InstructorCourseFeedbackPageState
   bool _isLoadingRemoteChanges = false;
   String? _lastRemoteUpdateBy;
 
+  /// Calculate average for a multi-field category (average of 5 fields)
+  double _getCategoryAverage(String categoryName) {
+    final fields = multiFieldCategories[categoryName];
+    if (fields == null || fields.isEmpty) return 0.0;
+
+    final filledFields = fields.values.where((v) => v > 0).toList();
+    if (filledFields.isEmpty) return 0.0;
+
+    final sum = filledFields.reduce((a, b) => a + b);
+    return sum / filledFields.length;
+  }
+
   double get finalWeightedScore {
-    for (final category in _categoryWeights.keys) {
-      final score = categories[category] ?? 0;
-      if (score == 0) return 0.0;
+    // Check if all categories have scores
+    // בוחן רמה: must have score
+    if (levelTestScore == 0) return 0.0;
+
+    // Multi-field categories: must have at least one field filled
+    for (final category in multiFieldCategories.keys) {
+      final avg = _getCategoryAverage(category);
+      if (avg == 0.0) return 0.0;
     }
+
+    // Calculate weighted sum
     double weightedSum = 0.0;
-    _categoryWeights.forEach((category, weight) {
-      final score = categories[category] ?? 0;
-      weightedSum += score * weight;
+
+    // Add בוחן רמה (simple score 1-10)
+    weightedSum += levelTestScore * (_categoryWeights['בוחן רמה'] ?? 0.15);
+
+    // Add multi-field categories (average of 5 fields, each 1-10)
+    multiFieldCategories.forEach((categoryName, fields) {
+      final avg = _getCategoryAverage(categoryName);
+      final weight = _categoryWeights[categoryName] ?? 0.0;
+      weightedSum += avg * weight;
     });
+
     return weightedSum;
   }
 
-  bool get isSuitableForInstructorCourse => finalWeightedScore >= 3.6;
-  bool get isFormValid => categories.values.every((score) => score > 0);
+  // Suitable threshold: 7.0/10 (70%)
+  bool get isSuitableForInstructorCourse => finalWeightedScore >= 7.0;
+
+  bool get isFormValid {
+    // בוחן רמה must have score
+    if (levelTestScore == 0) return false;
+
+    // Each multi-field category must have at least one field filled
+    for (final fields in multiFieldCategories.values) {
+      if (fields.values.every((v) => v == 0)) return false;
+    }
+    return true;
+  }
 
   bool get hasRequiredDetails {
     final pikud = (_selectedPikud ?? '').trim();
-    final hativa = _hativaController.text.trim();
     final name = _candidateNameController.text.trim();
     final number = _candidateNumber;
+
+    // ✅ Brigade is required only for פיקוד צפון
+    final brigadeValid =
+        pikud != 'פיקוד צפון' ||
+        (_selectedHativa != null && _selectedHativa!.isNotEmpty);
+
     return pikud.isNotEmpty &&
-        hativa.isNotEmpty &&
+        brigadeValid &&
         name.isNotEmpty &&
         number != null;
   }
@@ -527,8 +667,8 @@ class _InstructorCourseFeedbackPageState
   @override
   void initState() {
     super.initState();
-    // ✅ Initialize notes controllers for each category
-    categories.forEach((category, _) {
+    // ✅ Initialize notes controllers for each multi-field category
+    multiFieldCategories.forEach((category, _) {
       _notesControllers[category] = TextEditingController();
     });
     _existingScreeningId = widget.screeningId;
@@ -568,7 +708,9 @@ class _InstructorCourseFeedbackPageState
 
       setState(() {
         _selectedPikud = cmd.isNotEmpty ? cmd : _selectedPikud;
-        _hativaController.text = brigade;
+        _selectedHativa = brigade.isNotEmpty
+            ? brigade
+            : null; // ✅ Load brigade dropdown
         _candidateNameController.text = candName;
         _candidateNumber = candNumber;
         // ✅ FIX: Preserve existing draft ID to prevent creating duplicate with current user's UID
@@ -578,24 +720,43 @@ class _InstructorCourseFeedbackPageState
         _originalCreatorUid =
             ownerUid; // ✅ Save creator UID for finalize permission check
       });
+
+      // ✅ Load fields: NEW multi-field structure
       final fields = (data['fields'] as Map?)?.cast<String, dynamic>() ?? {};
-      final Map<String, int> newCats = Map<String, int>.from(categories);
       for (final entry in fields.entries) {
         final name = entry.key;
         final meta = (entry.value as Map?)?.cast<String, dynamic>() ?? {};
-        final v = meta['value'];
-        final intVal = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
-        if (newCats.containsKey(name)) newCats[name] = intVal;
+
+        // ✅ בוחן רמה - simple score (1-10)
         if (name == 'בוחן רמה') {
+          final v = meta['value'];
+          final intVal = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
+          setState(() {
+            levelTestScore = intVal;
+          });
+
           final hits = meta['hits'];
           final time = meta['timeSeconds'];
           if (hits != null) _hitsController.text = hits.toString();
           if (time != null) _timeSecondsController.text = time.toString();
         }
+        // ✅ Multi-field categories (5 fields each)
+        else if (multiFieldCategories.containsKey(name)) {
+          final categoryFields = meta['fields'] as Map<String, dynamic>?;
+          if (categoryFields != null) {
+            setState(() {
+              categoryFields.forEach((fieldName, value) {
+                final intVal = (value is num)
+                    ? value.toInt()
+                    : int.tryParse('$value') ?? 0;
+                if (multiFieldCategories[name]!.containsKey(fieldName)) {
+                  multiFieldCategories[name]![fieldName] = intVal;
+                }
+              });
+            });
+          }
+        }
       }
-      setState(() {
-        newCats.forEach((k, v) => categories[k] = v);
-      });
       _updateLevelTestRating();
 
       // ✅ NEW: Load category notes if available
@@ -682,22 +843,36 @@ class _InstructorCourseFeedbackPageState
         '✅ PERMISSION GRANTED: User $uid (${isAdmin ? "Admin" : "Creator"}) can finalize evaluation',
       );
 
-      // Build final feedback data
+      // Build final feedback data (NEW STRUCTURE: multi-field categories)
       final Map<String, dynamic> fields = {};
-      categories.forEach((name, score) {
-        if (score > 0) {
+
+      // ✅ בוחן רמה - simple 1-10 score
+      if (levelTestScore > 0) {
+        final Map<String, dynamic> meta = {
+          'value': levelTestScore,
+          'filledBy': uid,
+          'filledAt': FieldValue.serverTimestamp(),
+        };
+        final hits = int.tryParse(_hitsController.text);
+        final time = double.tryParse(_timeSecondsController.text);
+        if (hits != null) meta['hits'] = hits;
+        if (time != null) meta['timeSeconds'] = time;
+        fields['בוחן רמה'] = meta;
+      }
+
+      // ✅ Multi-field categories (5 fields each)
+      multiFieldCategories.forEach((categoryName, categoryFields) {
+        // Only save if at least one field is filled
+        if (categoryFields.values.any((v) => v > 0)) {
           final Map<String, dynamic> meta = {
-            'value': score,
+            'fields': categoryFields, // Save all 5 field scores
+            'average': _getCategoryAverage(
+              categoryName,
+            ), // Save computed average
             'filledBy': uid,
             'filledAt': FieldValue.serverTimestamp(),
           };
-          if (name == 'בוחן רמה') {
-            final hits = int.tryParse(_hitsController.text);
-            final time = double.tryParse(_timeSecondsController.text);
-            if (hits != null) meta['hits'] = hits;
-            if (time != null) meta['timeSeconds'] = time;
-          }
-          fields[name] = meta;
+          fields[categoryName] = meta;
         }
       });
 
@@ -730,13 +905,14 @@ class _InstructorCourseFeedbackPageState
           'finalWeightedScore': finalWeightedScore,
           'isSuitable': isSuitableForInstructorCourse,
           'command': _selectedPikud ?? '',
-          'brigade': _hativaController.text.trim(),
+          'brigade':
+              _selectedHativa ?? '', // ✅ NEW: Save brigade dropdown selection
           'candidateName': _candidateNameController.text.trim(),
           'candidateNumber': _candidateNumber ?? 0,
           'title': _candidateNameController.text.trim(),
-          // ✅ NEW: Save category notes
+          // ✅ NEW: Save category notes (multi-field categories)
           'categoryNotes': {
-            for (var category in categories.keys)
+            for (var category in multiFieldCategories.keys)
               category: _notesControllers[category]?.text.trim() ?? '',
           },
           // ✅ DON'T update createdBy* - preserve original creator!
@@ -787,102 +963,178 @@ class _InstructorCourseFeedbackPageState
     }
   }
 
-  Widget _buildCategoryRow(String category) {
-    if (category == 'בוחן רמה') return _buildLevelTestRow();
-    final currentScore = categories[category] ?? 0;
+  /// ✅ NEW: Build multi-field category row (5 fields: ידע, עמידה מול קהל, מתודיקה, איכות הדרכה, איכות הדגמה)
+  Widget _buildMultiFieldCategoryRow(String categoryName) {
+    final fields = multiFieldCategories[categoryName]!;
+    final average = _getCategoryAverage(categoryName);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            category,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            alignment: WrapAlignment.spaceEvenly,
-            children: [1, 2, 3, 4, 5].map((score) {
-              final isSelected = currentScore == score;
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
+      child: Card(
+        color: Colors.white,
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Category header with average
+              Row(
                 children: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isSelected
-                          ? Colors.blueAccent
-                          : Colors.grey.shade300,
-                      foregroundColor: isSelected ? Colors.white : Colors.black,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: isSelected ? 4 : 1,
-                    ),
-                    onPressed: _isFormLocked
-                        ? null
-                        : () {
-                            setState(() {
-                              categories[category] = score;
-                              _markFormDirty();
-                            });
-                            _scheduleAutosave();
-                          },
-                    child: Text(
-                      score.toString(),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  Text(
+                    categoryName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
                     ),
                   ),
-                  if (score == 1 || score == 5) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      score == 1 ? 'נמוך ביותר' : 'גבוה ביותר',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w600,
+                  const Spacer(),
+                  if (average > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: average >= 7.2 ? Colors.green : Colors.orange,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'ממוצע: ${average.toStringAsFixed(1)}/10',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                  ],
                 ],
-              );
-            }).toList(),
+              ),
+              const SizedBox(height: 16),
+              // 5 fields, each with 1-10 scoring
+              for (final fieldName in fields.keys)
+                Builder(
+                  builder: (context) {
+                    final currentScore = fields[fieldName] ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  fieldName,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              if (currentScore > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade100,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$currentScore',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue.shade900,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // 1-10 buttons
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            alignment: WrapAlignment.spaceEvenly,
+                            children: List.generate(10, (index) {
+                              final score = index + 1;
+                              final isSelected = currentScore == score;
+                              return ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isSelected
+                                      ? Colors.blueAccent
+                                      : Colors.grey.shade300,
+                                  foregroundColor: isSelected
+                                      ? Colors.white
+                                      : Colors.black,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  minimumSize: const Size(40, 40),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: isSelected ? 4 : 1,
+                                ),
+                                onPressed: _isFormLocked
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          multiFieldCategories[categoryName]![fieldName] =
+                                              score;
+                                          _markFormDirty();
+                                        });
+                                        _scheduleAutosave();
+                                      },
+                                child: Text(
+                                  score.toString(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ), // Builder closes, for loop continues
+              const SizedBox(height: 8),
+              // Notes field for this category
+              TextField(
+                controller: _notesControllers[categoryName],
+                enabled: !_isFormLocked,
+                decoration: const InputDecoration(
+                  labelText: 'הערות',
+                  hintText: 'הוסף הערות לקטגוריה זו...',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                maxLines: 2,
+                onChanged: (_) {
+                  _markFormDirty();
+                  _scheduleAutosave();
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          // ✅ NEW: Notes field for this category
-          TextField(
-            controller: _notesControllers[category],
-            enabled: !_isFormLocked,
-            decoration: const InputDecoration(
-              labelText: 'הערות',
-              hintText: 'הוסף הערות להגשה זו...',
-              border: OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-            maxLines: 2,
-            onChanged: (_) {
-              _markFormDirty();
-              _scheduleAutosave();
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildLevelTestRow() {
-    final currentRating = categories['בוחן רמה'] ?? 0;
+    final currentRating =
+        levelTestScore; // ✅ NEW: Use levelTestScore (1-10 scale)
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
       child: Card(
@@ -913,13 +1165,15 @@ class _InstructorCourseFeedbackPageState
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: currentRating >= 4
+                        color:
+                            currentRating >=
+                                7.2 // ✅ NEW: 72% of 10 = 7.2
                             ? Colors.green
                             : Colors.orange,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        'ציון: $currentRating',
+                        'ציון: $currentRating/10', // ✅ NEW: Show /10
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -976,12 +1230,16 @@ class _InstructorCourseFeedbackPageState
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: currentRating >= 4
+                    color:
+                        currentRating >=
+                            7.2 // ✅ NEW: 72% of 10 = 7.2
                         ? Colors.green.shade100
                         : Colors.orange.shade100,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: currentRating >= 4 ? Colors.green : Colors.orange,
+                      color: currentRating >= 7.2
+                          ? Colors.green
+                          : Colors.orange,
                       width: 2,
                     ),
                   ),
@@ -989,18 +1247,18 @@ class _InstructorCourseFeedbackPageState
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        currentRating >= 4 ? Icons.check_circle : Icons.info,
-                        color: currentRating >= 4
+                        currentRating >= 7.2 ? Icons.check_circle : Icons.info,
+                        color: currentRating >= 7.2
                             ? Colors.green
                             : Colors.orange,
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        currentRating >= 4 ? 'עובר' : 'לא עובר',
+                        currentRating >= 7.2 ? 'עובר' : 'לא עובר',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: currentRating >= 4
+                          color: currentRating >= 7.2
                               ? Colors.green.shade900
                               : Colors.orange.shade900,
                         ),
@@ -1166,17 +1424,38 @@ class _InstructorCourseFeedbackPageState
                                 },
                         ),
                         const SizedBox(height: 12),
-                        TextField(
-                          controller: _hativaController,
-                          enabled: !_isFormLocked,
-                          decoration: const InputDecoration(labelText: 'חטיבה'),
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 16,
+                        // ✅ NEW: Brigade dropdown (conditional - only for פיקוד צפון)
+                        if (_selectedPikud == 'פיקוד צפון') ...[
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedHativa,
+                            decoration: const InputDecoration(
+                              labelText: 'חטיבה',
+                              border: OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Colors.white,
+                            ),
+                            dropdownColor: Colors.white,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 16,
+                            ),
+                            items: _hativaOptions.map((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              );
+                            }).toList(),
+                            onChanged: _isFormLocked
+                                ? null
+                                : (String? newValue) {
+                                    setState(() {
+                                      _selectedHativa = newValue;
+                                      _markFormDirty();
+                                    });
+                                  },
                           ),
-                          onChanged: (_) => _markFormDirty(),
-                        ),
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 12),
+                        ],
                         TextField(
                           controller: _candidateNameController,
                           enabled: !_isFormLocked,
@@ -1262,12 +1541,16 @@ class _InstructorCourseFeedbackPageState
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'דרג את המועמד בכל קטגוריה (1-5):',
+                  'דרג את המועמד בכל קטגוריה (1-10):', // ✅ NEW: 1-10 scale
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                ...categories.keys.map(
-                  (category) => _buildCategoryRow(category),
+                // ✅ בוחן רמה - shown separately with special UI
+                _buildLevelTestRow(),
+                const SizedBox(height: 16),
+                // ✅ Multi-field categories (5 fields each)
+                ...multiFieldCategories.keys.map(
+                  (category) => _buildMultiFieldCategoryRow(category),
                 ),
                 const SizedBox(height: 24),
                 const Divider(),
@@ -1312,7 +1595,7 @@ class _InstructorCourseFeedbackPageState
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'מתוך 5.0',
+                          'מתוך 10.0',
                           style: TextStyle(fontSize: 16, color: Colors.white70),
                         ),
                         const SizedBox(height: 20),
@@ -1351,7 +1634,7 @@ class _InstructorCourseFeedbackPageState
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'הקביעה אוטומטית: ${isSuitableForInstructorCourse ? "ציון מעל 3.6" : "ציון מתחת 3.6"}',
+                          'הקביעה אוטומטית: ${isSuitableForInstructorCourse ? "ציון מעל 7.0" : "ציון מתחת 7.0"}',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.white60,
