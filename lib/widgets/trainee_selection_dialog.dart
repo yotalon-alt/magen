@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/trainee_autocomplete_service.dart';
 
 /// Dialog לבחירת חניכים עם checkboxes
 /// מציג רשימה של חניכים לבחירה, עם אפשרות לחיפוש והוספה ידנית
@@ -86,17 +87,15 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
   /// ✨ שומר חניך למחלקת היישוב ב-Firestore
   Future<void> _saveTraineeToSettlement(String traineeName) async {
     try {
-      final docRef = FirebaseFirestore.instance
-          .collection('settlements')
+      await FirebaseFirestore.instance
+          .collection('settlement_trainees')
           .doc(widget.settlementName)
-          .collection('trainees')
-          .doc(traineeName);
+          .set({
+            'trainees': FieldValue.arrayUnion([traineeName]),
+          }, SetOptions(merge: true));
 
-      await docRef.set({
-        'name': traineeName,
-        'addedAt': FieldValue.serverTimestamp(),
-        'addedManually': true,
-      });
+      // נקה את ה-cache כדי שהרשימה תתרענן בפעם הבאה
+      TraineeAutocompleteService.clearCacheForSettlement(widget.settlementName);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -153,11 +152,14 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
     try {
       // מחיקה מ-Firestore
       await FirebaseFirestore.instance
-          .collection('settlements')
+          .collection('settlement_trainees')
           .doc(widget.settlementName)
-          .collection('trainees')
-          .doc(traineeName)
-          .delete();
+          .update({
+            'trainees': FieldValue.arrayRemove([traineeName]),
+          });
+
+      // נקה את ה-cache כדי שהרשימה תתרענן בפעם הבאה
+      TraineeAutocompleteService.clearCacheForSettlement(widget.settlementName);
 
       // הסרה מהרשימה המקומית
       setState(() {
