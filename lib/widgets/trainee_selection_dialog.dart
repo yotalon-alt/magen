@@ -203,7 +203,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
         child: Container(
           width: dialogWidth,
           height: dialogHeight,
-          padding: const EdgeInsets.all(14.0),
+          padding: const EdgeInsets.all(10.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -227,7 +227,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
 
               // Search field
               TextField(
@@ -240,199 +240,228 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                 ),
                 onChanged: (v) => setState(() => searchQuery = v),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
 
-              // ✨ שיפור 1: הצגת חניכים שנוספו ידנית
-              if (manuallyAddedTrainees.isNotEmpty) ...[
-                Card(
-                  color: Colors.green.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.person_add,
-                              size: 20,
-                              color: Colors.green,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'חניכים שנוספו ידנית (${manuallyAddedTrainees.length})',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
+              // Middle scrollable section (grows/shrinks to fill available space)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ✨ שיפור 1: הצגת חניכים שנוספו ידנית
+                    if (manuallyAddedTrainees.isNotEmpty) ...[
+                      Flexible(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 140),
+                          child: Card(
+                            color: Colors.green.shade50,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'ידנית (${manuallyAddedTrainees.length})',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Flexible(
+                                    child: SingleChildScrollView(
+                                      child: Column(
+                                        children: manuallyAddedTrainees.map((
+                                          trainee,
+                                        ) {
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 1.0,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.check_circle,
+                                                  size: 14,
+                                                  color: Colors.green,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    trainee,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.close,
+                                                    size: 16,
+                                                    color: Colors.red,
+                                                  ),
+                                                  padding: EdgeInsets.zero,
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                        minWidth: 28,
+                                                        minHeight: 28,
+                                                      ),
+                                                  onPressed: () {
+                                                    setState(() {
+                                                      manuallyAddedTrainees
+                                                          .remove(trainee);
+                                                      selectedTrainees.remove(
+                                                        trainee,
+                                                      );
+                                                    });
+                                                  },
+                                                  tooltip: 'הסר',
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                        const SizedBox(height: 6),
-                        ...manuallyAddedTrainees.map((trainee) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 1.0),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.check_circle,
-                                  size: 14,
-                                  color: Colors.green,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    trainee,
-                                    style: const TextStyle(fontSize: 13),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.close,
-                                    size: 16,
-                                    color: Colors.red,
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 28,
-                                    minHeight: 28,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      manuallyAddedTrainees.remove(trainee);
-                                      selectedTrainees.remove(trainee);
-                                    });
-                                  },
-                                  tooltip: 'הסר',
-                                ),
-                              ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // Select all / Clear buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                selectedTrainees.addAll(
+                                  widget.availableTrainees,
+                                );
+                              });
+                            },
+                            icon: const Icon(Icons.check_box, size: 18),
+                            label: const Text(
+                              'בחר הכל',
+                              style: TextStyle(fontSize: 14),
                             ),
-                          );
-                        }),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                selectedTrainees.clear();
+                                manuallyAddedTrainees
+                                    .clear(); // ✨ נקה גם שמות ידניים
+                              });
+                            },
+                            icon: const Icon(Icons.clear, size: 18),
+                            label: const Text(
+                              'נקה הכל',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    const Divider(height: 1),
+
+                    // Trainees list
+                    Expanded(
+                      child: filteredTrainees.isEmpty
+                          ? const Center(child: Text('לא נמצאו חניכים'))
+                          : ListView.builder(
+                              itemCount: filteredTrainees.length,
+                              itemBuilder: (context, index) {
+                                final trainee = filteredTrainees[index];
+                                final isSelected = selectedTrainees.contains(
+                                  trainee,
+                                );
+
+                                return Row(
+                                  key: ValueKey('row_$trainee'),
+                                  children: [
+                                    Expanded(
+                                      child: CheckboxListTile(
+                                        key: ValueKey('checkbox_$trainee'),
+                                        value: isSelected,
+                                        onChanged: (checked) {
+                                          setState(() {
+                                            if (checked == true) {
+                                              selectedTrainees.add(trainee);
+                                            } else {
+                                              selectedTrainees.remove(trainee);
+                                            }
+                                          });
+                                        },
+                                        title: Text(
+                                          trainee,
+                                          style: const TextStyle(fontSize: 14),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        activeColor: Colors.green,
+                                        contentPadding: EdgeInsets.zero,
+                                        dense: true,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    ),
+                                    // 🗑️ כפתור מחיקה מהמחלקה
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 16,
+                                      ),
+                                      tooltip: 'מחק חניך זה ממחלקת היישוב',
+                                      color: Colors.red,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
+                                      onPressed: () async {
+                                        await _deleteTraineeFromSettlement(
+                                          trainee,
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-              ],
-
-              // Select all / Clear buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          selectedTrainees.addAll(widget.availableTrainees);
-                        });
-                      },
-                      icon: const Icon(Icons.check_box, size: 18),
-                      label: const Text(
-                        'בחר הכל',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          selectedTrainees.clear();
-                          manuallyAddedTrainees.clear(); // ✨ נקה גם שמות ידניים
-                        });
-                      },
-                      icon: const Icon(Icons.clear, size: 18),
-                      label: const Text(
-                        'נקה הכל',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-
-              // Trainees list
-              Expanded(
-                child: filteredTrainees.isEmpty
-                    ? const Center(child: Text('לא נמצאו חניכים'))
-                    : ListView.builder(
-                        itemCount: filteredTrainees.length,
-                        itemBuilder: (context, index) {
-                          final trainee = filteredTrainees[index];
-                          final isSelected = selectedTrainees.contains(trainee);
-
-                          return Row(
-                            key: ValueKey('row_$trainee'),
-                            children: [
-                              Expanded(
-                                child: CheckboxListTile(
-                                  key: ValueKey('checkbox_$trainee'),
-                                  value: isSelected,
-                                  onChanged: (checked) {
-                                    setState(() {
-                                      if (checked == true) {
-                                        selectedTrainees.add(trainee);
-                                      } else {
-                                        selectedTrainees.remove(trainee);
-                                      }
-                                    });
-                                  },
-                                  title: Text(
-                                    trainee,
-                                    style: const TextStyle(fontSize: 14),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  activeColor: Colors.green,
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ),
-                              // 🗑️ כפתור מחיקה מהמחלקה
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 16,
-                                ),
-                                tooltip: 'מחק חניך זה ממחלקת היישוב',
-                                color: Colors.red,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(
-                                  minWidth: 36,
-                                  minHeight: 36,
-                                ),
-                                onPressed: () async {
-                                  await _deleteTraineeFromSettlement(trainee);
-                                },
-                              ),
-                            ],
-                          );
-                        },
-                      ),
               ),
 
               const Divider(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
 
               // Manual entry section
               Card(
                 color: Colors.blueGrey.shade100,
                 child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.all(8.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -440,7 +469,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                         'הוסף חניך ידנית',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       Row(
                         children: [
                           Expanded(
@@ -465,7 +494,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       // ✨ שיפור 2: Checkbox לשמירה למחלקה
                       CheckboxListTile(
                         value: saveManualToList,
@@ -487,7 +516,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 6),
 
               // Confirm button
               ElevatedButton.icon(
@@ -497,7 +526,7 @@ class _TraineeSelectionDialogState extends State<TraineeSelectionDialog> {
                 icon: const Icon(Icons.check),
                 label: Text('אשר בחירה (${selectedTrainees.length} נבחרו)'),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   backgroundColor: Colors.green,
                   textStyle: const TextStyle(
                     fontSize: 18,
