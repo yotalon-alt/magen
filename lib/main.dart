@@ -5567,9 +5567,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   Future<void> _deleteFeedback(String feedbackId, String title) async {
     if (!canCurrentUserDeleteFeedbacks) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
       return;
     }
 
@@ -14815,9 +14815,9 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
   Future<void> _deleteFeedback(String id, String settlement) async {
     if (!canCurrentUserDeleteFeedbacks) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
       return;
     }
 
@@ -16612,9 +16612,9 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   Future<void> _deleteFeedback(String feedbackId, String title) async {
     if (!canCurrentUserDeleteFeedbacks) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
       return;
     }
 

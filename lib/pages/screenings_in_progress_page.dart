@@ -113,9 +113,9 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
   Future<void> _confirmDeleteDraft(String docId, String title) async {
     if (!canCurrentUserDeleteFeedbacks) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
       return;
     }
 

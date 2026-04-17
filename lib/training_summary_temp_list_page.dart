@@ -179,9 +179,9 @@ class _TrainingSummaryTempListPageState
 
     if (!canCurrentUserDeleteFeedbacks) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
       return;
     }
 
