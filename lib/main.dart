@@ -482,322 +482,204 @@ Future<String> resolveUserHebrewName(String uid) async {
 Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
   feedbackStorage.clear();
   final uid = FirebaseAuth.instance.currentUser?.uid;
-  debugPrint('\n===== loadFeedbacksForCurrentUser START =====');
-  debugPrint('ROLE: ${currentUser?.role}');
-  debugPrint('UID: $uid');
-  debugPrint('========================================\n');
+  if (uid == null || uid.isEmpty) return;
 
-  if (uid == null || uid.isEmpty) {
-    debugPrint('⚠️ loadFeedbacksForCurrentUser: uid is null/empty, returning');
-    return;
-  }
-
+  // --- Step 1: Resolve role (required before deciding query scope) ---
   bool adminFlag = isAdmin ?? false;
   if (isAdmin == null) {
-    // Fetch role once if not provided to decide query scope.
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .get()
-          .timeout(const Duration(seconds: 8));
-      final data = doc.data();
-      final role = (data?['role'] ?? '').toString().toLowerCase();
+          .timeout(const Duration(seconds: 5));
+      final role = (doc.data()?['role'] ?? '').toString().toLowerCase();
       adminFlag = role == 'admin';
-      debugPrint(
-        '🔍 loadFeedbacksForCurrentUser: fetched role=$role, adminFlag=$adminFlag',
-      );
-    } catch (e) {
-      debugPrint('⚠️ loadFeedbacksForCurrentUser: role fetch error $e');
-      adminFlag = false; // fallback to instructor scope on errors
+    } catch (_) {
+      adminFlag = false;
     }
-  } else {
-    debugPrint(
-      '🔍 loadFeedbacksForCurrentUser: isAdmin param provided=$isAdmin',
-    );
-    adminFlag = isAdmin;
   }
 
-  final coll = FirebaseFirestore.instance.collection('feedbacks');
-  Query q = coll;
-
-  debugPrint('\n🔍 ===== QUERY CONSTRUCTION =====');
-  debugPrint('   Current User UID: "$uid"');
-  debugPrint('   Is Admin: $adminFlag');
-  debugPrint('   Role: ${currentUser?.role}');
-
-  // Admin sees all; instructor filtered by their UID
-  if (!adminFlag) {
-    debugPrint('   Building INSTRUCTOR query with filter:');
-    debugPrint('   where("instructorId", "==", "$uid")');
-    q = q.where('instructorId', isEqualTo: uid);
-  } else {
-    debugPrint('   Building ADMIN query (NO filter - all feedbacks)');
-  }
-
-  // Apply orderBy AFTER where clause (requires composite index for instructors)
-  q = q.orderBy('createdAt', descending: true);
-  debugPrint('   orderBy("createdAt", descending: true)');
-  debugPrint('🔍 ===== QUERY READY =====\n');
-
-  debugPrint('🚀 Executing Firestore query...');
-
+  // --- Step 2: Load own feedbacks (must complete first for dedup) ---
   try {
-    final snap = await q.get().timeout(const Duration(seconds: 8));
-    final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = snap.docs
-        .cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
-
-    debugPrint('\n✅ ===== QUERY RESULTS (MY FEEDBACKS) =====');
-    debugPrint('   RESULT SIZE: ${docs.length}');
-    debugPrint('   Query returned ${docs.length} document(s)');
-    debugPrint('   User UID: "$uid"');
-    debugPrint('   Is Admin: $adminFlag');
-
-    if (docs.isEmpty) {
-      debugPrint('\n⚠️⚠️⚠️ NO DOCUMENTS FOUND ⚠️⚠️⚠️');
-      debugPrint('   Possible reasons:');
-      debugPrint('   1. instructorId in Firestore does NOT match current UID');
-      debugPrint('   2. No feedback documents exist for this instructor');
-      debugPrint('   3. Composite index is still building');
-      debugPrint('');
-      debugPrint('   🔍 DEBUG STEPS:');
-      debugPrint('   1. Open Firebase Console → Firestore');
-      debugPrint('   2. Check a feedback document');
-      debugPrint('   3. Compare instructorId field value to: "$uid"');
-      debugPrint('   4. They must match EXACTLY (case-sensitive)');
-      debugPrint('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️\n');
-    }
-
-    for (final doc in docs) {
-      final raw = doc.data();
-      final docInstructorId = raw['instructorId'] ?? 'MISSING';
-      debugPrint(
-        '📄 Document ${doc.id}: instructorId="$docInstructorId", evaluatedName="${raw['name'] ?? raw['evaluatedName']}"',
-      );
-      final model = FeedbackModel.fromMap(raw, id: doc.id);
-      if (model == null) {
-        debugPrint('  ⚠️ Failed to parse document ${doc.id}');
-        continue;
-      }
-      // Firestore query already filtered by instructorId for instructors
-      feedbackStorage.add(model);
-      debugPrint(
-        '  ✅ Added feedback: ${model.name} by ${model.instructorName}',
-      );
-    }
-    debugPrint(
-      '📋 loadFeedbacksForCurrentUser: total ${feedbackStorage.length} feedbacks in storage (my feedbacks)',
-    );
-
-    // ✨ NEW: Load feedbacks where I'm an additional instructor (non-admins only)
-    // This includes BOTH final AND temporary (drafts) feedbacks
-    // ✅ HYBRID: Check BOTH UID and name for backward compatibility
+    Query q = FirebaseFirestore.instance.collection('feedbacks');
     if (!adminFlag) {
-      debugPrint('\n🔍 ===== LOADING SHARED FEEDBACKS (FINAL + DRAFTS) =====');
-      debugPrint(
-        '   Looking for feedbacks where I am in instructors array (UID or name)',
-      );
+      q = q.where('instructorId', isEqualTo: uid);
+    }
+    q = q.orderBy('createdAt', descending: true);
 
-      int finalCount = 0;
-      int draftCount = 0;
-      final Set<String> processedIds =
-          {}; // Track processed to avoid duplicates
+    final snap = await q.get().timeout(const Duration(seconds: 8));
+    for (final doc
+        in snap.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>()) {
+      final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
+      if (model != null) feedbackStorage.add(model);
+    }
+  } on FirebaseException catch (e) {
+    // Index error or permission error — skip gracefully
+    debugPrint('loadFeedbacksForCurrentUser main query error: ${e.code}');
+    return;
+  } catch (_) {
+    return;
+  }
 
-      // ⚡ PERFORMANCE: Run both queries in parallel
-      final currentUserName = currentUser?.name ?? '';
-      final futures = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
+  // --- Step 3 (non-admins only): Run all supplemental queries in parallel ---
+  if (!adminFlag) {
+    final currentUserName = currentUser?.name ?? '';
 
-      // Query 1: Search by UID (new format)
-      debugPrint('   🔍 Preparing Query 1: UID=$uid');
-      futures.add(
+    // Build all parallel futures:
+    // [0] all final feedbacks
+    // [1] shared temp by UID
+    // [2] shared temp by name (only if name available)
+    // [3] instructor course evaluations
+    final futures = <Future<dynamic>>[
+      // [0] All final feedbacks from everyone
+      FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('isTemporary', isEqualTo: false)
+          .get()
+          .timeout(const Duration(seconds: 8)),
+
+      // [1] Shared temp feedbacks where I'm listed by UID
+      FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('instructors', arrayContains: uid)
+          .where('isTemporary', isEqualTo: true)
+          .get()
+          .timeout(const Duration(seconds: 5)),
+
+      // [2] Shared temp feedbacks where I'm listed by name
+      if (currentUserName.isNotEmpty)
         FirebaseFirestore.instance
             .collection('feedbacks')
-            .where('instructors', arrayContains: uid)
+            .where('instructors', arrayContains: currentUserName)
+            .where('isTemporary', isEqualTo: true)
             .get()
             .timeout(const Duration(seconds: 5)),
-      );
 
-      // Query 2: Search by name (fallback for old data) - only if name exists
-      if (currentUserName.isNotEmpty) {
-        debugPrint('   🔍 Preparing Query 2: name="$currentUserName"');
-        futures.add(
-          FirebaseFirestore.instance
-              .collection('feedbacks')
-              .where('instructors', arrayContains: currentUserName)
-              .get()
-              .timeout(const Duration(seconds: 5)),
-        );
+      // [3] Instructor course evaluations (separate collection)
+      () {
+        Query evalQ = FirebaseFirestore.instance
+            .collection('instructor_course_evaluations')
+            .where('status', isEqualTo: 'final')
+            .where('instructorId', isEqualTo: uid);
+        return evalQ
+            .orderBy('createdAt', descending: true)
+            .get()
+            .timeout(const Duration(seconds: 5));
+      }(),
+    ];
+
+    final results = await Future.wait(futures, eagerError: false);
+
+    // Build a set of IDs already in storage for fast dedup
+    final existingIds = feedbackStorage.map((f) => f.id).toSet();
+
+    // Process [0]: all final feedbacks
+    try {
+      final finalSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      for (final doc in finalSnap.docs) {
+        if (existingIds.contains(doc.id)) continue;
+        final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
+        if (model != null) {
+          feedbackStorage.add(model);
+          existingIds.add(doc.id);
+        }
       }
+    } catch (_) {}
 
-      // Execute both queries in parallel
+    // Process [1] + [2]: shared temp feedbacks (UID + name)
+    final tempSnapshots = currentUserName.isNotEmpty
+        ? [results[1], results[2]]
+        : [results[1]];
+    for (final result in tempSnapshots) {
       try {
-        debugPrint('   ⚡ Executing ${futures.length} queries in parallel...');
-        final results = await Future.wait(futures, eagerError: false);
-
-        // Process results from both queries
-        for (var i = 0; i < results.length; i++) {
-          final snap = results[i];
-          final queryType = i == 0 ? 'UID' : 'name';
-          debugPrint('   Found ${snap.docs.length} feedback(s) by $queryType');
-
-          for (final doc in snap.docs) {
-            final raw = doc.data();
-            // Skip if already in storage or already processed
-            if (feedbackStorage.any((f) => f.id == doc.id) ||
-                processedIds.contains(doc.id)) {
-              continue;
-            }
-
-            final model = FeedbackModel.fromMap(raw, id: doc.id);
-            if (model != null) {
-              feedbackStorage.add(model);
-              processedIds.add(doc.id);
-              if (model.isTemporary) {
-                draftCount++;
-              } else {
-                finalCount++;
-              }
-            }
+        final snap = result as QuerySnapshot<Map<String, dynamic>>;
+        for (final doc in snap.docs) {
+          if (existingIds.contains(doc.id)) continue;
+          final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
+          if (model != null) {
+            feedbackStorage.add(model);
+            existingIds.add(doc.id);
           }
         }
-
-        debugPrint(
-          '   ✅ Processed ${processedIds.length} unique shared feedbacks',
-        );
-      } catch (e) {
-        debugPrint('⚠️ Failed to load shared feedbacks: $e');
-      }
-
-      debugPrint('📋 Total shared: $finalCount final + $draftCount drafts');
-      debugPrint('📋 Total after shared: ${feedbackStorage.length} feedbacks');
-      debugPrint('🔍 ===== END SHARED FEEDBACKS =====\n');
+      } catch (_) {}
     }
 
-    // Debug: Show training summaries found
-    final trainingSummaries = feedbackStorage
-        .where(
-          (f) =>
-              f.folder == 'משוב סיכום אימון 474' ||
-              f.module == 'training_summary',
-        )
-        .toList();
-    debugPrint('\n🎯 ===== TRAINING SUMMARIES FOUND =====');
-    debugPrint('   Count: ${trainingSummaries.length}');
-    for (final ts in trainingSummaries) {
-      debugPrint(
-        '   - ID: ${ts.id}, Name: ${ts.name}, Settlement: ${ts.settlement}',
-      );
-      debugPrint('     Folder: "${ts.folder}", Module: "${ts.module}"');
-    }
-    debugPrint('🎯 ===================================\n');
-
-    // ✅ LOAD INSTRUCTOR COURSE EVALUATIONS (from separate collection)
-    debugPrint('\n🔍 ===== LOADING INSTRUCTOR COURSE EVALUATIONS =====');
+    // Process [3]: instructor course evaluations
     try {
-      Query evalQuery = FirebaseFirestore.instance
-          .collection('instructor_course_evaluations')
-          .where('status', isEqualTo: 'final');
-
-      // Filter by instructor for non-admins
-      if (!adminFlag) {
-        evalQuery = evalQuery.where('instructorId', isEqualTo: uid);
+      final evalSnap = results.last as QuerySnapshot<Map<String, dynamic>>;
+      for (final doc in evalSnap.docs) {
+        if (existingIds.contains(doc.id)) continue;
+        final data = doc.data();
+        final isSuitable = data['isSuitable'] as bool? ?? false;
+        final folderName = isSuitable
+            ? 'מתאימים לקורס מדריכים'
+            : 'לא מתאימים לקורס מדריכים';
+        feedbackStorage.add(
+          FeedbackModel(
+            id: doc.id,
+            role: data['role'] as String? ?? '',
+            name: data['candidateName'] as String? ?? '',
+            exercise: 'מיונים לקורס מדריכים',
+            scores: (data['scores'] as Map?)?.cast<String, int>() ?? {},
+            notes: (data['notes'] as Map?)?.cast<String, String>() ?? {},
+            criteriaList: (data['criteriaList'] as List?)?.cast<String>() ?? [],
+            createdAt:
+                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            instructorName: data['instructorName'] as String? ?? '',
+            instructorRole: data['instructorRole'] as String? ?? '',
+            commandText: data['commandText'] as String? ?? '',
+            commandStatus: data['commandStatus'] as String? ?? 'פתוח',
+            folder: folderName,
+            scenario: data['scenario'] as String? ?? '',
+            settlement: data['settlement'] as String? ?? '',
+            attendeesCount: 0,
+          ),
+        );
+        existingIds.add(doc.id);
       }
-
-      final evalSnap = await evalQuery
+    } catch (_) {}
+  } else {
+    // Admin: also load instructor course evaluations (all of them)
+    try {
+      final evalSnap = await FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .where('status', isEqualTo: 'final')
           .orderBy('createdAt', descending: true)
           .get()
           .timeout(const Duration(seconds: 5));
 
-      debugPrint(
-        '   Found ${evalSnap.docs.length} instructor course evaluations',
-      );
-
+      final existingIds = feedbackStorage.map((f) => f.id).toSet();
       for (final doc in evalSnap.docs) {
-        final data = doc.data() as Map<String, dynamic>;
+        if (existingIds.contains(doc.id)) continue;
+        final data = doc.data();
         final isSuitable = data['isSuitable'] as bool? ?? false;
-
-        // Convert to FeedbackModel format with appropriate folder name
         final folderName = isSuitable
             ? 'מתאימים לקורס מדריכים'
             : 'לא מתאימים לקורס מדריכים';
-
-        final feedback = FeedbackModel(
-          id: doc.id,
-          role: data['role'] as String? ?? '',
-          name: data['candidateName'] as String? ?? '',
-          exercise: 'מיונים לקורס מדריכים',
-          scores: (data['scores'] as Map?)?.cast<String, int>() ?? {},
-          notes: (data['notes'] as Map?)?.cast<String, String>() ?? {},
-          criteriaList: (data['criteriaList'] as List?)?.cast<String>() ?? [],
-          createdAt:
-              (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          instructorName: data['instructorName'] as String? ?? '',
-          instructorRole: data['instructorRole'] as String? ?? '',
-          commandText: data['commandText'] as String? ?? '',
-          commandStatus: data['commandStatus'] as String? ?? 'פתוח',
-          folder: folderName,
-          scenario: data['scenario'] as String? ?? '',
-          settlement: data['settlement'] as String? ?? '',
-          attendeesCount: 0,
-        );
-
-        feedbackStorage.add(feedback);
-        debugPrint(
-          '  ✅ Added course evaluation: ${feedback.name} → $folderName',
+        feedbackStorage.add(
+          FeedbackModel(
+            id: doc.id,
+            role: data['role'] as String? ?? '',
+            name: data['candidateName'] as String? ?? '',
+            exercise: 'מיונים לקורס מדריכים',
+            scores: (data['scores'] as Map?)?.cast<String, int>() ?? {},
+            notes: (data['notes'] as Map?)?.cast<String, String>() ?? {},
+            criteriaList: (data['criteriaList'] as List?)?.cast<String>() ?? [],
+            createdAt:
+                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            instructorName: data['instructorName'] as String? ?? '',
+            instructorRole: data['instructorRole'] as String? ?? '',
+            commandText: data['commandText'] as String? ?? '',
+            commandStatus: data['commandStatus'] as String? ?? 'פתוח',
+            folder: folderName,
+            scenario: data['scenario'] as String? ?? '',
+            settlement: data['settlement'] as String? ?? '',
+            attendeesCount: 0,
+          ),
         );
       }
-
-      debugPrint(
-        '📋 Total after adding evaluations: ${feedbackStorage.length} feedbacks',
-      );
-    } catch (e) {
-      debugPrint('⚠️ Failed to load instructor course evaluations: $e');
-    }
-    debugPrint('🔍 ===== END INSTRUCTOR COURSE EVALUATIONS =====\n');
-  } on FirebaseException catch (e) {
-    debugPrint('❌ FirebaseException: ${e.code}');
-    debugPrint('   Message: ${e.message}');
-
-    if (e.code == 'failed-precondition' ||
-        e.message?.contains('index') == true) {
-      debugPrint('\n🔥🔥🔥 COMPOSITE INDEX ERROR DETECTED! 🔥🔥🔥');
-      debugPrint('');
-      debugPrint('The query requires a composite index on:');
-      debugPrint('  Collection: feedbacks');
-      debugPrint('  Fields:');
-      debugPrint('    1. instructorId (Ascending)');
-      debugPrint('    2. createdAt (Descending)');
-      debugPrint('');
-      debugPrint('📋 To create the index:');
-      debugPrint('   1. Go to: https://console.firebase.google.com/');
-      debugPrint('   2. Select your project');
-      debugPrint('   3. Go to: Firestore Database → Indexes');
-      debugPrint('   4. Click "Create Index"');
-      debugPrint('   5. Enter:');
-      debugPrint('      - Collection ID: feedbacks');
-      debugPrint('      - Field 1: instructorId | Ascending');
-      debugPrint('      - Field 2: createdAt | Descending');
-      debugPrint('   6. Click "Create"');
-      debugPrint('   7. Wait for index to build (usually 1-5 minutes)');
-      debugPrint('');
-      debugPrint('Or use the Firebase CLI:');
-      debugPrint('   firebase firestore:indexes');
-      debugPrint('');
-      debugPrint(
-        '⚠️ Until the index is created, instructors will see empty feedback list.',
-      );
-      debugPrint('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
-    }
-
-    // On error, leave feedbackStorage empty - UI will show empty state
-    // This prevents the screen from freezing in loading state
-  } on TimeoutException catch (e) {
-    debugPrint('❌ Query timeout: $e');
-    debugPrint('   Firestore query took too long to respond');
-    // On error, leave feedbackStorage empty - UI will show empty state
-  } catch (e) {
-    debugPrint('❌ loadFeedbacksForCurrentUser: unexpected error $e');
-    // On error, leave feedbackStorage empty - UI will show empty state
+    } catch (_) {}
   }
 }
 
@@ -3577,12 +3459,15 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   String? trainingSummaryFolder; // No default - user must select
   String selectedSettlement = '';
   String trainingType = '';
+  String _trainingTypeDropdownValue = ''; // dropdown selection
+  String trainingContent = ''; // תוכן האימון (new field)
   String summary = '';
   int attendeesCount = 0;
   int instructorsCount = 0; // מספר מדריכים
   late TextEditingController _attendeesCountController;
   late TextEditingController _instructorsCountController; // בקר מספר מדריכים
   late TextEditingController _trainingTypeController; // ✅ בקר סוג אימון
+  late TextEditingController _trainingContentController; // תוכן האימון
   late TextEditingController _summaryController; // ✅ בקר סיכום
   final Map<String, TextEditingController> _attendeeNameControllers = {};
   final Map<String, TextEditingController> _instructorNameControllers =
@@ -3623,6 +3508,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       text: instructorsCount.toString(),
     );
     _trainingTypeController = TextEditingController(text: trainingType);
+    _trainingContentController = TextEditingController(text: trainingContent);
     _summaryController = TextEditingController(text: summary);
 
     // ✨ Set draft ID if editing existing draft
@@ -3651,6 +3537,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
     _trainingTypeController.dispose();
+    _trainingContentController.dispose();
     _summaryController.dispose();
     for (final controller in _attendeeNameControllers.values) {
       controller.dispose();
@@ -3720,7 +3607,17 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         trainingSummaryFolder = data['folder'] as String?;
         selectedSettlement = data['settlement'] as String? ?? '';
         trainingType = data['trainingType'] as String? ?? '';
-        _trainingTypeController.text = trainingType; // ✅ עדכון controller
+        // Restore dropdown selection from saved trainingType
+        const presetOptions = ['ביישוב', 'מטווחים', 'לשביה'];
+        if (presetOptions.contains(trainingType)) {
+          _trainingTypeDropdownValue = trainingType;
+          _trainingTypeController.text = '';
+        } else if (trainingType.isNotEmpty) {
+          _trainingTypeDropdownValue = 'אחר';
+          _trainingTypeController.text = trainingType;
+        }
+        trainingContent = data['trainingContent'] as String? ?? '';
+        _trainingContentController.text = trainingContent; // עדכון controller
         summary = data['summary'] as String? ?? '';
         _summaryController.text = summary; // ✅ עדכון controller
 
@@ -3880,6 +3777,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'folderLabel': folderLabel,
         'settlement': selectedSettlement,
         'trainingType': trainingType,
+        'trainingContent': trainingContent,
         'attendees': validAttendees,
         'attendeesCount': validAttendees.length,
         'instructorsCount': validInstructors.length,
@@ -4315,6 +4213,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'folderLabel': folderLabel, // ✅ Add label for display
         'settlement': selectedSettlement,
         'trainingType': trainingType,
+        'trainingContent': trainingContent,
         'attendees': validAttendees,
         'attendeesCount': validAttendees.length,
         'instructorsCount': validInstructors.length,
@@ -4557,22 +4456,71 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ],
               const SizedBox(height: 12),
 
-              // 4. Training type (free text)
+              // 4. Training type (dropdown)
               const Text(
                 'סוג אימון',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _trainingTypeController,
+              DropdownButtonFormField<String>(
+                initialValue: _trainingTypeDropdownValue.isEmpty
+                    ? null
+                    : _trainingTypeDropdownValue,
+                hint: const Text('בחר סוג אימון'),
                 decoration: const InputDecoration(
                   labelText: 'סוג אימון',
-                  hintText: 'לדוגמה: אימון ירי, אימון שטח, תרגיל לילה',
+                  border: OutlineInputBorder(),
+                ),
+                items: ['ביישוב', 'מטווחים', 'לשביה', 'אחר']
+                    .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+                    .toList(),
+                onChanged: (v) {
+                  setState(() {
+                    _trainingTypeDropdownValue = v ?? '';
+                    if (v != null && v != 'אחר') {
+                      trainingType = v;
+                      _trainingTypeController.clear();
+                    } else {
+                      trainingType = _trainingTypeController.text;
+                    }
+                  });
+                  _triggerAutosave();
+                },
+              ),
+              if (_trainingTypeDropdownValue == 'אחר') ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _trainingTypeController,
+                  decoration: const InputDecoration(
+                    labelText: 'פרט סוג אימון',
+                    hintText: 'לדוגמה: תרגיל לילה, אימון שטח...',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) {
+                    setState(() => trainingType = v);
+                    _triggerAutosave();
+                  },
+                ),
+              ],
+              const SizedBox(height: 12),
+
+              // 4b. תוכן האימון
+              const Text(
+                'תוכן האימון',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _trainingContentController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'תוכן האימון',
+                  hintText: 'תאר בקצרה את תוכן האימון...',
                   border: OutlineInputBorder(),
                 ),
                 onChanged: (v) {
-                  setState(() => trainingType = v);
-                  _triggerAutosave(); // ✨ Autosave
+                  setState(() => trainingContent = v);
+                  _triggerAutosave();
                 },
               ),
               const SizedBox(height: 12),
@@ -5702,7 +5650,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          Navigator.of(context).pushNamed('/feedback_details', arguments: f);
+          Navigator.of(
+            context,
+          ).pushNamed('/feedback_details', arguments: f).then((_) {
+            if (mounted) setState(() {});
+          });
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -7474,9 +7426,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                 }
                               } else {
                                 // Normal mode, open feedback details
-                                Navigator.of(
-                                  context,
-                                ).pushNamed('/feedback_details', arguments: f);
+                                Navigator.of(context)
+                                    .pushNamed(
+                                      '/feedback_details',
+                                      arguments: f,
+                                    )
+                                    .then((_) {
+                                      if (mounted) setState(() {});
+                                    });
                               }
                             },
                             onDelete:
@@ -7508,12 +7465,33 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
   late FeedbackModel feedback;
   String? resolvedInstructorName; // Cached resolved name
   bool isResolvingName = false;
+  Future<DocumentSnapshot>?
+  _feedbackDocFuture; // Shared future for all FutureBuilders
+  List<String>?
+  _additionalInstructorsOverride; // Set after edit to bypass FutureBuilder cache
+
+  void _refreshDocFuture() {
+    if (feedback.id != null && feedback.id!.isNotEmpty) {
+      setState(() {
+        _feedbackDocFuture = FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(feedback.id)
+            .get();
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     feedback = widget.feedback;
     _resolveInstructorNameIfNeeded();
+    if (feedback.id != null && feedback.id!.isNotEmpty) {
+      _feedbackDocFuture = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .get();
+    }
   }
 
   /// Resolve instructor name if it looks like email/UID
@@ -7657,6 +7635,410 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         ),
       );
     }
+  }
+
+  /// ✨ Edit instructor name (Yotam only)
+  Future<void> _editInstructorName() async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+    final controller = TextEditingController(
+      text: resolvedInstructorName ?? feedback.instructorName,
+    );
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('עריכת שם מדריך'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'שם מדריך'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('שמור'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result == null || result.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({'instructorName': result});
+      setState(() {
+        feedback = feedback.copyWith(instructorName: result);
+        resolvedInstructorName = result;
+      });
+      final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
+      if (index != -1) feedbackStorage[index] = feedback;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('שם מדריך עודכן'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// ✨ Edit trainees list (Yotam only)
+  Future<void> _editTrainees() async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+
+    // Load current trainees from Firestore
+    final doc = await FirebaseFirestore.instance
+        .collection('feedbacks')
+        .doc(feedback.id)
+        .get();
+    if (!mounted) return;
+    final data = doc.data();
+    final currentTraineeNames =
+        (data?['trainees'] as List?)
+            ?.whereType<Map>()
+            .map((e) => (e['name'] ?? '').toString())
+            .where((n) => n.isNotEmpty)
+            .toList() ??
+        [];
+
+    // Load settlement trainee list
+    final settlement = feedback.settlement.isNotEmpty
+        ? feedback.settlement
+        : (data?['settlement'] as String? ?? '');
+    List<String> settlementTrainees = [];
+    if (settlement.isNotEmpty) {
+      try {
+        settlementTrainees =
+            await TraineeAutocompleteService.getTraineesForSettlement(
+              settlement,
+            );
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
+    if (settlementTrainees.isEmpty) {
+      // No settlement list — show a simple message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('לא נמצאה רשימת חניכים עבור יישוב זה')),
+      );
+      return;
+    }
+
+    // Open TraineeSelectionDialog — same as "בחר חניכים מרשימה" in the form
+    final selectedNames = await showDialog<List<String>>(
+      context: context,
+      builder: (_) => TraineeSelectionDialog(
+        settlementName: settlement,
+        availableTrainees: settlementTrainees,
+        preSelectedTrainees: currentTraineeNames,
+      ),
+    );
+
+    if (selectedNames == null || !mounted) return;
+
+    // Build trainees list (keep existing hit data for names that remain)
+    final existingMap = {
+      for (final t
+          in (data?['trainees'] as List?)
+                  ?.whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList() ??
+              [])
+        (t['name'] ?? '').toString(): t,
+    };
+    final newTrainees = selectedNames
+        .map((name) => existingMap[name] ?? {'name': name, 'hits': {}})
+        .toList();
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({
+            'trainees': newTrainees,
+            'attendeesCount': newTrainees.length,
+          });
+      setState(() {
+        feedback = feedback.copyWith(attendeesCount: newTrainees.length);
+      });
+      final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
+      if (index != -1) feedbackStorage[index] = feedback;
+      _refreshDocFuture();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('רשימת חניכים עודכנה'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// ✨ Edit feedback summary (Yotam only)
+  Future<void> _editSummary({String? currentValue}) async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+    final controller = TextEditingController(
+      text: currentValue ?? feedback.summary,
+    );
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('עריכת סיכום משוב'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 6,
+            decoration: const InputDecoration(labelText: 'סיכום'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('שמור'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({'summary': result});
+      setState(() {
+        feedback = feedback.copyWith(summary: result);
+      });
+      final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
+      if (index != -1) feedbackStorage[index] = feedback;
+      _refreshDocFuture(); // Force all FutureBuilders to re-fetch
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('סיכום משוב עודכן'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// ✨ Edit additional instructors list (Yotam only)
+  Future<void> _editAdditionalInstructors(List<String> currentList) async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+    List<String> editedList = List.from(currentList);
+    String autocompleteValue =
+        ''; // declared outside StatefulBuilder to survive rebuilds
+
+    // Build suggestions: brigade list + any names already in feedbackStorage
+    final suggestions = {
+      ...brigade474Instructors,
+      ...feedbackStorage
+          .map((f) => f.instructorName)
+          .where((n) => n.isNotEmpty),
+      ...feedbackStorage
+          .expand((f) => f.instructors)
+          .where((n) => n.isNotEmpty),
+    }.toList()..sort();
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Text('עריכת מדריכים נוספים'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (editedList.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text(
+                            'אין מדריכים נוספים',
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: editedList.length,
+                          itemBuilder: (_, i) => ListTile(
+                            dense: true,
+                            title: Text(editedList[i]),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () =>
+                                  setDialogState(() => editedList.removeAt(i)),
+                            ),
+                          ),
+                        ),
+                      const Divider(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Autocomplete<String>(
+                              optionsBuilder: (textEditingValue) {
+                                final query = textEditingValue.text.trim();
+                                autocompleteValue = query;
+                                if (query.isEmpty) return suggestions;
+                                return suggestions.where(
+                                  (name) => name.contains(query),
+                                );
+                              },
+                              onSelected: (selected) {
+                                // Add immediately on dropdown selection
+                                // (don't rely on autocompleteValue — it gets
+                                // cleared right after onSelected by Flutter)
+                                final name = selected.trim();
+                                if (name.isNotEmpty &&
+                                    !editedList.contains(name)) {
+                                  setDialogState(() => editedList.add(name));
+                                }
+                                autocompleteValue = '';
+                              },
+                              fieldViewBuilder:
+                                  (
+                                    context,
+                                    controller,
+                                    focusNode,
+                                    onFieldSubmitted,
+                                  ) {
+                                    return TextField(
+                                      controller: controller,
+                                      focusNode: focusNode,
+                                      onChanged: (v) => autocompleteValue = v,
+                                      decoration: const InputDecoration(
+                                        labelText: 'הוסף מדריך (הקלד ידנית)',
+                                        isDense: true,
+                                      ),
+                                    );
+                                  },
+                              optionsViewBuilder:
+                                  (context, onSelected, options) {
+                                    return Align(
+                                      alignment: Alignment.topLeft,
+                                      child: Material(
+                                        elevation: 4,
+                                        child: SizedBox(
+                                          width: 280,
+                                          child: ListView.builder(
+                                            shrinkWrap: true,
+                                            itemCount: options.length,
+                                            itemBuilder: (context, index) {
+                                              final option = options.elementAt(
+                                                index,
+                                              );
+                                              return ListTile(
+                                                dense: true,
+                                                title: Text(option),
+                                                onTap: () => onSelected(option),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add, color: Colors.green),
+                            onPressed: () {
+                              final name = autocompleteValue.trim();
+                              if (name.isEmpty) return;
+                              if (editedList.contains(name)) return;
+                              setDialogState(() => editedList.add(name));
+                              autocompleteValue = '';
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('ביטול'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('feedbacks')
+                          .doc(feedback.id)
+                          .update({'instructors': editedList});
+                      setState(() {
+                        feedback = feedback.copyWith(instructors: editedList);
+                        _additionalInstructorsOverride = List.from(editedList);
+                      });
+                      final index = feedbackStorage.indexWhere(
+                        (f) => f.id == feedback.id,
+                      );
+                      if (index != -1) feedbackStorage[index] = feedback;
+                      _refreshDocFuture();
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('מדריכים נוספים עודכנו'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('שגיאה: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('שמור'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   bool _isExporting = false;
@@ -7883,9 +8265,44 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                         ),
                       ],
                     )
-                  : Text(
-                      'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
-                    ),
+                  : (() {
+                      final canEdit =
+                          currentUser?.name == 'יותם אלון' &&
+                          currentUser?.role == 'Admin';
+                      if (canEdit) {
+                        return InkWell(
+                          onTap: _editInstructorName,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 4.0,
+                              horizontal: 8.0,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                                  style: const TextStyle(
+                                    color: Colors.blue,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.edit,
+                                  size: 16,
+                                  color: Colors.blue,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      return Text(
+                        'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                      );
+                    })(),
               const SizedBox(height: 8),
               // Additional instructors for range/training feedbacks
               if ((feedback.module == 'training_summary' ||
@@ -7896,74 +8313,111 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   feedback.id != null &&
                   feedback.id!.isNotEmpty)
                 FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection('feedbacks')
-                      .doc(feedback.id)
-                      .get()
-                      .timeout(const Duration(seconds: 3)),
+                  future: _feedbackDocFuture,
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData || !snapshot.data!.exists) {
+                    // If override is set (after an edit), use it immediately
+                    // regardless of snapshot loading state
+                    final List<String> additionalInstructors;
+                    if (_additionalInstructorsOverride != null) {
+                      additionalInstructors = _additionalInstructorsOverride!;
+                    } else if (!snapshot.hasData || !snapshot.data!.exists) {
                       return const SizedBox.shrink();
+                    } else {
+                      final data =
+                          snapshot.data!.data() as Map<String, dynamic>?;
+                      if (data == null) return const SizedBox.shrink();
+                      additionalInstructors =
+                          (data['instructors'] as List?)?.cast<String>() ?? [];
                     }
 
-                    final data = snapshot.data!.data() as Map<String, dynamic>?;
-                    if (data == null) return const SizedBox.shrink();
-
-                    final additionalInstructors =
-                        (data['instructors'] as List?)?.cast<String>() ?? [];
-
-                    // Filter out main instructor from the list
+                    // Filter out empty strings and the main instructor (avoid duplicates)
+                    final mainInstructorName = feedback.instructorName;
                     final filteredInstructors = additionalInstructors
                         .where(
                           (name) =>
-                              name.isNotEmpty &&
-                              name != feedback.instructorName &&
-                              name != resolvedInstructorName,
+                              name.isNotEmpty && name != mainInstructorName,
                         )
                         .toList();
 
-                    if (filteredInstructors.isEmpty) {
+                    final canEdit =
+                        currentUser?.name == 'יותם אלון' &&
+                        currentUser?.role == 'Admin';
+
+                    if (filteredInstructors.isEmpty && !canEdit) {
                       return const SizedBox.shrink();
                     }
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'מדריכים נוספים:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
+                        Row(
+                          children: [
+                            const Text(
+                              'מדריכים נוספים:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            if (canEdit) ...[
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => _editAdditionalInstructors(
+                                  additionalInstructors,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4.0),
+                                  child: Icon(
+                                    Icons.edit,
+                                    size: 16,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 4),
-                        ...filteredInstructors.map(
-                          (name) => Padding(
-                            padding: const EdgeInsets.only(
-                              right: 12.0,
-                              bottom: 2.0,
+                        if (filteredInstructors.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 12.0),
+                            child: Text(
+                              'אין מדריכים נוספים',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.black54,
+                              ),
                             ),
-                            child: Row(
-                              children: [
-                                const Text(
-                                  '• ',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
+                          )
+                        else
+                          ...filteredInstructors.map(
+                            (name) => Padding(
+                              padding: const EdgeInsets.only(
+                                right: 12.0,
+                                bottom: 2.0,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Text(
+                                    '• ',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  name,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
                         const SizedBox(height: 8),
                       ],
                     );
@@ -8046,6 +8500,42 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               else
                 Text('תפקיד: ${feedback.role}'),
               const SizedBox(height: 8),
+              // Edit trainees button (Yotam only) for modules that store trainees in Firestore
+              if ((currentUser?.name == 'יותם אלון' &&
+                      currentUser?.role == 'Admin') &&
+                  (feedback.module == 'training_summary' ||
+                      feedback.module == 'surprise_drill' ||
+                      feedback.module == 'shooting_ranges' ||
+                      feedback.folderKey == 'ranges_474' ||
+                      feedback.folderKey == 'shooting_ranges') &&
+                  feedback.id != null &&
+                  feedback.id!.isNotEmpty) ...[
+                InkWell(
+                  onTap: _editTrainees,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4.0,
+                      horizontal: 8.0,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'עריכת חניכים (${feedback.attendeesCount})',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.edit, size: 16, color: Colors.blue),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               // Display settlement/name based on feedback type
               if (feedback.folderKey == 'shooting_ranges' ||
                   feedback.folder == 'מטווחי ירי' ||
@@ -8118,10 +8608,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       feedback.id!.isNotEmpty
                   ? <Widget>[
                       FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance
-                            .collection('feedbacks')
-                            .doc(feedback.id)
-                            .get(),
+                        future: _feedbackDocFuture,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData || !snapshot.data!.exists) {
                             return const SizedBox.shrink();
@@ -8135,6 +8622,8 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
                           final trainingType =
                               (data['trainingType'] as String?) ?? '';
+                          final trainingContent =
+                              (data['trainingContent'] as String?) ?? '';
                           final attendees =
                               (data['attendees'] as List?)?.cast<String>() ??
                               [];
@@ -8173,6 +8662,39 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         const SizedBox(height: 4),
                                         Text(
                                           trainingType,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+
+                              // Training content
+                              if (trainingContent.isNotEmpty) ...[
+                                Card(
+                                  color: Colors.blueGrey.shade700,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'תוכן האימון',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          trainingContent,
                                           style: const TextStyle(
                                             fontSize: 16,
                                             color: Colors.white,
@@ -8251,32 +8773,62 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               ],
 
                               // Summary
-                              if (summary.isNotEmpty) ...[
-                                const Text(
-                                  'סיכום האימון',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Card(
-                                  color: Colors.blueGrey.shade700,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Text(
-                                      summary,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        height: 1.5,
-                                        color: Colors.white,
+                              if (summary.isNotEmpty ||
+                                  (currentUser?.name == 'יותם אלון' &&
+                                      currentUser?.role == 'Admin')) ...[
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'סיכום האימון',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  ),
+                                    if (currentUser?.name == 'יותם אלון' &&
+                                        currentUser?.role == 'Admin') ...[
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () =>
+                                            _editSummary(currentValue: summary),
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4.0),
+                                          child: Icon(
+                                            Icons.edit,
+                                            size: 16,
+                                            color: Colors.blue,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
+                                const SizedBox(height: 8),
+                                if (summary.isNotEmpty)
+                                  Card(
+                                    color: Colors.blueGrey.shade700,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Text(
+                                        summary,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          height: 1.5,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  const Text(
+                                    'אין סיכום — לחץ על ✏️ להוספה',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                               ],
-
-                              // ✨ Linked personal feedbacks section
                               Builder(
                                 builder: (context) {
                                   final linkedFeedbackIds =
@@ -8510,10 +9062,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       feedback.id!.isNotEmpty
                   ? <Widget>[
                       FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance
-                            .collection('feedbacks')
-                            .doc(feedback.id)
-                            .get(),
+                        future: _feedbackDocFuture,
                         builder: (context, snapshot) {
                           debugPrint('\n🔍 SURPRISE DRILLS DETAILS SCREEN');
                           debugPrint('   Feedback ID: ${feedback.id}');
@@ -8780,7 +9329,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 builder: (context) {
                                   final summary =
                                       (data['summary'] as String?) ?? '';
-                                  if (summary.isEmpty) {
+                                  final canEdit =
+                                      currentUser?.name == 'יותם אלון' &&
+                                      currentUser?.role == 'Admin';
+                                  if (summary.isEmpty && !canEdit) {
                                     return const SizedBox.shrink();
                                   }
                                   return Column(
@@ -8788,28 +9340,59 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       const SizedBox(height: 16),
-                                      const Text(
-                                        'סיכום האימון',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Card(
-                                        color: Colors.blueGrey.shade700,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(12.0),
-                                          child: Text(
-                                            summary,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              height: 1.5,
-                                              color: Colors.white,
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'סיכום האימון',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                        ),
+                                          if (canEdit) ...[
+                                            const SizedBox(width: 8),
+                                            InkWell(
+                                              onTap: () => _editSummary(
+                                                currentValue: summary,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: const Padding(
+                                                padding: EdgeInsets.all(4.0),
+                                                child: Icon(
+                                                  Icons.edit,
+                                                  size: 16,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
+                                      const SizedBox(height: 8),
+                                      if (summary.isNotEmpty)
+                                        Card(
+                                          color: Colors.blueGrey.shade700,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Text(
+                                              summary,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                height: 1.5,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        const Text(
+                                          'אין סיכום — לחץ על ✏️ להוספה',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 13,
+                                          ),
+                                        ),
                                     ],
                                   );
                                 },
@@ -8825,10 +9408,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               ...is474Ranges && feedback.id != null && feedback.id!.isNotEmpty
                   ? <Widget>[
                       FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance
-                            .collection('feedbacks')
-                            .doc(feedback.id)
-                            .get(),
+                        future: _feedbackDocFuture,
                         builder: (context, snapshot) {
                           debugPrint('\n🔍 474 RANGES DETAILS SCREEN');
                           debugPrint('   Feedback ID: ${feedback.id}');
@@ -9419,7 +9999,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 builder: (context) {
                                   final summary =
                                       (data['summary'] as String?) ?? '';
-                                  if (summary.isEmpty) {
+                                  final canEdit =
+                                      currentUser?.name == 'יותם אלון' &&
+                                      currentUser?.role == 'Admin';
+                                  if (summary.isEmpty && !canEdit) {
                                     return const SizedBox.shrink();
                                   }
                                   return Column(
@@ -9427,28 +10010,59 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       const SizedBox(height: 16),
-                                      const Text(
-                                        'סיכום האימון',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Card(
-                                        color: Colors.blueGrey.shade700,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(12.0),
-                                          child: Text(
-                                            summary,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              height: 1.5,
-                                              color: Colors.white,
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'סיכום האימון',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                        ),
+                                          if (canEdit) ...[
+                                            const SizedBox(width: 8),
+                                            InkWell(
+                                              onTap: () => _editSummary(
+                                                currentValue: summary,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: const Padding(
+                                                padding: EdgeInsets.all(4.0),
+                                                child: Icon(
+                                                  Icons.edit,
+                                                  size: 16,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
+                                      const SizedBox(height: 8),
+                                      if (summary.isNotEmpty)
+                                        Card(
+                                          color: Colors.blueGrey.shade700,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Text(
+                                              summary,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                height: 1.5,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        const Text(
+                                          'אין סיכום — לחץ על ✏️ להוספה',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 13,
+                                          ),
+                                        ),
                                     ],
                                   );
                                 },
@@ -9466,10 +10080,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       feedback.id!.isNotEmpty
                   ? <Widget>[
                       FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance
-                            .collection('feedbacks')
-                            .doc(feedback.id)
-                            .get(),
+                        future: _feedbackDocFuture,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData || !snapshot.data!.exists) {
                             return const SizedBox.shrink();
@@ -9864,7 +10475,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 builder: (context) {
                                   final summary =
                                       (data['summary'] as String?) ?? '';
-                                  if (summary.isEmpty) {
+                                  final canEdit =
+                                      currentUser?.name == 'יותם אלון' &&
+                                      currentUser?.role == 'Admin';
+                                  if (summary.isEmpty && !canEdit) {
                                     return const SizedBox.shrink();
                                   }
                                   return Column(
@@ -9872,28 +10486,59 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       const SizedBox(height: 16),
-                                      const Text(
-                                        'סיכום האימון',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Card(
-                                        color: Colors.blueGrey.shade700,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(12.0),
-                                          child: Text(
-                                            summary,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              height: 1.5,
-                                              color: Colors.white,
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'סיכום האימון',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                        ),
+                                          if (canEdit) ...[
+                                            const SizedBox(width: 8),
+                                            InkWell(
+                                              onTap: () => _editSummary(
+                                                currentValue: summary,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: const Padding(
+                                                padding: EdgeInsets.all(4.0),
+                                                child: Icon(
+                                                  Icons.edit,
+                                                  size: 16,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
+                                      const SizedBox(height: 8),
+                                      if (summary.isNotEmpty)
+                                        Card(
+                                          color: Colors.blueGrey.shade700,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Text(
+                                              summary,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                height: 1.5,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        const Text(
+                                          'אין סיכום — לחץ על ✏️ להוספה',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 13,
+                                          ),
+                                        ),
                                     ],
                                   );
                                 },
@@ -9946,36 +10591,68 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                     ],
               const SizedBox(height: 12),
               // Summary box (visible for general feedbacks - מעגל פתוח, מעגל פרוץ, סריקות רחוב)
-              if (!hideCommandBox && feedback.summary.isNotEmpty) ...[
+              if (!hideCommandBox) ...[
                 const SizedBox(height: 12),
-                Card(
-                  color: Colors.blueGrey.shade800,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          'סיכום משוב',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.orangeAccent,
+                (() {
+                  final canEdit =
+                      currentUser?.name == 'יותם אלון' &&
+                      currentUser?.role == 'Admin';
+                  if (feedback.summary.isEmpty && !canEdit) {
+                    return const SizedBox.shrink();
+                  }
+                  return Card(
+                    color: Colors.blueGrey.shade800,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'סיכום משוב',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.orangeAccent,
+                                ),
+                              ),
+                              if (canEdit)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    size: 18,
+                                    color: Colors.blue,
+                                  ),
+                                  onPressed: _editSummary,
+                                  tooltip: 'ערוך סיכום',
+                                ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          feedback.summary,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          if (feedback.summary.isNotEmpty)
+                            Text(
+                              feedback.summary,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                height: 1.5,
+                              ),
+                            )
+                          else
+                            const Text(
+                              'אין סיכום — לחץ על עריכה להוספה',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 14,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                })(),
               ],
 
               // כפתור ייצוא ל-XLSX מקומי (רק לאדמין)
@@ -17227,9 +17904,14 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                   });
                                 }
                               } else {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed('/feedback_details', arguments: f);
+                                Navigator.of(context)
+                                    .pushNamed(
+                                      '/feedback_details',
+                                      arguments: f,
+                                    )
+                                    .then((_) {
+                                      if (mounted) setState(() {});
+                                    });
                               }
                             },
                             onDelete:
