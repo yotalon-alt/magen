@@ -45,6 +45,11 @@ class AppUser {
 // Currently signed-in user (nullable until auth completes)
 AppUser? currentUser;
 
+// Delete permission is intentionally restricted to one specific UID.
+const String kDeleteFeedbackAllowedUid = 'XVcc4gEEcDQqENGAR7mXvIpNimA2';
+bool get canCurrentUserDeleteFeedbacks =>
+    currentUser?.uid == kDeleteFeedbackAllowedUid;
+
 // Global folders used by FeedbacksPage and filters
 // Each folder has: title (String) and isHidden (bool)
 const List<Map<String, dynamic>>
@@ -5560,6 +5565,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   }
 
   Future<void> _deleteFeedback(String feedbackId, String title) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
+      );
+      return;
+    }
+
     try {
       await FirebaseFirestore.instance
           .collection('feedbacks')
@@ -5641,8 +5654,6 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
     }
 
-    final isAdmin = currentUser?.role == 'Admin';
-
     return Card(
       margin: const EdgeInsets.only(bottom: 8.0),
       elevation: 3,
@@ -5697,7 +5708,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           color: Colors.grey,
                         ),
                       ),
-                      if (isAdmin && !_selectionMode) ...[
+                      if (canCurrentUserDeleteFeedbacks && !_selectionMode) ...[
                         const SizedBox(height: 4),
                         SizedBox(
                           height: 28,
@@ -7380,8 +7391,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             feedbackData,
                           );
 
-                          // Check delete permissions - only admin for now (proper check requires async)
-                          final canDelete = currentUser?.role == 'Admin';
+                          // Delete permission is restricted to one specific UID.
+                          final canDelete = canCurrentUserDeleteFeedbacks;
 
                           // Check if folder supports selection mode
                           final supportsSelectionMode =
@@ -13951,7 +13962,8 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = currentUser?.role == 'Admin';
-    if (!isAdmin) {
+    final isInstructor = currentUser?.role == 'Instructor';
+    if (!isAdmin && !isInstructor) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('אין הרשאה'),
@@ -14801,6 +14813,14 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
   }
 
   Future<void> _deleteFeedback(String id, String settlement) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
+      );
+      return;
+    }
+
     try {
       await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
 
@@ -14943,8 +14963,6 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
         mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
     }
 
-    final isAdmin = currentUser?.role == 'Admin';
-
     return Card(
       margin: const EdgeInsets.only(bottom: 8.0),
       elevation: 3,
@@ -14998,7 +15016,7 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                           color: Colors.grey,
                         ),
                       ),
-                      if (isAdmin) ...[
+                      if (canCurrentUserDeleteFeedbacks) ...[
                         const SizedBox(height: 4),
                         SizedBox(
                           height: 28,
@@ -16592,6 +16610,14 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   }
 
   Future<void> _deleteFeedback(String feedbackId, String title) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
+      );
+      return;
+    }
+
     try {
       await FirebaseFirestore.instance
           .collection('feedbacks')
@@ -16795,8 +16821,6 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
     }
 
-    final isAdmin = currentUser?.role == 'Admin';
-
     return Card(
       margin: const EdgeInsets.only(bottom: 8.0),
       elevation: 3,
@@ -16850,7 +16874,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                           color: Colors.grey,
                         ),
                       ),
-                      if (isAdmin) ...[
+                      if (canCurrentUserDeleteFeedbacks) ...[
                         const SizedBox(height: 4),
                         SizedBox(
                           height: 28,
@@ -18011,7 +18035,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                             feedbackData,
                           );
 
-                          final canDelete = currentUser?.role == 'Admin';
+                          final canDelete = canCurrentUserDeleteFeedbacks;
 
                           final supportsSelectionMode =
                               _selectedFolder == 'מטווחים 474' ||

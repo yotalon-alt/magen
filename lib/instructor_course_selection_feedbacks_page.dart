@@ -1340,6 +1340,14 @@ class _InstructorCourseSelectionFeedbacksPageState
     Map<String, dynamic> feedback,
     BuildContext dialogContext,
   ) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
+      );
+      return;
+    }
+
     final feedbackId = feedback['id'] as String?;
     final candidateName = feedback['candidateName'] ?? 'לא ידוע';
 
@@ -1425,7 +1433,7 @@ class _InstructorCourseSelectionFeedbacksPageState
     final brigade = feedback['brigade'] ?? '';
     final averageScore = feedback['averageScore'] ?? 0.0;
     final scores = feedback['scores'] as Map<String, dynamic>? ?? {};
-    final isAdmin = currentUser?.role == 'Admin';
+    final canDeleteFeedbacks = canCurrentUserDeleteFeedbacks;
 
     debugPrint('\n📋 FEEDBACK_DETAILS_OPEN: ${feedback['id']}');
     debugPrint('   candidateName=$candidateName');
@@ -1548,8 +1556,8 @@ class _InstructorCourseSelectionFeedbacksPageState
             ),
           ),
           actions: [
-            // Admin-only delete button
-            if (isAdmin)
+            // Delete is restricted to one specific UID.
+            if (canDeleteFeedbacks)
               TextButton.icon(
                 onPressed: () => _confirmDeleteFeedback(feedback, ctx),
                 icon: const Icon(Icons.delete, color: Colors.red),

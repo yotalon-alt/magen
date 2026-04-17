@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../instructor_course_feedback_page.dart';
+import '../main.dart';
 import '../widgets/standard_back_button.dart';
 
 class ScreeningsInProgressPage extends StatefulWidget {
@@ -110,6 +111,14 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
 
   /// Delete a draft evaluation with confirmation dialog
   Future<void> _confirmDeleteDraft(String docId, String title) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
@@ -333,11 +342,12 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // Delete button
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          tooltip: 'מחק משוב זמני',
-                          onPressed: () => _confirmDeleteDraft(doc.id, title),
-                        ),
+                        if (canCurrentUserDeleteFeedbacks)
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            tooltip: 'מחק משוב זמני',
+                            onPressed: () => _confirmDeleteDraft(doc.id, title),
+                          ),
                         const SizedBox(width: 8),
                         // Continue button
                         ElevatedButton(

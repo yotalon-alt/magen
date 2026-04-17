@@ -139,6 +139,14 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
   }
 
   Future<void> _deleteTempFeedback(String id) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
+      return;
+    }
+
     try {
       await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
 
@@ -235,8 +243,8 @@ class _RangeTempFeedbacksPageState extends State<RangeTempFeedbacksPage> {
     final rangeTypeLabel = rangeType == 'קצרים' ? 'טווח קצר' : 'טווח רחוק';
     final iconColor = rangeType == 'קצרים' ? Colors.blue : Colors.orange;
 
-    // ✅ Check permissions - only Admin can delete temporary feedbacks
-    final canDelete = currentUser?.role == 'Admin';
+    // Delete permission is restricted to one specific UID.
+    final canDelete = canCurrentUserDeleteFeedbacks;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12.0),

@@ -177,6 +177,14 @@ class _TrainingSummaryTempListPageState
 
     if (confirmed != true) return;
 
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
+      );
+      return;
+    }
+
     try {
       await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
 
@@ -361,8 +369,8 @@ class _TrainingSummaryTempListPageState
         ? _formatTimeSince(DateTime.now().difference(createdAt))
         : '';
 
-    // ✅ Check permissions - only Admin can delete temporary summaries
-    final canDelete = currentUser?.role == 'Admin';
+    // Delete permission is restricted to one specific UID.
+    final canDelete = canCurrentUserDeleteFeedbacks;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12.0),

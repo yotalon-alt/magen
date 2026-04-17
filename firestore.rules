@@ -12,6 +12,9 @@ service cloud.firestore {
     function isInstructor() {
       return request.auth != null && (userRole() == 'Instructor' || userRole() == 'instructor');
     }
+    function canDeleteFeedbacks() {
+      return request.auth != null && request.auth.uid == 'XVcc4gEEcDQqENGAR7mXvIpNimA2';
+    }
 
     // ===== Production-safe rules =====
     // Users collection: 
@@ -26,7 +29,8 @@ service cloud.firestore {
 
     // Feedbacks require authentication
     match /feedbacks/{feedbackId} {
-      allow read, write: if request.auth != null;
+      allow read, create, update: if request.auth != null;
+      allow delete: if canDeleteFeedbacks();
     }
 
     // Instructor course selection feedbacks - suitable candidates
@@ -118,8 +122,8 @@ service cloud.firestore {
       // ✅ Allow update for all instructors/admins (both drafts and finals)
       allow update: if request.auth != null && (isInstructor() || isAdmin());
 
-      // Allow delete ONLY for admin
-      allow delete: if isAdmin();
+      // Allow delete ONLY for the dedicated delete-permission UID
+      allow delete: if canDeleteFeedbacks();
     }
 
     // ===== SETTLEMENT TRAINEES COLLECTION =====
