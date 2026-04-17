@@ -7792,6 +7792,104 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     }
   }
 
+  /// ✨ Edit training type (Yotam only)
+  Future<void> _editTrainingType(String currentValue) async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+
+    const options = ['ביישוב', 'מטווחים', 'לשביה', 'אחר'];
+    // If current value is one of the standard options use it; otherwise 'אחר'
+    String selectedOption = options.contains(currentValue)
+        ? currentValue
+        : (currentValue.isNotEmpty ? 'אחר' : '');
+    String customValue = options.contains(currentValue) ? '' : currentValue;
+    final customController = TextEditingController(text: customValue);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('עריכת סוג אימון'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedOption.isEmpty ? null : selectedOption,
+                  decoration: const InputDecoration(
+                    labelText: 'סוג אימון',
+                    border: OutlineInputBorder(),
+                  ),
+                  hint: const Text('בחר סוג אימון'),
+                  items: options
+                      .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() {
+                    selectedOption = v ?? '';
+                    if (v != 'אחר') customController.clear();
+                  }),
+                ),
+                if (selectedOption == 'אחר') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: customController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'פרט סוג אימון',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('ביטול'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final value = selectedOption == 'אחר'
+                      ? customController.text.trim()
+                      : selectedOption;
+                  if (value.isEmpty) return;
+                  Navigator.of(ctx).pop(value);
+                },
+                child: const Text('שמור'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    customController.dispose();
+    if (result == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({'trainingType': result});
+      setState(() {
+        feedback = feedback.copyWith(trainingType: result);
+      });
+      final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
+      if (index != -1) feedbackStorage[index] = feedback;
+      _refreshDocFuture();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('סוג אימון עודכן'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   /// ✨ Edit feedback summary (Yotam only)
   Future<void> _editSummary({String? currentValue}) async {
     if (feedback.id == null || feedback.id!.isEmpty) return;
@@ -8642,37 +8740,87 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               const SizedBox(height: 8),
 
                               // Training type
-                              if (trainingType.isNotEmpty) ...[
-                                Card(
-                                  color: Colors.blueGrey.shade700,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'סוג אימון',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: Colors.white,
+                              Builder(
+                                builder: (context) {
+                                  final canEditType =
+                                      currentUser?.name == 'יותם אלון' &&
+                                      currentUser?.role == 'Admin';
+                                  if (trainingType.isEmpty && !canEditType) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Card(
+                                        color: Colors.blueGrey.shade700,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12.0),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  const Text(
+                                                    'סוג אימון',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 14,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  if (canEditType) ...[
+                                                    const SizedBox(width: 8),
+                                                    InkWell(
+                                                      onTap: () =>
+                                                          _editTrainingType(
+                                                            trainingType,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
+                                                      child: const Padding(
+                                                        padding: EdgeInsets.all(
+                                                          4.0,
+                                                        ),
+                                                        child: Icon(
+                                                          Icons.edit,
+                                                          size: 16,
+                                                          color: Colors.white70,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                trainingType.isNotEmpty
+                                                    ? trainingType
+                                                    : 'לא הוגדר',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  color: trainingType.isNotEmpty
+                                                      ? Colors.white
+                                                      : Colors.white54,
+                                                  fontStyle:
+                                                      trainingType.isNotEmpty
+                                                      ? FontStyle.normal
+                                                      : FontStyle.italic,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          trainingType,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                              ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                  );
+                                },
+                              ),
 
                               // Training content
                               if (trainingContent.isNotEmpty) ...[
