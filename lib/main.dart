@@ -525,123 +525,106 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
     return;
   }
 
-  // --- Step 3 (non-admins only): Run all supplemental queries in parallel ---
+  // --- Step 3 (non-admins only): Load supplemental data (shared drafts + evaluations) ---
   if (!adminFlag) {
     final currentUserName = currentUser?.name ?? '';
+    final existingIds = feedbackStorage.map((f) => f.id).toSet();
 
-    // Build all parallel futures:
-    // [0] all final feedbacks
-    // [1] shared temp by UID
-    // [2] shared temp by name (only if name available)
-    // [3] instructor course evaluations
-    final futures = <Future<dynamic>>[
-      // [0] All final feedbacks from everyone
-      FirebaseFirestore.instance
-          .collection('feedbacks')
-          .where('isTemporary', isEqualTo: false)
-          .get()
-          .timeout(const Duration(seconds: 8)),
-
-      // [1] Shared temp feedbacks where I'm listed by UID
-      FirebaseFirestore.instance
-          .collection('feedbacks')
-          .where('instructors', arrayContains: uid)
-          .where('isTemporary', isEqualTo: true)
-          .get()
-          .timeout(const Duration(seconds: 5)),
-
-      // [2] Shared temp feedbacks where I'm listed by name
-      if (currentUserName.isNotEmpty)
+    // [1] Shared temp feedbacks where I'm listed by UID
+    // [2] Shared temp feedbacks where I'm listed by name (only if name available)
+    // [3] Instructor course evaluations (separate collection)
+    // Each runs independently — failures are swallowed silently
+    try {
+      final futures = <Future<dynamic>>[
+        // [1] Shared temp feedbacks where I'm listed by UID
         FirebaseFirestore.instance
             .collection('feedbacks')
-            .where('instructors', arrayContains: currentUserName)
+            .where('instructors', arrayContains: uid)
             .where('isTemporary', isEqualTo: true)
             .get()
             .timeout(const Duration(seconds: 5)),
 
-      // [3] Instructor course evaluations (separate collection)
-      () {
-        Query evalQ = FirebaseFirestore.instance
-            .collection('instructor_course_evaluations')
-            .where('status', isEqualTo: 'final')
-            .where('instructorId', isEqualTo: uid);
-        return evalQ
-            .orderBy('createdAt', descending: true)
-            .get()
-            .timeout(const Duration(seconds: 5));
-      }(),
-    ];
+        // [2] Shared temp feedbacks where I'm listed by name
+        if (currentUserName.isNotEmpty)
+          FirebaseFirestore.instance
+              .collection('feedbacks')
+              .where('instructors', arrayContains: currentUserName)
+              .where('isTemporary', isEqualTo: true)
+              .get()
+              .timeout(const Duration(seconds: 5)),
 
-    final results = await Future.wait(futures, eagerError: false);
+        // [3] Instructor course evaluations (separate collection)
+        () {
+          Query evalQ = FirebaseFirestore.instance
+              .collection('instructor_course_evaluations')
+              .where('status', isEqualTo: 'final')
+              .where('instructorId', isEqualTo: uid);
+          return evalQ
+              .orderBy('createdAt', descending: true)
+              .get()
+              .timeout(const Duration(seconds: 5));
+        }(),
+      ];
 
-    // Build a set of IDs already in storage for fast dedup
-    final existingIds = feedbackStorage.map((f) => f.id).toSet();
+      final results = await Future.wait(futures, eagerError: false);
 
-    // Process [0]: all final feedbacks
-    try {
-      final finalSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
-      for (final doc in finalSnap.docs) {
-        if (existingIds.contains(doc.id)) continue;
-        final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
-        if (model != null) {
-          feedbackStorage.add(model);
+      // Process [1] + [2]: shared temp feedbacks
+      final tempCount = currentUserName.isNotEmpty ? 2 : 1;
+      for (int i = 0; i < tempCount; i++) {
+        try {
+          final snap = results[i] as QuerySnapshot<Map<String, dynamic>>;
+          for (final doc in snap.docs) {
+            if (existingIds.contains(doc.id)) continue;
+            final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
+            if (model != null) {
+              feedbackStorage.add(model);
+              existingIds.add(doc.id);
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Process [3]: instructor course evaluations
+      try {
+        final evalSnap = results.last as QuerySnapshot<Map<String, dynamic>>;
+        for (final doc in evalSnap.docs) {
+          if (existingIds.contains(doc.id)) continue;
+          final data = doc.data();
+          final isSuitable = data['isSuitable'] as bool? ?? false;
+          final folderName = isSuitable
+              ? 'מתאימים לקורס מדריכים'
+              : 'לא מתאימים לקורס מדריכים';
+          feedbackStorage.add(
+            FeedbackModel(
+              id: doc.id,
+              role: data['role'] as String? ?? '',
+              name: data['candidateName'] as String? ?? '',
+              exercise: 'מיונים לקורס מדריכים',
+              scores: (data['scores'] as Map?)?.cast<String, int>() ?? {},
+              notes: (data['notes'] as Map?)?.cast<String, String>() ?? {},
+              criteriaList:
+                  (data['criteriaList'] as List?)?.cast<String>() ?? [],
+              createdAt:
+                  (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+              instructorName: data['instructorName'] as String? ?? '',
+              instructorRole: data['instructorRole'] as String? ?? '',
+              commandText: data['commandText'] as String? ?? '',
+              commandStatus: data['commandStatus'] as String? ?? 'פתוח',
+              folder: folderName,
+              scenario: data['scenario'] as String? ?? '',
+              settlement: data['settlement'] as String? ?? '',
+              attendeesCount: 0,
+            ),
+          );
           existingIds.add(doc.id);
         }
-      }
-    } catch (_) {}
-
-    // Process [1] + [2]: shared temp feedbacks (UID + name)
-    final tempSnapshots = currentUserName.isNotEmpty
-        ? [results[1], results[2]]
-        : [results[1]];
-    for (final result in tempSnapshots) {
-      try {
-        final snap = result as QuerySnapshot<Map<String, dynamic>>;
-        for (final doc in snap.docs) {
-          if (existingIds.contains(doc.id)) continue;
-          final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
-          if (model != null) {
-            feedbackStorage.add(model);
-            existingIds.add(doc.id);
-          }
-        }
       } catch (_) {}
+    } catch (_) {
+      // Supplemental queries failed — main feedbacks already loaded in Step 2
+      debugPrint(
+        '⚠️ Step 3 supplemental queries failed, continuing with main data',
+      );
     }
-
-    // Process [3]: instructor course evaluations
-    try {
-      final evalSnap = results.last as QuerySnapshot<Map<String, dynamic>>;
-      for (final doc in evalSnap.docs) {
-        if (existingIds.contains(doc.id)) continue;
-        final data = doc.data();
-        final isSuitable = data['isSuitable'] as bool? ?? false;
-        final folderName = isSuitable
-            ? 'מתאימים לקורס מדריכים'
-            : 'לא מתאימים לקורס מדריכים';
-        feedbackStorage.add(
-          FeedbackModel(
-            id: doc.id,
-            role: data['role'] as String? ?? '',
-            name: data['candidateName'] as String? ?? '',
-            exercise: 'מיונים לקורס מדריכים',
-            scores: (data['scores'] as Map?)?.cast<String, int>() ?? {},
-            notes: (data['notes'] as Map?)?.cast<String, String>() ?? {},
-            criteriaList: (data['criteriaList'] as List?)?.cast<String>() ?? [],
-            createdAt:
-                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            instructorName: data['instructorName'] as String? ?? '',
-            instructorRole: data['instructorRole'] as String? ?? '',
-            commandText: data['commandText'] as String? ?? '',
-            commandStatus: data['commandStatus'] as String? ?? 'פתוח',
-            folder: folderName,
-            scenario: data['scenario'] as String? ?? '',
-            settlement: data['settlement'] as String? ?? '',
-            attendeesCount: 0,
-          ),
-        );
-        existingIds.add(doc.id);
-      }
-    } catch (_) {}
   } else {
     // Admin: also load instructor course evaluations (all of them)
     try {
