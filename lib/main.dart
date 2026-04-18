@@ -505,13 +505,11 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
     }
   }
 
-  // --- Step 2: Load own feedbacks (must complete first for dedup) ---
+  // --- Step 2: Load all feedbacks (admins and instructors see all) ---
   try {
-    Query q = FirebaseFirestore.instance.collection('feedbacks');
-    if (!adminFlag) {
-      q = q.where('instructorId', isEqualTo: uid);
-    }
-    q = q.orderBy('createdAt', descending: true);
+    Query q = FirebaseFirestore.instance
+        .collection('feedbacks')
+        .orderBy('createdAt', descending: true);
 
     final snap = await q.get().timeout(const Duration(seconds: 8));
     for (final doc
@@ -11199,19 +11197,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   DateTime? dateTo;
 
   List<FeedbackModel> getFiltered() {
-    final isAdmin = currentUser?.role == 'Admin';
-    final currentUid = currentUser?.uid ?? '';
     return feedbackStorage.where((f) {
-      // instructor permission: non-admins (instructors) see feedback they created OR where they're listed as additional instructor
-      if (!isAdmin) {
-        if (currentUser == null) return false;
-        final isCreator = f.instructorName == (currentUser?.name ?? '');
-        final isAdditionalInstructor = f.instructors.contains(currentUid);
-        if (!isCreator && !isAdditionalInstructor) {
-          return false;
-        }
-      }
-
       if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
         return false;
       }
@@ -11425,20 +11411,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
   bool _isFiltersExpanded = true; // Collapsible filters state
 
   List<FeedbackModel> getFiltered() {
-    final isAdmin = currentUser?.role == 'Admin';
     return feedbackStorage.where((f) {
-      // instructor permission: non-admins (instructors) see feedback they created OR where they're listed as additional instructor
-      if (!isAdmin) {
-        if (currentUser == null) return false;
-        final isCreator = f.instructorName == (currentUser?.name ?? '');
-        final isAdditionalInstructor = f.instructors.contains(
-          currentUser?.name ?? '',
-        );
-        if (!isCreator && !isAdditionalInstructor) {
-          return false;
-        }
-      }
-
       if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
         return false;
       }
@@ -12412,8 +12385,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   }
 
   List<FeedbackModel> getFiltered() {
-    final isAdmin = currentUser?.role == 'Admin';
-    final currentUid = currentUser?.uid ?? '';
     return feedbackStorage.where((f) {
       // Enforce range scope: only allow מטווחי ירי and מטווחים 474
       const allowedFolders = ['מטווחי ירי', 'מטווחים 474'];
@@ -12444,19 +12415,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
           return false;
         }
         if (selectedRangeType == 'טווח רחוק' && !isLongRange) {
-          return false;
-        }
-      }
-
-      // instructor permission: non-admins (instructors) see feedback they created OR where they're listed as additional instructor
-      if (!isAdmin) {
-        if (currentUser == null) return false;
-        final isCreator = f.instructorName == (currentUser?.name ?? '');
-        // ✅ HYBRID CHECK: instructors array by UID OR name (backward compatible)
-        final isAdditionalInstructor =
-            f.instructors.contains(currentUid) ||
-            f.instructors.contains(currentUser?.name ?? '');
-        if (!isCreator && !isAdditionalInstructor) {
           return false;
         }
       }
@@ -15230,8 +15188,6 @@ class _SurpriseDrillsStatisticsPageState
   }
 
   List<FeedbackModel> getFiltered() {
-    final isAdmin = currentUser?.role == 'Admin';
-    final currentUid = currentUser?.uid ?? '';
     return feedbackStorage.where((f) {
       // Only surprise drills feedbacks (both 474 and general)
       if (f.folder != 'משוב תרגילי הפתעה' &&
@@ -15242,19 +15198,6 @@ class _SurpriseDrillsStatisticsPageState
 
       // Exclude temporary drafts
       if (f.isTemporary == true) return false;
-
-      // Instructor permission: see feedback they created OR where they're listed as additional instructor
-      if (!isAdmin) {
-        if (currentUser == null) return false;
-        final isCreator = f.instructorName == (currentUser?.name ?? '');
-        // ✅ HYBRID CHECK: instructors array by UID OR name (backward compatible)
-        final isAdditionalInstructor =
-            f.instructors.contains(currentUid) ||
-            f.instructors.contains(currentUser?.name ?? '');
-        if (!isCreator && !isAdditionalInstructor) {
-          return false;
-        }
-      }
 
       if (selectedInstructor != 'כל המדריכים' &&
           f.instructorName != selectedInstructor) {
