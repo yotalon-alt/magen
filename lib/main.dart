@@ -4231,27 +4231,31 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         'linkedFeedbackIds': _selectedFeedbackIds.toList(),
       };
 
-      final ref = await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .add(doc);
-
-      // ✨ Delete draft if exists
+      // ✅ FIX: If a draft exists, update it in-place (isTemporary: false on same doc)
+      // instead of creating a new doc + deleting old one (delete requires special permission).
+      final DocumentReference ref;
       if (_currentDraftId != null && _currentDraftId!.isNotEmpty) {
-        try {
-          await FirebaseFirestore.instance
-              .collection('feedbacks')
-              .doc(_currentDraftId)
-              .delete();
-          debugPrint('✅ Draft deleted: $_currentDraftId');
-        } catch (e) {
-          debugPrint('⚠️ Failed to delete draft: $e');
-        }
+        ref = FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(_currentDraftId);
+        await ref.set(doc);
+        debugPrint('✅ Draft converted to final in-place: $_currentDraftId');
+      } else {
+        ref = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .add(doc);
+        debugPrint('✅ New final feedback created: ${ref.id}');
       }
 
       // Update local cache
       final model = FeedbackModel.fromMap(doc, id: ref.id);
       if (model != null) {
-        feedbackStorage.insert(0, model);
+        final index = feedbackStorage.indexWhere((f) => f.id == ref.id);
+        if (index != -1) {
+          feedbackStorage[index] = model;
+        } else {
+          feedbackStorage.insert(0, model);
+        }
       }
 
       if (!mounted) return;
