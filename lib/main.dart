@@ -13524,6 +13524,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
       // Track trainees per type for average calculation
       final Map<String, Set<String>> traineesPerType = {};
 
+      // ── Pass 1: process local data (no Firestore reads) ──────────────────
       for (final f in brigadeFeeds) {
         // Count by type
         String typeKey = f.folder;
@@ -13580,136 +13581,147 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                   as List<FeedbackModel>)
               .add(f);
         }
+      }
 
-        // ✅ SINGLE Firestore read per feedback - load all data at once
-        if (f.id != null && f.id!.isNotEmpty) {
-          try {
-            final doc = await FirebaseFirestore.instance
-                .collection('feedbacks')
-                .doc(f.id)
-                .get()
-                .timeout(const Duration(seconds: 8));
+      // ── Pass 2: fetch all Firestore documents IN PARALLEL ─────────────────
+      final docFutures = brigadeFeeds.map((f) async {
+        if (f.id == null || f.id!.isEmpty) return null;
+        try {
+          return await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(f.id)
+              .get()
+              .timeout(const Duration(seconds: 15));
+        } catch (e) {
+          debugPrint('Error loading feedback data for ${f.id}: $e');
+          return null;
+        }
+      }).toList();
 
-            if (doc.exists) {
-              final data = doc.data()!;
+      final docs = await Future.wait(docFutures);
 
-              // 1. Add additional instructors (for all feedback types)
-              final additionalInstructors =
-                  (data['instructors'] as List?)?.cast<String>() ?? [];
-              for (final additionalInstructor in additionalInstructors) {
-                if (additionalInstructor.isNotEmpty &&
-                    additionalInstructor != instructorName) {
-                  instructorData.putIfAbsent(additionalInstructor, () => {});
-                  instructorData[additionalInstructor]![typeKey] =
-                      (instructorData[additionalInstructor]![typeKey] ?? 0) + 1;
-                }
-              }
+      // ── Pass 3: process each document's detailed data ─────────────────────
+      for (int i = 0; i < brigadeFeeds.length; i++) {
+        final f = brigadeFeeds[i];
+        final docSnap = docs[i];
+        if (docSnap == null || !docSnap.exists) continue;
 
-              // 2. Process based on feedback type
-              final isRanges474 =
-                  f.folder == 'מטווחים 474' ||
-                  f.folder == '474 Ranges' ||
-                  f.folderKey == 'ranges_474';
-              final isTrainingSummary =
-                  f.folder == 'משוב סיכום אימון 474' ||
-                  f.module == 'training_summary';
-              final isSurpriseDrill =
-                  f.folder == 'משוב תרגילי הפתעה' ||
-                  f.module == 'surprise_drill';
+        final data = docSnap.data()!;
+        final instructorName = f.instructorName;
+        final isDefensePlatoons = f.folder == 'מחלקות ההגנה – חטיבה 474';
 
-              // 2a. מטווחים 474 - load trainees from trainees array
-              if (isRanges474) {
-                final stations =
-                    (data['stations'] as List?)?.cast<Map<String, dynamic>>() ??
-                    [];
-                final trainees =
-                    (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
-                    [];
+        // Re-compute typeKey (same logic as Pass 1)
+        String typeKey = f.folder;
+        if (f.folderKey == 'ranges_474' || f.folder == '474 Ranges') {
+          typeKey = 'מטווחים 474';
+        }
+        if (f.module == 'training_summary' ||
+            f.folder == 'משוב סיכום אימון 474') {
+          typeKey = 'משוב סיכום אימון 474';
+        }
 
-                // Add trainee names
-                for (final t in trainees) {
-                  final name = t['name'] as String? ?? '';
-                  if (name.isNotEmpty) {
-                    uniqueTraineesSet.add(name);
-                    traineesPerType[typeKey]!.add(name);
-                    if (f.settlement.isNotEmpty && !isDefensePlatoons) {
-                      (settlementData[f.settlement]![typeKey]!['trainees']
-                              as Set<String>)
-                          .add(name);
-                    }
-                  }
-                }
+        // 1. Add additional instructors (for all feedback types)
+        final additionalInstructors =
+            (data['instructors'] as List?)?.cast<String>() ?? [];
+        for (final additionalInstructor in additionalInstructors) {
+          if (additionalInstructor.isNotEmpty &&
+              additionalInstructor != instructorName) {
+            instructorData.putIfAbsent(additionalInstructor, () => {});
+            instructorData[additionalInstructor]![typeKey] =
+                (instructorData[additionalInstructor]![typeKey] ?? 0) + 1;
+          }
+        }
 
-                // Detect long range
-                final feedbackType = (data['feedbackType'] as String?) ?? '';
-                final rangeSubType = (data['rangeSubType'] as String?) ?? '';
-                final isLongRange =
-                    feedbackType == 'range_long' ||
-                    feedbackType == 'דווח רחוק' ||
-                    rangeSubType == 'טווח רחוק';
+        // 2. Process based on feedback type
+        final isRanges474 =
+            f.folder == 'מטווחים 474' ||
+            f.folder == '474 Ranges' ||
+            f.folderKey == 'ranges_474';
+        final isTrainingSummary =
+            f.folder == 'משוב סיכום אימון 474' ||
+            f.module == 'training_summary';
+        final isSurpriseDrill =
+            f.folder == 'משוב תרגילי הפתעה' || f.module == 'surprise_drill';
 
-                // Sum bullets fired
-                for (final station in stations) {
-                  final bullets =
-                      (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                  totalBulletsFired += bullets * trainees.length;
+        // 2a. מטווחים 474 - load trainees from trainees array
+        if (isRanges474) {
+          final stations =
+              (data['stations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+          final trainees =
+              (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
-                  if (isLongRange) {
-                    final maxPoints =
-                        (station['maxPoints'] as num?)?.toInt() ?? 0;
-                    totalMaxPoints += maxPoints * trainees.length;
-                  }
-                }
-
-                // Sum points scored (for long range)
-                if (isLongRange) {
-                  for (final trainee in trainees) {
-                    totalPointsScored +=
-                        (trainee['totalHits'] as num?)?.toInt() ?? 0;
-                  }
-                }
-              }
-
-              // 2b. סיכום אימון - load attendees
-              if (isTrainingSummary) {
-                final attendees =
-                    (data['attendees'] as List?)?.cast<String>() ?? [];
-
-                for (final name in attendees) {
-                  if (name.isNotEmpty) {
-                    uniqueTraineesSet.add(name);
-                    traineesPerType[typeKey]!.add(name);
-                    if (f.settlement.isNotEmpty && !isDefensePlatoons) {
-                      (settlementData[f.settlement]![typeKey]!['trainees']
-                              as Set<String>)
-                          .add(name);
-                    }
-                  }
-                }
-              }
-
-              // 2c. תרגילי הפתעה - load trainees
-              if (isSurpriseDrill) {
-                final trainees =
-                    (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ??
-                    [];
-
-                for (final t in trainees) {
-                  final name = t['name'] as String? ?? '';
-                  if (name.isNotEmpty) {
-                    uniqueTraineesSet.add(name);
-                    traineesPerType[typeKey]!.add(name);
-                    if (f.settlement.isNotEmpty && !isDefensePlatoons) {
-                      (settlementData[f.settlement]![typeKey]!['trainees']
-                              as Set<String>)
-                          .add(name);
-                    }
-                  }
-                }
+          for (final t in trainees) {
+            final name = t['name'] as String? ?? '';
+            if (name.isNotEmpty) {
+              uniqueTraineesSet.add(name);
+              traineesPerType[typeKey]!.add(name);
+              if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                (settlementData[f.settlement]![typeKey]!['trainees']
+                        as Set<String>)
+                    .add(name);
               }
             }
-          } catch (e) {
-            debugPrint('Error loading feedback data for ${f.id}: $e');
+          }
+
+          final feedbackType = (data['feedbackType'] as String?) ?? '';
+          final rangeSubType = (data['rangeSubType'] as String?) ?? '';
+          final isLongRange =
+              feedbackType == 'range_long' ||
+              feedbackType == 'דווח רחוק' ||
+              rangeSubType == 'טווח רחוק';
+
+          for (final station in stations) {
+            final bullets = (station['bulletsCount'] as num?)?.toInt() ?? 0;
+            totalBulletsFired += bullets * trainees.length;
+
+            if (isLongRange) {
+              final maxPoints = (station['maxPoints'] as num?)?.toInt() ?? 0;
+              totalMaxPoints += maxPoints * trainees.length;
+            }
+          }
+
+          if (isLongRange) {
+            for (final trainee in trainees) {
+              totalPointsScored +=
+                  (trainee['totalHits'] as num?)?.toInt() ?? 0;
+            }
+          }
+        }
+
+        // 2b. סיכום אימון - load attendees
+        if (isTrainingSummary) {
+          final attendees =
+              (data['attendees'] as List?)?.cast<String>() ?? [];
+
+          for (final name in attendees) {
+            if (name.isNotEmpty) {
+              uniqueTraineesSet.add(name);
+              traineesPerType[typeKey]!.add(name);
+              if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                (settlementData[f.settlement]![typeKey]!['trainees']
+                        as Set<String>)
+                    .add(name);
+              }
+            }
+          }
+        }
+
+        // 2c. תרגילי הפתעה - load trainees
+        if (isSurpriseDrill) {
+          final trainees =
+              (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+          for (final t in trainees) {
+            final name = t['name'] as String? ?? '';
+            if (name.isNotEmpty) {
+              uniqueTraineesSet.add(name);
+              traineesPerType[typeKey]!.add(name);
+              if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+                (settlementData[f.settlement]![typeKey]!['trainees']
+                        as Set<String>)
+                    .add(name);
+              }
+            }
           }
         }
       }
