@@ -3711,6 +3711,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   /// ✨ Save current state as draft (isTemporary: true)
   Future<void> _saveDraft() async {
+    if (_isSaving) return; // Don't overwrite final save
     // Skip if insufficient data
     if (selectedSettlement.isEmpty || trainingType.isEmpty) {
       debugPrint('⏭️ Skipping autosave - insufficient data');
@@ -4072,6 +4073,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   Future<void> _save() async {
     if (_isSaving) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
 
     setState(() => _isSaving = true);
 
