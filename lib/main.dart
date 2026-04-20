@@ -4244,9 +4244,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         await ref.set(doc);
         debugPrint('✅ Draft converted to final in-place: $_currentDraftId');
       } else {
-        ref = await FirebaseFirestore.instance
-            .collection('feedbacks')
-            .add(doc);
+        ref = await FirebaseFirestore.instance.collection('feedbacks').add(doc);
         debugPrint('✅ New final feedback created: ${ref.id}');
       }
 
@@ -7698,6 +7696,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
   Future<void> _editTrainees() async {
     if (feedback.id == null || feedback.id!.isEmpty) return;
 
+    final isTrainingSummary =
+        feedback.module == 'training_summary' ||
+        feedback.folder == 'משוב סיכום אימון 474';
+
     // Load current trainees from Firestore
     final doc = await FirebaseFirestore.instance
         .collection('feedbacks')
@@ -7705,13 +7707,26 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         .get();
     if (!mounted) return;
     final data = doc.data();
-    final currentTraineeNames =
-        (data?['trainees'] as List?)
-            ?.whereType<Map>()
-            .map((e) => (e['name'] ?? '').toString())
-            .where((n) => n.isNotEmpty)
-            .toList() ??
-        [];
+
+    // training_summary stores attendees as List<String> in 'attendees'
+    // other modules store as List<Map> in 'trainees'
+    final List<String> currentTraineeNames;
+    if (isTrainingSummary) {
+      currentTraineeNames =
+          (data?['attendees'] as List?)
+              ?.whereType<String>()
+              .where((n) => n.isNotEmpty)
+              .toList() ??
+          [];
+    } else {
+      currentTraineeNames =
+          (data?['trainees'] as List?)
+              ?.whereType<Map>()
+              .map((e) => (e['name'] ?? '').toString())
+              .where((n) => n.isNotEmpty)
+              .toList() ??
+          [];
+    }
 
     // Load settlement trainee list
     final settlement = feedback.settlement.isNotEmpty
@@ -7748,30 +7763,41 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
 
     if (selectedNames == null || !mounted) return;
 
-    // Build trainees list (keep existing hit data for names that remain)
-    final existingMap = {
-      for (final t
-          in (data?['trainees'] as List?)
-                  ?.whereType<Map>()
-                  .map((e) => Map<String, dynamic>.from(e))
-                  .toList() ??
-              [])
-        (t['name'] ?? '').toString(): t,
-    };
-    final newTrainees = selectedNames
-        .map((name) => existingMap[name] ?? {'name': name, 'hits': {}})
-        .toList();
-
     try {
-      await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .doc(feedback.id)
-          .update({
-            'trainees': newTrainees,
-            'attendeesCount': newTrainees.length,
-          });
+      if (isTrainingSummary) {
+        // training_summary: write back as List<String> to 'attendees'
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(feedback.id)
+            .update({
+              'attendees': selectedNames,
+              'attendeesCount': selectedNames.length,
+            });
+      } else {
+        // Other modules: keep hit data for names that remain, write as List<Map> to 'trainees'
+        final existingMap = {
+          for (final t
+              in (data?['trainees'] as List?)
+                      ?.whereType<Map>()
+                      .map((e) => Map<String, dynamic>.from(e))
+                      .toList() ??
+                  [])
+            (t['name'] ?? '').toString(): t,
+        };
+        final newTrainees = selectedNames
+            .map((name) => existingMap[name] ?? {'name': name, 'hits': {}})
+            .toList();
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(feedback.id)
+            .update({
+              'trainees': newTrainees,
+              'attendeesCount': newTrainees.length,
+            });
+      }
+
       setState(() {
-        feedback = feedback.copyWith(attendeesCount: newTrainees.length);
+        feedback = feedback.copyWith(attendeesCount: selectedNames.length);
       });
       final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
       if (index != -1) feedbackStorage[index] = feedback;
@@ -13682,16 +13708,14 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
 
           if (isLongRange) {
             for (final trainee in trainees) {
-              totalPointsScored +=
-                  (trainee['totalHits'] as num?)?.toInt() ?? 0;
+              totalPointsScored += (trainee['totalHits'] as num?)?.toInt() ?? 0;
             }
           }
         }
 
         // 2b. סיכום אימון - load attendees
         if (isTrainingSummary) {
-          final attendees =
-              (data['attendees'] as List?)?.cast<String>() ?? [];
+          final attendees = (data['attendees'] as List?)?.cast<String>() ?? [];
 
           for (final name in attendees) {
             if (name.isNotEmpty) {
