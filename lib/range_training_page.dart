@@ -5013,7 +5013,30 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveToFirestore,
+                    onPressed: _isSaving
+                        ? null
+                        : () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('אישור סיום משוב'),
+                                content: const Text(
+                                  'האם אתה בטוח שברצונך לסיים ולסגור את המשוב?\nהפעולה סוגרת את המשוב לצמיתות.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('ביטול'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('סיים וסגור'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed == true) _saveToFirestore();
+                          },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.deepOrange,

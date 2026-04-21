@@ -1689,7 +1689,30 @@ class _InstructorCourseFeedbackPageState
                   child: ElevatedButton.icon(
                     onPressed: (_isSaving || !isFormValid || _isFormLocked)
                         ? null
-                        : finalizeInstructorCourseFeedback,
+                        : () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('אישור סיום משוב'),
+                                content: const Text(
+                                  'האם אתה בטוח שברצונך לסיים ולסגור את המשוב?\nהפעולה סוגרת את המשוב לצמיתות.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('ביטול'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('סיים וסגור'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed == true) {
+                              finalizeInstructorCourseFeedback();
+                            }
+                          },
                     icon: const Icon(Icons.done_all),
                     label: const Text(
                       'סיים משוב',

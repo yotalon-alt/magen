@@ -152,19 +152,41 @@ class _ScreeningDetailsPageState extends State<ScreeningDetailsPage> {
                     ElevatedButton.icon(
                       onPressed: !_saving && allFilled
                           ? () async {
-                              setState(() => _saving = true);
                               final messenger = ScaffoldMessenger.of(context);
+                              final navigator = Navigator.of(context);
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('אישור סיום משוב'),
+                                  content: const Text(
+                                    'האם אתה בטוח שברצונך לסיים ולסגור את המשוב?\nהפעולה סוגרת את המשוב לצמיתות.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('ביטול'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('סיים וסגור'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed != true) return;
+                              setState(() => _saving = true);
                               try {
                                 await FeedbackExportService.finalizeScreeningAndCreateFeedback(
                                   screeningId: widget.screeningId,
                                 );
-                                if (!context.mounted) return;
+                                if (!mounted) return;
                                 messenger.showSnackBar(
                                   const SnackBar(
                                     content: Text('המשוב הושלם ונשמר'),
                                   ),
                                 );
-                                Navigator.pop(context);
+                                navigator.pop();
                               } catch (e) {
                                 messenger.showSnackBar(
                                   SnackBar(
@@ -188,14 +210,36 @@ class _ScreeningDetailsPageState extends State<ScreeningDetailsPage> {
                       onPressed: _saving
                           ? null
                           : () async {
-                              setState(() => _saving = true);
                               final messenger = ScaffoldMessenger.of(context);
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('אישור סיום משוב'),
+                                  content: const Text(
+                                    'האם אתה בטוח שברצונך לסיים ולסגור את המשוב?\nהפעולה סוגרת את המשוב לצמיתות.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('ביטול'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('סיים וסגור'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed != true) return;
+                              setState(() => _saving = true);
                               try {
                                 // Admin explicit completion: also finalize and create feedback
                                 await FeedbackExportService.finalizeScreeningAndCreateFeedback(
                                   screeningId: widget.screeningId,
                                 );
                               } catch (e) {
+                                if (!mounted) return;
                                 messenger.showSnackBar(
                                   SnackBar(
                                     content: Text('שגיאה: ${e.toString()}'),

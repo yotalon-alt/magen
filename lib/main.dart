@@ -4071,6 +4071,46 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     return null;
   }
 
+  bool get _hasUnsavedData {
+    final hasAnyData =
+        trainingSummaryFolder != null ||
+        selectedSettlement.isNotEmpty ||
+        trainingType.isNotEmpty ||
+        trainingContent.isNotEmpty ||
+        summary.isNotEmpty ||
+        attendeesCount > 0;
+    final draftNotYetSaved = _currentDraftId == null;
+    final timerPending = _autosaveTimer?.isActive ?? false;
+    return hasAnyData && (draftNotYetSaved || timerPending);
+  }
+
+  Future<void> _handleBackPress() async {
+    if (_hasUnsavedData) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('נתונים לא שמורים'),
+          content: const Text('יש נתונים שטרם נשמרו. אם תצא עכשיו, הם יאבדו.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('הישאר'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'צא ללא שמירה',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
   Future<void> _save() async {
     if (_isSaving) return;
     _autosaveTimer?.cancel();
@@ -4286,7 +4326,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('סיכום אימון 474'),
-          leading: const StandardBackButton(),
+          leading: StandardBackButton(onPressed: () => _handleBackPress()),
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -5233,7 +5273,30 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isSaving ? null : _save,
+                  onPressed: _isSaving
+                      ? null
+                      : () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('אישור סיום משוב'),
+                              content: const Text(
+                                'האם אתה בטוח שברצונך לסיים ולסגור את הסיכום?\nלא ניתן יהיה לערוך אותו לאחר הסגירה.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('ביטול'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('סיים וסגור'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) _save();
+                        },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
