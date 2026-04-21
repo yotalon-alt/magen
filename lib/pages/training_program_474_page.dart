@@ -280,7 +280,7 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('תוכנית אימונים - ${widget.folderDisplayName}'),
+          title: Text('שיבוץ מדריכים - ${widget.folderDisplayName}'),
           backgroundColor: Colors.green[800],
           actions: [
             IconButton(
@@ -340,29 +340,30 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                 // Filters section
                 _buildFiltersSection(settlements, trainingTypes, instructors),
 
-                // Add button
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _addEvent,
-                      icon: const Icon(Icons.add, size: 24),
-                      label: const Text(
-                        'הוספת אימון חדש',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                // Add button (Admin only)
+                if (currentUser?.role == 'Admin')
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _addEvent,
+                        icon: const Icon(Icons.add, size: 24),
+                        label: const Text(
+                          'הוספת אימון חדש',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
                 // Table
                 Expanded(

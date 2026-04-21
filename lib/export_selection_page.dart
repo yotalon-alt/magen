@@ -22,6 +22,7 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
   String? _selectedInstructor;
 
   bool _isExporting = false;
+  bool _isFiltersExpanded = false;
 
   Future<void> _pickDateFrom() async {
     final result = await showDatePicker(
@@ -29,7 +30,6 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
       initialDate: _dateFrom ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-
     );
     if (result != null) {
       setState(() => _dateFrom = result);
@@ -42,7 +42,6 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
       initialDate: _dateTo ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-
     );
     if (result != null) {
       setState(() => _dateTo = result);
@@ -439,117 +438,137 @@ class _ExportSelectionPageState extends State<ExportSelectionPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'סינון נתונים:',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                              // Header row with toggle button
+                              InkWell(
+                                onTap: () => setState(
+                                  () =>
+                                      _isFiltersExpanded = !_isFiltersExpanded,
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // תאריכים
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _pickDateFrom,
-                                      icon: const Icon(Icons.calendar_today),
-                                      label: Text(
-                                        _dateFrom == null
-                                            ? 'מתאריך'
-                                            : '${_dateFrom!.day}/${_dateFrom!.month}/${_dateFrom!.year}',
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'סינון נתונים:',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _pickDateTo,
-                                      icon: const Icon(Icons.calendar_today),
-                                      label: Text(
-                                        _dateTo == null
-                                            ? 'עד תאריך'
-                                            : '${_dateTo!.day}/${_dateTo!.month}/${_dateTo!.year}',
+                                    Icon(
+                                      _isFiltersExpanded
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_isFiltersExpanded) ...[
+                                const SizedBox(height: 16),
+
+                                // תאריכים
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _pickDateFrom,
+                                        icon: const Icon(Icons.calendar_today),
+                                        label: Text(
+                                          _dateFrom == null
+                                              ? 'מתאריך'
+                                              : '${_dateFrom!.day}/${_dateFrom!.month}/${_dateFrom!.year}',
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              // סוג מטווח
-                              DropdownButtonFormField<String>(
-                                initialValue: _selectedRangeType,
-                                hint: const Text('סוג מטווח (הכל)'),
-                                decoration: const InputDecoration(
-                                  labelText: 'סוג מטווח',
-                                  border: OutlineInputBorder(),
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: null,
-                                    child: Text('כל הסוגים'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'קצרים',
-                                    child: Text('טווח קצר'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'טווח רחוק',
-                                    child: Text('טווח רחוק'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'הפתעה',
-                                    child: Text('תרגילי הפתעה'),
-                                  ),
-                                ],
-                                onChanged: (v) =>
-                                    setState(() => _selectedRangeType = v),
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              // מדריך
-                              DropdownButtonFormField<String>(
-                                initialValue: _selectedInstructor,
-                                hint: const Text('מדריך (הכל)'),
-                                decoration: const InputDecoration(
-                                  labelText: 'מדריך',
-                                  border: OutlineInputBorder(),
-                                ),
-                                items: [
-                                  const DropdownMenuItem(
-                                    value: null,
-                                    child: Text('כל המדריכים'),
-                                  ),
-                                  ...instructors.map(
-                                    (name) => DropdownMenuItem(
-                                      value: name,
-                                      child: Text(name),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _pickDateTo,
+                                        icon: const Icon(Icons.calendar_today),
+                                        label: Text(
+                                          _dateTo == null
+                                              ? 'עד תאריך'
+                                              : '${_dateTo!.day}/${_dateTo!.month}/${_dateTo!.year}',
+                                        ),
+                                      ),
                                     ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 16),
+
+                                // סוג מטווח
+                                DropdownButtonFormField<String>(
+                                  initialValue: _selectedRangeType,
+                                  hint: const Text('סוג מטווח (הכל)'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'סוג מטווח',
+                                    border: OutlineInputBorder(),
                                   ),
-                                ],
-                                onChanged: (v) =>
-                                    setState(() => _selectedInstructor = v),
-                              ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: null,
+                                      child: Text('כל הסוגים'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'קצרים',
+                                      child: Text('טווח קצר'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'טווח רחוק',
+                                      child: Text('טווח רחוק'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'הפתעה',
+                                      child: Text('תרגילי הפתעה'),
+                                    ),
+                                  ],
+                                  onChanged: (v) =>
+                                      setState(() => _selectedRangeType = v),
+                                ),
 
-                              const SizedBox(height: 16),
+                                const SizedBox(height: 16),
 
-                              // כפתור ניקוי סינונים
-                              OutlinedButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _dateFrom = null;
-                                    _dateTo = null;
-                                    _selectedRangeType = null;
-                                    _selectedInstructor = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear),
-                                label: const Text('נקה סינונים'),
-                              ),
+                                // מדריך
+                                DropdownButtonFormField<String>(
+                                  initialValue: _selectedInstructor,
+                                  hint: const Text('מדריך (הכל)'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'מדריך',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem(
+                                      value: null,
+                                      child: Text('כל המדריכים'),
+                                    ),
+                                    ...instructors.map(
+                                      (name) => DropdownMenuItem(
+                                        value: name,
+                                        child: Text(name),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (v) =>
+                                      setState(() => _selectedInstructor = v),
+                                ),
+
+                                const SizedBox(height: 16),
+
+                                // כפתור ניקוי סינונים
+                                OutlinedButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      _dateFrom = null;
+                                      _dateTo = null;
+                                      _selectedRangeType = null;
+                                      _selectedInstructor = null;
+                                    });
+                                  },
+                                  icon: const Icon(Icons.clear),
+                                  label: const Text('נקה סינונים'),
+                                ),
+                              ],
                             ],
                           ),
                         ),

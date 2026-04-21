@@ -12,7 +12,7 @@ class TrainingProgramFolderSelectionPage extends StatelessWidget {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('תוכנית אימונים'),
+          title: const Text('שיבוץ מדריכים'),
           backgroundColor: Colors.green[800],
           leading: const StandardBackButton(),
         ),

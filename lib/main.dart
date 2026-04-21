@@ -2259,7 +2259,7 @@ class _HomePageState extends State<HomePage>
                             },
                             icon: const Icon(Icons.calendar_month, size: 28),
                             label: const Text(
-                              'תוכנית אימונים הגמ"ר 474',
+                              'שיבוץ מדריכים הגמ"ר 474',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -5367,7 +5367,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
   bool _isExporting = false;
 
   // Collapsible filters state
-  bool _isFiltersExpanded = true;
+  bool _isFiltersExpanded = false;
 
   @override
   void initState() {
@@ -11487,7 +11487,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
   String personFilter = '';
   DateTime? dateFrom;
   DateTime? dateTo;
-  bool _isFiltersExpanded = true; // Collapsible filters state
+  bool _isFiltersExpanded = false; // Collapsible filters state
 
   List<FeedbackModel> getFiltered() {
     return feedbackStorage.where((f) {
@@ -12414,7 +12414,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   String selectedRangeType = 'הכל'; // Range type filter
   DateTime? dateFrom;
   DateTime? dateTo;
-  bool _isFiltersExpanded = true; // Collapsible filters state
+  bool _isFiltersExpanded = false; // Collapsible filters state
 
   // Range-specific data
   Map<String, Map<String, dynamic>> rangeData = {};
@@ -15228,7 +15228,7 @@ class _SurpriseDrillsStatisticsPageState
   String selectedFolder = 'הכל';
   DateTime? dateFrom;
   DateTime? dateTo;
-  bool _isFiltersExpanded = true; // Collapsible filters state
+  bool _isFiltersExpanded = false; // Collapsible filters state
 
   // Surprise drills data cache
   Map<String, Map<String, dynamic>> surpriseDrillsData = {};
@@ -16423,7 +16423,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
   bool _isExporting = false;
 
   // Collapsible filters state
-  bool _isFiltersExpanded = true;
+  bool _isFiltersExpanded = false;
 
   /// Helper: Get Hebrew display label for folder (handles internal values like '474 Ranges')
   String _getDisplayLabel(String internalValue) {

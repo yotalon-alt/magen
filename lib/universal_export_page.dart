@@ -138,7 +138,6 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
       initialDate: _dateFrom ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-
     );
     if (result != null) {
       setState(() => _dateFrom = result);
@@ -152,7 +151,6 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
       initialDate: _dateTo ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-
     );
     if (result != null) {
       setState(() => _dateTo = result);
@@ -448,7 +446,7 @@ class _UniversalExportPageState extends State<UniversalExportPage> {
                       'סינון משובים',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    initiallyExpanded: true,
+                    initiallyExpanded: false,
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(16.0),

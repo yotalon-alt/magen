@@ -33,6 +33,7 @@ class _InstructorCourseSelectionFeedbacksPageState
   String _filterNumberTo = '';
   DateTime? _filterDateFrom;
   DateTime? _filterDateTo;
+  bool _isFiltersExpanded = false;
 
   @override
   void initState() {
@@ -975,207 +976,268 @@ class _InstructorCourseSelectionFeedbacksPageState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Filter row
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    alignment: WrapAlignment.start,
-                    children: [
-                      // Command filter (פיקוד) - Dropdown
-                      SizedBox(
-                        width: 160,
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _filterCommand,
-                          decoration: const InputDecoration(
-                            labelText: 'פיקוד',
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            prefixIcon: Icon(Icons.military_tech, size: 20),
-                          ),
-                          items: ['הכל', 'צפון', 'מרכז', 'דרום']
-                              .map(
-                                (cmd) => DropdownMenuItem(
-                                  value: cmd,
-                                  child: Text(cmd),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => _filterCommand = v ?? 'הכל'),
-                        ),
-                      ),
-                      // Name filter (שם)
-                      SizedBox(
-                        width: 160,
-                        child: TextField(
-                          controller: _filterNameController,
-                          decoration: InputDecoration(
-                            labelText: 'שם',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            prefixIcon: const Icon(Icons.person, size: 20),
-                            suffixIcon: _filterName.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      _filterNameController.clear();
-                                      setState(() => _filterName = '');
-                                    },
-                                  )
-                                : null,
-                          ),
-                          onChanged: (v) => setState(() => _filterName = v),
-                        ),
-                      ),
-                      // Number FROM filter (ממס׳ חניך)
-                      SizedBox(
-                        width: 110,
-                        child: TextField(
-                          controller: _filterNumberFromController,
-                          decoration: InputDecoration(
-                            labelText: 'ממספר',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.arrow_upward,
-                              size: 20,
-                            ),
-                            suffixIcon: _filterNumberFrom.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      _filterNumberFromController.clear();
-                                      setState(() => _filterNumberFrom = '');
-                                    },
-                                  )
-                                : null,
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (v) =>
-                              setState(() => _filterNumberFrom = v),
-                        ),
-                      ),
-                      // Number TO filter (עד מס׳ חניך)
-                      SizedBox(
-                        width: 110,
-                        child: TextField(
-                          controller: _filterNumberToController,
-                          decoration: InputDecoration(
-                            labelText: 'עד מספר',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.arrow_downward,
-                              size: 20,
-                            ),
-                            suffixIcon: _filterNumberTo.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      _filterNumberToController.clear();
-                                      setState(() => _filterNumberTo = '');
-                                    },
-                                  )
-                                : null,
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (v) => setState(() => _filterNumberTo = v),
-                        ),
-                      ),
-                      // Date from filter
-                      SizedBox(
-                        width: 140,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _filterDateFrom ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now(),
-                            );
-                            if (picked != null) {
-                              setState(() => _filterDateFrom = picked);
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today, size: 16),
-                          label: Text(
-                            _filterDateFrom == null
-                                ? 'מתאריך'
-                                : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Date to filter
-                      SizedBox(
-                        width: 140,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _filterDateTo ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now(),
-                            );
-                            if (picked != null) {
-                              setState(() => _filterDateTo = picked);
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today, size: 16),
-                          label: Text(
-                            _filterDateTo == null
-                                ? 'עד תאריך'
-                                : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Clear all filters button
-                      if (_hasActiveFilters)
-                        TextButton.icon(
-                          onPressed: _clearFilters,
-                          icon: const Icon(Icons.clear_all, size: 18),
-                          label: const Text('נקה הכל'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.orangeAccent,
-                          ),
-                        ),
-                    ],
-                  ),
-                  // Show filter status
-                  if (_hasActiveFilters) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'מציג ${_filteredFeedbacks.length} מתוך ${_feedbacks.length} משובים',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white70,
-                      ),
+                  // Header row with toggle button
+                  InkWell(
+                    onTap: () => setState(
+                      () => _isFiltersExpanded = !_isFiltersExpanded,
                     ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.filter_list,
+                              color: Colors.white70,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'סינון',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            if (_hasActiveFilters) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orangeAccent,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'פעיל',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        Icon(
+                          _isFiltersExpanded
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                          color: Colors.white70,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Collapsible filter content
+                  if (_isFiltersExpanded) ...[
+                    const SizedBox(height: 12),
+                    // Filter row
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      alignment: WrapAlignment.start,
+                      children: [
+                        // Command filter (פיקוד) - Dropdown
+                        SizedBox(
+                          width: 160,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _filterCommand,
+                            decoration: const InputDecoration(
+                              labelText: 'פיקוד',
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              prefixIcon: Icon(Icons.military_tech, size: 20),
+                            ),
+                            items: ['הכל', 'צפון', 'מרכז', 'דרום']
+                                .map(
+                                  (cmd) => DropdownMenuItem(
+                                    value: cmd,
+                                    child: Text(cmd),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setState(() => _filterCommand = v ?? 'הכל'),
+                          ),
+                        ),
+                        // Name filter (שם)
+                        SizedBox(
+                          width: 160,
+                          child: TextField(
+                            controller: _filterNameController,
+                            decoration: InputDecoration(
+                              labelText: 'שם',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              prefixIcon: const Icon(Icons.person, size: 20),
+                              suffixIcon: _filterName.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        _filterNameController.clear();
+                                        setState(() => _filterName = '');
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            onChanged: (v) => setState(() => _filterName = v),
+                          ),
+                        ),
+                        // Number FROM filter (ממס׳ חניך)
+                        SizedBox(
+                          width: 110,
+                          child: TextField(
+                            controller: _filterNumberFromController,
+                            decoration: InputDecoration(
+                              labelText: 'ממספר',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.arrow_upward,
+                                size: 20,
+                              ),
+                              suffixIcon: _filterNumberFrom.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        _filterNumberFromController.clear();
+                                        setState(() => _filterNumberFrom = '');
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) =>
+                                setState(() => _filterNumberFrom = v),
+                          ),
+                        ),
+                        // Number TO filter (עד מס׳ חניך)
+                        SizedBox(
+                          width: 110,
+                          child: TextField(
+                            controller: _filterNumberToController,
+                            decoration: InputDecoration(
+                              labelText: 'עד מספר',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.arrow_downward,
+                                size: 20,
+                              ),
+                              suffixIcon: _filterNumberTo.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        _filterNumberToController.clear();
+                                        setState(() => _filterNumberTo = '');
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) =>
+                                setState(() => _filterNumberTo = v),
+                          ),
+                        ),
+                        // Date from filter
+                        SizedBox(
+                          width: 140,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _filterDateFrom ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked != null) {
+                                setState(() => _filterDateFrom = picked);
+                              }
+                            },
+                            icon: const Icon(Icons.calendar_today, size: 16),
+                            label: Text(
+                              _filterDateFrom == null
+                                  ? 'מתאריך'
+                                  : '${_filterDateFrom!.day}/${_filterDateFrom!.month}/${_filterDateFrom!.year}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Date to filter
+                        SizedBox(
+                          width: 140,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _filterDateTo ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked != null) {
+                                setState(() => _filterDateTo = picked);
+                              }
+                            },
+                            icon: const Icon(Icons.calendar_today, size: 16),
+                            label: Text(
+                              _filterDateTo == null
+                                  ? 'עד תאריך'
+                                  : '${_filterDateTo!.day}/${_filterDateTo!.month}/${_filterDateTo!.year}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Clear all filters button
+                        if (_hasActiveFilters)
+                          TextButton.icon(
+                            onPressed: _clearFilters,
+                            icon: const Icon(Icons.clear_all, size: 18),
+                            label: const Text('נקה הכל'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.orangeAccent,
+                            ),
+                          ),
+                      ],
+                    ),
+                    // Show filter status
+                    if (_hasActiveFilters) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'מציג ${_filteredFeedbacks.length} מתוך ${_feedbacks.length} משובים',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
