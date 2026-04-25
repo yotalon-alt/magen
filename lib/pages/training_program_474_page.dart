@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:excel/excel.dart';
@@ -33,10 +34,36 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
   DateTime? _filterEndDate;
   bool _isFiltersExpanded = false;
   bool _isRefreshing = false;
-  List<TrainingEvent> _filteredEvents = [];
+  bool _isLoading = true;
+
+  // נתוני stream מאוחסנים במשתני state
+  List<TrainingEvent> _allEvents = [];
+  List<String> _settlements = [];
+  List<String> _trainingTypes = [];
+  List<String> _instructors = [];
+  StreamSubscription<List<TrainingEvent>>? _streamSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _streamSub = TrainingProgram474Service.getTrainingEventsStream(
+      widget.collectionName,
+    ).listen((events) {
+      if (mounted) {
+        setState(() {
+          _allEvents = events;
+          _settlements = TrainingProgram474Service.getUniqueSettlements(events);
+          _trainingTypes = TrainingProgram474Service.getUniqueTrainingTypes(events);
+          _instructors = TrainingProgram474Service.getUniqueInstructors(events);
+          _isLoading = false;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _streamSub?.cancel();
     _filterLocationController.dispose();
     super.dispose();
   }
@@ -531,9 +558,20 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           actions: [
             IconButton(
               icon: const Icon(Icons.download),
-              onPressed: _filteredEvents.isEmpty
+              onPressed: _allEvents.isEmpty
                   ? null
-                  : () => _showExportDialog(_filteredEvents),
+                  : () {
+                      final filtered = TrainingProgram474Service.filterEvents(
+                        _allEvents,
+                        settlementFilter: _filterSettlement,
+                        trainingTypeFilter: _filterTrainingType,
+                        instructorFilter: _filterInstructor,
+                        locationFilter: _filterLocationController.text.trim(),
+                        startDate: _filterStartDate,
+                        endDate: _filterEndDate,
+                      );
+                      _showExportDialog(filtered);
+                    },
               tooltip: 'ייצוא ל-Excel',
             ),
             IconButton(
@@ -552,108 +590,79 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
             ),
           ],
         ),
-        body: StreamBuilder<List<TrainingEvent>>(
-          stream: TrainingProgram474Service.getTrainingEventsStream(
-            widget.collectionName,
-          ),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (snapshot.hasError) {
-              return Center(child: Text('שגיאה: ${snapshot.error}'));
-            }
-
-            final allEvents = snapshot.data ?? [];
-
-            // Apply filters
-            final filteredEvents = TrainingProgram474Service.filterEvents(
-              allEvents,
-              settlementFilter: _filterSettlement,
-              trainingTypeFilter: _filterTrainingType,
-              instructorFilter: _filterInstructor,
-              locationFilter: _filterLocationController.text.trim(),
-              startDate: _filterStartDate,
-              endDate: _filterEndDate,
-            );
-
-            // עדכון האירועים המסוננים לשימוש כפתור הייצוא ב-AppBar (ללא setState)
-            _filteredEvents = filteredEvents;
-
-            // Get unique values for dropdowns
-            final settlements = TrainingProgram474Service.getUniqueSettlements(
-              allEvents,
-            );
-            final trainingTypes =
-                TrainingProgram474Service.getUniqueTrainingTypes(allEvents);
-            final instructors = TrainingProgram474Service.getUniqueInstructors(
-              allEvents,
-            );
-
-            return Column(
-              children: [
-                // Filters section
-                _buildFiltersSection(settlements, trainingTypes, instructors),
-
-                // Add button (Admin only)
-                if (currentUser?.role == 'Admin')
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _addEvent,
-                        icon: const Icon(Icons.add, size: 24),
-                        label: const Text(
-                          'הוספת אימון חדש',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // Table
-                Expanded(
-                  child: filteredEvents.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.inbox,
-                                size: 64,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                allEvents.isEmpty
-                                    ? 'אין אירועי אימון עדיין'
-                                    : 'לא נמצאו אירועים מתאימים לסינון',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : _buildEventsTable(filteredEvents),
-                ),
-              ],
-            );
-          },
-        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildBody(),
       ),
     );
+  }
+
+  Widget _buildBody() {
+    final filteredEvents = TrainingProgram474Service.filterEvents(
+      _allEvents,
+      settlementFilter: _filterSettlement,
+      trainingTypeFilter: _filterTrainingType,
+      instructorFilter: _filterInstructor,
+      locationFilter: _filterLocationController.text.trim(),
+      startDate: _filterStartDate,
+      endDate: _filterEndDate,
+    );
+
+    return Column(
+        children: [
+          // Filters section
+          _buildFiltersSection(_settlements, _trainingTypes, _instructors),
+
+          // Add button (Admin only)
+          if (currentUser?.role == 'Admin')
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _addEvent,
+                  icon: const Icon(Icons.add, size: 24),
+                  label: const Text(
+                    'הוספת אימון חדש',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+            ),
+
+          // Table
+          Expanded(
+            child: filteredEvents.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text(
+                          _allEvents.isEmpty
+                              ? 'אין אירועי אימון עדיין'
+                              : 'לא נמצאו אירועים מתאימים לסינון',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _buildEventsTable(filteredEvents),
+          ),
+        ],
+      );
   }
 
   Widget _buildFiltersSection(
