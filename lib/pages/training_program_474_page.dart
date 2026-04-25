@@ -46,19 +46,26 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
   @override
   void initState() {
     super.initState();
-    _streamSub = TrainingProgram474Service.getTrainingEventsStream(
-      widget.collectionName,
-    ).listen((events) {
-      if (mounted) {
-        setState(() {
-          _allEvents = events;
-          _settlements = TrainingProgram474Service.getUniqueSettlements(events);
-          _trainingTypes = TrainingProgram474Service.getUniqueTrainingTypes(events);
-          _instructors = TrainingProgram474Service.getUniqueInstructors(events);
-          _isLoading = false;
+    _streamSub =
+        TrainingProgram474Service.getTrainingEventsStream(
+          widget.collectionName,
+        ).listen((events) {
+          if (mounted) {
+            setState(() {
+              _allEvents = events;
+              _settlements = TrainingProgram474Service.getUniqueSettlements(
+                events,
+              );
+              _trainingTypes = TrainingProgram474Service.getUniqueTrainingTypes(
+                events,
+              );
+              _instructors = TrainingProgram474Service.getUniqueInstructors(
+                events,
+              );
+              _isLoading = false;
+            });
+          }
         });
-      }
-    });
   }
 
   @override
@@ -609,60 +616,54 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
     );
 
     return Column(
-        children: [
-          // Filters section
-          _buildFiltersSection(_settlements, _trainingTypes, _instructors),
+      children: [
+        // Filters section
+        _buildFiltersSection(_settlements, _trainingTypes, _instructors),
 
-          // Add button (Admin only)
-          if (currentUser?.role == 'Admin')
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _addEvent,
-                  icon: const Icon(Icons.add, size: 24),
-                  label: const Text(
-                    'הוספת אימון חדש',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
+        // Add button (Admin only)
+        if (currentUser?.role == 'Admin')
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _addEvent,
+                icon: const Icon(Icons.add, size: 24),
+                label: const Text(
+                  'הוספת אימון חדש',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
             ),
-
-          // Table
-          Expanded(
-            child: filteredEvents.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          _allEvents.isEmpty
-                              ? 'אין אירועי אימון עדיין'
-                              : 'לא נמצאו אירועים מתאימים לסינון',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : _buildEventsTable(filteredEvents),
           ),
-        ],
-      );
+
+        // Table
+        Expanded(
+          child: filteredEvents.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        _allEvents.isEmpty
+                            ? 'אין אירועי אימון עדיין'
+                            : 'לא נמצאו אירועים מתאימים לסינון',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : _buildEventsTable(filteredEvents),
+        ),
+      ],
+    );
   }
 
   Widget _buildFiltersSection(
