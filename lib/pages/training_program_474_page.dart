@@ -578,12 +578,8 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
               endDate: _filterEndDate,
             );
 
-            // עדכון האירועים המסוננים לשימוש כפתור הייצוא ב-AppBar
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _filteredEvents != filteredEvents) {
-                setState(() => _filteredEvents = filteredEvents);
-              }
-            });
+            // עדכון האירועים המסוננים לשימוש כפתור הייצוא ב-AppBar (ללא setState)
+            _filteredEvents = filteredEvents;
 
             // Get unique values for dropdowns
             final settlements = TrainingProgram474Service.getUniqueSettlements(
