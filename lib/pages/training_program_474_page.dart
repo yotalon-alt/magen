@@ -33,6 +33,7 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
   DateTime? _filterEndDate;
   bool _isFiltersExpanded = false;
   bool _isRefreshing = false;
+  List<TrainingEvent> _filteredEvents = [];
 
   @override
   void dispose() {
@@ -197,6 +198,251 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
     }
   }
 
+  /// דיאלוג בחירת אפשרות ייצוא
+  Future<void> _showExportDialog(List<TrainingEvent> filteredEvents) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('בחר אפשרות ייצוא'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.download, color: Colors.blue),
+                title: Text('ייצוא הכל (${filteredEvents.length} אימונים)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportToExcel(filteredEvents);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.checklist, color: Colors.green),
+                title: const Text('בחירה מרשימה'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showSelectiveExportDialog(filteredEvents);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// דיאלוג בחירה ידנית של אימונים לייצוא
+  Future<void> _showSelectiveExportDialog(List<TrainingEvent> allEvents) async {
+    final Set<String> selected = {};
+    final TextEditingController searchCtrl = TextEditingController();
+    DateTime? fromDate;
+    DateTime? toDate;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: StatefulBuilder(
+            builder: (ctx, setDialogState) {
+              // סינון פנימי לדיאלוג
+              final filtered = allEvents.where((e) {
+                final q = searchCtrl.text.trim().toLowerCase();
+                final matchText =
+                    q.isEmpty ||
+                    e.settlement.toLowerCase().contains(q) ||
+                    e.trainingType.toLowerCase().contains(q) ||
+                    e.location.toLowerCase().contains(q) ||
+                    e.instructors.any((i) => i.toLowerCase().contains(q));
+                final matchFrom =
+                    fromDate == null || !e.date.isBefore(fromDate!);
+                final matchTo = toDate == null || !e.date.isAfter(toDate!);
+                return matchText && matchFrom && matchTo;
+              }).toList();
+
+              return AlertDialog(
+                title: const Text('בחר אימונים לייצוא'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // חיפוש חופשי
+                      TextField(
+                        controller: searchCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'חיפוש לפי ישוב / מדריך / סוג / מיקום...',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onChanged: (_) => setDialogState(() {}),
+                      ),
+                      const SizedBox(height: 8),
+                      // סינון תאריכים
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.calendar_today, size: 16),
+                              label: Text(
+                                fromDate != null
+                                    ? DateFormat('dd/MM/yy').format(fromDate!)
+                                    : 'מתאריך',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: fromDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  helpText: 'תאריך התחלה',
+                                );
+                                if (picked != null) {
+                                  setDialogState(() => fromDate = picked);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.calendar_today, size: 16),
+                              label: Text(
+                                toDate != null
+                                    ? DateFormat('dd/MM/yy').format(toDate!)
+                                    : 'עד תאריך',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: toDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  helpText: 'תאריך סיום',
+                                );
+                                if (picked != null) {
+                                  setDialogState(() => toDate = picked);
+                                }
+                              },
+                            ),
+                          ),
+                          if (fromDate != null || toDate != null)
+                            IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              tooltip: 'נקה תאריכים',
+                              onPressed: () => setDialogState(() {
+                                fromDate = null;
+                                toDate = null;
+                              }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // כפתורי בחר/נקה הכל
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () => setDialogState(() {
+                              for (final e in filtered) {
+                                if (e.id != null) selected.add(e.id!);
+                              }
+                            }),
+                            child: const Text('בחר הכל'),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                setDialogState(() => selected.clear()),
+                            child: const Text('נקה הכל'),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${selected.length} נבחרו',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 4),
+                      // רשימת אימונים
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: filtered.length,
+                          itemBuilder: (_, i) {
+                            final event = filtered[i];
+                            final id = event.id ?? '';
+                            final isChecked = selected.contains(id);
+                            return CheckboxListTile(
+                              dense: true,
+                              value: isChecked,
+                              title: Text(
+                                '${DateFormat('dd/MM/yyyy').format(event.date)} – ${event.settlement}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                event.trainingType,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              onChanged: id.isEmpty
+                                  ? null
+                                  : (v) => setDialogState(() {
+                                      if (v == true) {
+                                        selected.add(id);
+                                      } else {
+                                        selected.remove(id);
+                                      }
+                                    }),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('ביטול'),
+                  ),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.download, size: 18),
+                    label: Text('ייצוא (${selected.length})'),
+                    onPressed: selected.isEmpty
+                        ? null
+                        : () {
+                            Navigator.pop(ctx);
+                            final toExport = allEvents
+                                .where(
+                                  (e) =>
+                                      e.id != null && selected.contains(e.id),
+                                )
+                                .toList();
+                            _exportToExcel(toExport);
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+    searchCtrl.dispose();
+  }
+
   /// ייצוא לאקסל
   Future<void> _exportToExcel(List<TrainingEvent> events) async {
     try {
@@ -284,6 +530,13 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           backgroundColor: Colors.green[800],
           actions: [
             IconButton(
+              icon: const Icon(Icons.download),
+              onPressed: _filteredEvents.isEmpty
+                  ? null
+                  : () => _showExportDialog(_filteredEvents),
+              tooltip: 'ייצוא ל-Excel',
+            ),
+            IconButton(
               icon: _isRefreshing
                   ? const SizedBox(
                       width: 20,
@@ -324,6 +577,13 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
               startDate: _filterStartDate,
               endDate: _filterEndDate,
             );
+
+            // עדכון האירועים המסוננים לשימוש כפתור הייצוא ב-AppBar
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _filteredEvents != filteredEvents) {
+                setState(() => _filteredEvents = filteredEvents);
+              }
+            });
 
             // Get unique values for dropdowns
             final settlements = TrainingProgram474Service.getUniqueSettlements(
@@ -740,37 +1000,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                       foregroundColor: Colors.black87,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  StreamBuilder<List<TrainingEvent>>(
-                    stream: TrainingProgram474Service.getTrainingEventsStream(
-                      widget.collectionName,
-                    ),
-                    builder: (context, snapshot) {
-                      final allEvents = snapshot.data ?? [];
-                      final filteredEvents =
-                          TrainingProgram474Service.filterEvents(
-                            allEvents,
-                            settlementFilter: _filterSettlement,
-                            trainingTypeFilter: _filterTrainingType,
-                            instructorFilter: _filterInstructor,
-                            locationFilter: _filterLocationController.text
-                                .trim(),
-                            startDate: _filterStartDate,
-                            endDate: _filterEndDate,
-                          );
-                      return ElevatedButton.icon(
-                        onPressed: filteredEvents.isEmpty
-                            ? null
-                            : () => _exportToExcel(filteredEvents),
-                        icon: const Icon(Icons.download, size: 18),
-                        label: const Text('ייצוא ל-Excel'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                      );
-                    },
-                  ),
                 ],
               ),
             ],
@@ -886,11 +1115,71 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
               DataCell(
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 200),
-                  child: Text(
-                    event.instructors.join(', '),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
-                  ),
+                  child: event.instructors.length <= 2
+                      ? Text(event.instructors.join(', '))
+                      : GestureDetector(
+                          onTap: () {
+                            showDialog<void>(
+                              context: context,
+                              builder: (ctx) => Directionality(
+                                textDirection: TextDirection.rtl,
+                                child: AlertDialog(
+                                  title: Text(
+                                    'מדריכים (${event.instructors.length})',
+                                  ),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: event.instructors
+                                        .map(
+                                          (name) => Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 2,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.person,
+                                                  size: 16,
+                                                  color: Colors.grey,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(name),
+                                              ],
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      child: const Text('סגור'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  '${event.instructors.take(2).join(', ')} (+${event.instructors.length - 2})',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: Colors.blue,
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
               ),
               DataCell(
