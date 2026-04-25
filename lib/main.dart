@@ -58,18 +58,18 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
     'title': 'הגמר חטיבה 474',
     'isHidden': false,
     'isSpecialCategory': true,
-  }, // ✨ NEW: Parent folder for 4 sub-folders
+  }, // Parent folder for 474-specific sub-folders
   {'title': 'מיונים לקורס מדריכים', 'isHidden': false},
-  {'title': 'מטווחי ירי', 'isHidden': false},
-  {'title': 'משובים – כללי', 'isHidden': false},
   {
-    'title': 'תרגילי הפתעה כללי',
+    'title': 'כללי',
     'isHidden': false,
-  }, // ✨ NEW: General surprise drills
-  {
-    'title': 'סיכום אימון כללי',
-    'isHidden': false,
-  }, // ✨ NEW: General training summary
+    'isGeneralCategory': true,
+  }, // Parent folder for 4 general sub-folders
+  // Hidden general sub-folders - accessible ONLY through 'כללי'
+  {'title': 'מטווחי ירי', 'isHidden': true},
+  {'title': 'משובים – כללי', 'isHidden': true},
+  {'title': 'תרגילי הפתעה כללי', 'isHidden': true},
+  {'title': 'סיכום אימון כללי', 'isHidden': true},
   // Hidden folders - accessible ONLY through 'הגמר חטיבה 474'
   {
     'title': 'מטווחים 474',
@@ -6279,6 +6279,19 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               f.folder == 'משוב סיכום אימון 474'),
                     )
                     .length;
+              } else if (folder == 'כללי') {
+                // General category: count all feedbacks from 4 general sub-folders (only final)
+                count = feedbackStorage
+                    .where(
+                      (f) =>
+                          !f.isTemporary &&
+                          (f.folder == 'מטווחי ירי' ||
+                              f.folder == 'משובים – כללי' ||
+                              f.folder.isEmpty ||
+                              f.folder == 'תרגילי הפתעה כללי' ||
+                              f.folder == 'סיכום אימון כללי'),
+                    )
+                    .length;
               } else {
                 // Use internal value for filtering to match Firestore data (only final)
                 count = feedbackStorage
@@ -6292,6 +6305,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               final isInstructorCourse = folder == 'מיונים לקורס מדריכים';
               final isSpecialCategory =
                   folderConfig['isSpecialCategory'] == true;
+              final isGeneralCategory =
+                  folderConfig['isGeneralCategory'] == true;
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -6310,6 +6325,13 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           builder: (_) => const Brigade474FinalFoldersPage(),
                         ),
                       );
+                    } else if (isGeneralCategory) {
+                      // General category (כללי): show intermediate screen with 4 general sub-folders
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const GeneralFolderSelectionPage(),
+                        ),
+                      );
                     } else {
                       // Use internal value for navigation/filtering
                       setState(() => _selectedFolder = internalValue);
@@ -6322,12 +6344,16 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                         Icon(
                           isSpecialCategory
                               ? Icons.shield
+                              : isGeneralCategory
+                              ? Icons.folder_special
                               : (isInstructorCourse
                                     ? Icons.school
                                     : Icons.folder),
                           size: 32,
                           color: isSpecialCategory
                               ? Colors.deepOrange
+                              : isGeneralCategory
+                              ? Colors.teal
                               : (isInstructorCourse
                                     ? Colors.purple
                                     : Colors.orangeAccent),
@@ -16200,6 +16226,176 @@ class _StatisticsExportDialogState extends State<StatisticsExportDialog> {
 /* ================== BRIGADE 474 FINAL - INTERMEDIATE FOLDERS SCREEN ================== */
 
 /// Intermediate screen showing 4 sub-folders of "הגמר חטיבה 474"
+/// דף בחירת תת-תיקיות עבור הקטגוריה "כללי"
+class GeneralFolderSelectionPage extends StatefulWidget {
+  const GeneralFolderSelectionPage({super.key});
+
+  @override
+  State<GeneralFolderSelectionPage> createState() =>
+      _GeneralFolderSelectionPageState();
+}
+
+class _GeneralFolderSelectionPageState
+    extends State<GeneralFolderSelectionPage> {
+  bool _isRefreshing = false;
+
+  Future<void> _refreshFeedbacks() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('רשימת המשובים עודכנה')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('שגיאה בטעינת משובים')));
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subFolders = [
+      {
+        'title': 'מטווחי ירי',
+        'internalValue': 'מטווחי ירי',
+        'icon': Icons.gps_fixed,
+        'color': Colors.orange,
+      },
+      {
+        'title': 'משובים – כללי',
+        'internalValue': 'משובים – כללי',
+        'icon': Icons.feedback,
+        'color': Colors.green,
+      },
+      {
+        'title': 'תרגילי הפתעה כללי',
+        'internalValue': 'תרגילי הפתעה כללי',
+        'icon': Icons.flash_on,
+        'color': Colors.amber.shade700,
+      },
+      {
+        'title': 'סיכום אימון כללי',
+        'internalValue': 'סיכום אימון כללי',
+        'icon': Icons.summarize,
+        'color': Colors.teal,
+      },
+    ];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('כללי'),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refreshFeedbacks,
+              tooltip: 'רענן רשימה',
+            ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView.builder(
+            itemCount: subFolders.length,
+            itemBuilder: (ctx, i) {
+              final folder = subFolders[i];
+              final title = folder['title'] as String;
+              final internalValue = folder['internalValue'] as String;
+              final icon = folder['icon'] as IconData;
+              final color = folder['color'] as Color;
+
+              // Count feedbacks for this sub-folder (only final, exclude drafts)
+              final int count;
+              if (title == 'משובים – כללי') {
+                count = feedbackStorage
+                    .where(
+                      (f) =>
+                          !f.isTemporary &&
+                          (f.folder == title || f.folder.isEmpty),
+                    )
+                    .length;
+              } else {
+                count = feedbackStorage
+                    .where(
+                      (f) =>
+                          !f.isTemporary &&
+                          (f.folder == title || f.folder == internalValue),
+                    )
+                    .length;
+              }
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _FeedbacksPageWithFolder(
+                          selectedFolder: internalValue,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 32, color: color),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            title,
+                            textAlign: TextAlign.start,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$count משובים',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class Brigade474FinalFoldersPage extends StatefulWidget {
   const Brigade474FinalFoldersPage({super.key});
 
