@@ -630,13 +630,13 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           foregroundColor: Colors.white,
           actions: [
             IconButton(
-              icon: const Icon(Icons.person_add),
+              icon: const Icon(Icons.person_add, color: Colors.white),
               onPressed: _allEvents.isEmpty ? null : _addMeToAllEvents,
               tooltip: 'הוסף אותי לכל האימונים',
             ),
             if (currentUser?.role == 'Admin')
               IconButton(
-                icon: const Icon(Icons.download),
+                icon: const Icon(Icons.download, color: Colors.white),
                 onPressed: _allEvents.isEmpty
                     ? null
                     : () {
@@ -663,7 +663,7 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : const Icon(Icons.refresh),
+                  : const Icon(Icons.refresh, color: Colors.white),
               onPressed: _isRefreshing ? null : _refreshData,
               tooltip: 'רענן נתונים',
             ),
