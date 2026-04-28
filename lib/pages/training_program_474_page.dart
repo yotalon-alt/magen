@@ -627,30 +627,32 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
         appBar: AppBar(
           title: Text('שיבוץ מדריכים - ${widget.folderDisplayName}'),
           backgroundColor: Colors.green[800],
+          foregroundColor: Colors.white,
           actions: [
             IconButton(
               icon: const Icon(Icons.person_add),
               onPressed: _allEvents.isEmpty ? null : _addMeToAllEvents,
               tooltip: 'הוסף אותי לכל האימונים',
             ),
-            IconButton(
-              icon: const Icon(Icons.download),
-              onPressed: _allEvents.isEmpty
-                  ? null
-                  : () {
-                      final filtered = TrainingProgram474Service.filterEvents(
-                        _allEvents,
-                        settlementFilter: _filterSettlement,
-                        trainingTypeFilter: _filterTrainingType,
-                        instructorFilter: _filterInstructor,
-                        locationFilter: _filterLocationController.text.trim(),
-                        startDate: _filterStartDate,
-                        endDate: _filterEndDate,
-                      );
-                      _showExportDialog(filtered);
-                    },
-              tooltip: 'ייצוא ל-Excel',
-            ),
+            if (currentUser?.role == 'Admin')
+              IconButton(
+                icon: const Icon(Icons.download),
+                onPressed: _allEvents.isEmpty
+                    ? null
+                    : () {
+                        final filtered = TrainingProgram474Service.filterEvents(
+                          _allEvents,
+                          settlementFilter: _filterSettlement,
+                          trainingTypeFilter: _filterTrainingType,
+                          instructorFilter: _filterInstructor,
+                          locationFilter: _filterLocationController.text.trim(),
+                          startDate: _filterStartDate,
+                          endDate: _filterEndDate,
+                        );
+                        _showExportDialog(filtered);
+                      },
+                tooltip: 'ייצוא ל-Excel',
+              ),
             IconButton(
               icon: _isRefreshing
                   ? const SizedBox(
