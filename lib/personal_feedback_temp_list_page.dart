@@ -112,9 +112,9 @@ class _PersonalFeedbackTempListPageState
 
     if (!canCurrentUserDeleteFeedbacks) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
       return;
     }
 
@@ -350,7 +350,11 @@ class _PersonalFeedbackTempListPageState
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Icon(Icons.person_outline, size: 16, color: Colors.grey),
+                  const Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: Colors.grey,
+                  ),
                   const SizedBox(width: 6),
                   Text('מדריך: $instructorName'),
                 ],

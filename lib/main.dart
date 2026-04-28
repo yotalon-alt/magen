@@ -2599,7 +2599,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   final TextEditingController evaluatedNameController = TextEditingController();
   final TextEditingController scenarioController = TextEditingController();
   final TextEditingController customRoleController = TextEditingController();
-  final TextEditingController feedbackSummaryController = TextEditingController();
+  final TextEditingController feedbackSummaryController =
+      TextEditingController();
   final Map<String, TextEditingController> noteControllers = {};
   bool isLoadingCustomSettlements = false;
 
@@ -2852,7 +2853,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
           }
           if (savedNotes.containsKey(c)) {
             notes[c] = savedNotes[c] as String? ?? '';
-            noteControllers.putIfAbsent(c, () => TextEditingController()).text = notes[c]!;
+            noteControllers.putIfAbsent(c, () => TextEditingController()).text =
+                notes[c]!;
           }
           activeCriteria[c] = savedCriteria.contains(c);
         }
@@ -2884,8 +2886,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         resolvedInstructorName = await resolveUserHebrewName(uid);
       }
 
-      final String effectiveRole =
-          selectedRole == 'אחר' ? _customRole.trim() : (selectedRole ?? '');
+      final String effectiveRole = selectedRole == 'אחר'
+          ? _customRole.trim()
+          : (selectedRole ?? '');
 
       final Map<String, dynamic> draftData = {
         'module': 'personal_feedback',
@@ -3136,8 +3139,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         }
       }
 
-      final String effectiveRole =
-          selectedRole == 'אחר' ? _customRole.trim() : (selectedRole ?? '');
+      final String effectiveRole = selectedRole == 'אחר'
+          ? _customRole.trim()
+          : (selectedRole ?? '');
 
       final Map<String, dynamic> doc = {
         'role': effectiveRole,
@@ -3507,7 +3511,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   );
                 },
               ),
-              if (selectedRole == 'אחר') ...[  
+              if (selectedRole == 'אחר') ...[
                 const SizedBox(height: 8),
                 TextField(
                   decoration: const InputDecoration(
@@ -3652,7 +3656,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                       ),
                       const SizedBox(height: 8),
                       TextField(
-                        controller: noteControllers.putIfAbsent(c, () => TextEditingController()),
+                        controller: noteControllers.putIfAbsent(
+                          c,
+                          () => TextEditingController(),
+                        ),
                         decoration: const InputDecoration(labelText: 'הערות'),
                         maxLines: 2,
                         onChanged: (t) {
