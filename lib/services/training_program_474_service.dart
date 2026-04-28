@@ -329,4 +329,36 @@ class TrainingProgram474Service {
     instructors.sort();
     return instructors;
   }
+
+  /// הוסף מדריך לכל האירועים שהוא עדיין לא רשום בהם (batch update)
+  /// מחזיר את מספר האירועים שעודכנו, או -1 במקרה של שגיאה
+  static Future<int> addInstructorToAllEvents(
+    String collectionName,
+    String instructorName,
+    List<TrainingEvent> allEvents,
+  ) async {
+    try {
+      final eventsToUpdate = allEvents
+          .where((e) => e.id != null && !e.instructors.contains(instructorName))
+          .toList();
+
+      if (eventsToUpdate.isEmpty) return 0;
+
+      final batch = FirebaseFirestore.instance.batch();
+      final colRef = _getCollectionRef(collectionName);
+
+      for (final event in eventsToUpdate) {
+        batch.update(colRef.doc(event.id), {
+          'instructors': FieldValue.arrayUnion([instructorName]),
+        });
+      }
+
+      await batch.commit();
+      debugPrint('✅ Added $instructorName to ${eventsToUpdate.length} events');
+      return eventsToUpdate.length;
+    } catch (e) {
+      debugPrint('❌ Error adding instructor to all events: $e');
+      return -1;
+    }
+  }
 }

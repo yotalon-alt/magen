@@ -232,6 +232,71 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
     }
   }
 
+  /// הוסף את המשתמש הנוכחי לכל האימונים שאינו רשום בהם
+  Future<void> _addMeToAllEvents() async {
+    final userName = currentUser?.name;
+    if (userName == null || userName.isEmpty) return;
+
+    final eventsWithoutMe = _allEvents
+        .where((e) => !e.instructors.contains(userName))
+        .toList();
+
+    if (eventsWithoutMe.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('אתה כבר רשום בכל האימונים'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('הוסף אותי לכל האימונים'),
+          content: Text(
+            'הוסף את "$userName" לכל האימונים שאינך רשום בהם?\n\nנמצאו ${eventsWithoutMe.length} אימונים.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('אישור', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final updated = await TrainingProgram474Service.addInstructorToAllEvents(
+      widget.collectionName,
+      userName,
+      _allEvents,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          updated >= 0
+              ? 'עודכנו $updated אימונים בהצלחה'
+              : 'שגיאה בעדכון האימונים',
+        ),
+        backgroundColor: updated >= 0 ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
   /// דיאלוג בחירת אפשרות ייצוא
   Future<void> _showExportDialog(List<TrainingEvent> filteredEvents) async {
     await showDialog<void>(
@@ -563,6 +628,11 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           title: Text('שיבוץ מדריכים - ${widget.folderDisplayName}'),
           backgroundColor: Colors.green[800],
           actions: [
+            IconButton(
+              icon: const Icon(Icons.person_add),
+              onPressed: _allEvents.isEmpty ? null : _addMeToAllEvents,
+              tooltip: 'הוסף אותי לכל האימונים',
+            ),
             IconButton(
               icon: const Icon(Icons.download),
               onPressed: _allEvents.isEmpty

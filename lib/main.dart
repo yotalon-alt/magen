@@ -23,6 +23,7 @@ import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
 import 'services/trainee_autocomplete_service.dart';
 import 'pages/training_program_folder_selection_page.dart';
+import 'personal_feedback_entry_page.dart';
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -2518,9 +2519,12 @@ class PersonalFeedbacksPage extends StatelessWidget {
               child: InkWell(
                 onTap: () {
                   debugPrint('⚡ פתח משוב אישי עבור "$feedbackType"');
-                  Navigator.of(
-                    context,
-                  ).pushNamed('/feedback_form', arguments: feedbackType);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          PersonalFeedbackEntryPage(exercise: feedbackType),
+                    ),
+                  );
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -2558,7 +2562,8 @@ class PersonalFeedbacksPage extends StatelessWidget {
 
 class FeedbackFormPage extends StatefulWidget {
   final String? exercise;
-  const FeedbackFormPage({super.key, this.exercise});
+  final String? draftId;
+  const FeedbackFormPage({super.key, this.exercise, this.draftId});
 
   @override
   State<FeedbackFormPage> createState() => _FeedbackFormPageState();
@@ -2571,8 +2576,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     'מפקד מחלקה',
     'סגן מפקד מחלקה',
     'לוחם',
+    'אחר',
   ];
   String? selectedRole;
+  String _customRole = '';
   String name = '';
   String generalNote = '';
   // instructor is the logged in user
@@ -2589,6 +2596,11 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   // Custom settlements for manual entry folders
   List<String> customSettlements = [];
   final TextEditingController settlementController = TextEditingController();
+  final TextEditingController evaluatedNameController = TextEditingController();
+  final TextEditingController scenarioController = TextEditingController();
+  final TextEditingController customRoleController = TextEditingController();
+  final TextEditingController feedbackSummaryController = TextEditingController();
+  final Map<String, TextEditingController> noteControllers = {};
   bool isLoadingCustomSettlements = false;
 
   // Base criteria for מעגל פתוח and מעגל פרוץ (original)
@@ -2604,19 +2616,62 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     'תפקוד באירוע',
   ];
 
-  // Additional criteria for סריקות רחוב only
-  static const List<String> _streetScanCriteria = [
+  // Criteria for מעגל פתוח only (includes 2 extra criteria)
+  static const List<String> _maagalPatuachCriteria = [
+    'פוש',
+    'הכרזה',
+    'הפצה',
+    'מיקום המפקד',
+    'מיקום הכוח',
+    'חיילות פרט',
+    'מקצועיות המחלקה',
+    'הבנת האירוע',
+    'עקרונות לחימה',
+    'חתירה למגע',
+    'תפקוד באירוע',
+  ];
+
+  // Criteria for מעגל פרוץ only (includes 3 extra criteria)
+  static const List<String> _maagalPoruzCriteria = [
+    'פוש',
+    'הכרזה',
+    'הפצה',
+    'מיקום המפקד',
+    'מיקום הכוח',
+    'חיילות פרט',
+    'מקצועיות המחלקה',
+    'הבנת האירוע',
+    'מיקום העתודה',
+    'שימוש בעתודה',
+    'קבלת החלטות',
+    'תפקוד באירוע',
+  ];
+
+  // Full criteria list for סריקות רחוב (without פוש, הפצה, מיקום הכוח; תפקוד באירוע last)
+  static const List<String> _sarikotRekhovCriteria = [
+    'הכרזה',
+    'מיקום המפקד',
+    'חיילות פרט',
+    'מקצועיות המחלקה',
+    'הבנת האירוע',
     'אבטחה היקפית',
     'שמירה על קשר בתוך הכוח הסורק',
     'שליטה בכוח',
     'יצירת גירוי והאזנה לשטח',
     'עבודה ממרכז הרחוב והחוצה',
+    'תפקוד באירוע',
   ];
 
   // Get criteria based on selected exercise
   List<String> get availableCriteria {
     if (selectedExercise == 'סריקות רחוב') {
-      return [..._baseCriteria, ..._streetScanCriteria];
+      return _sarikotRekhovCriteria;
+    }
+    if (selectedExercise == 'מעגל פתוח') {
+      return _maagalPatuachCriteria;
+    }
+    if (selectedExercise == 'מעגל פרוץ') {
+      return _maagalPoruzCriteria;
     }
     return _baseCriteria;
   }
@@ -2631,6 +2686,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   // Prevent double-submission
   bool _isSaving = false;
+
+  // טיוטה ו-autosave
+  String? _currentDraftId;
+  Timer? _autosaveTimer;
 
   // ✨ Date selection for Yotam only
   DateTime _selectedDateTime = DateTime.now();
@@ -2664,6 +2723,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     }
     _initializeCriteriaForExercise();
     _loadCustomSettlements();
+    if (widget.draftId != null) {
+      _currentDraftId = widget.draftId;
+      _loadDraft(widget.draftId!);
+    }
   }
 
   /// ✨ Select custom date/time (Yotam only)
@@ -2703,7 +2766,15 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     settlementController.dispose();
+    evaluatedNameController.dispose();
+    scenarioController.dispose();
+    customRoleController.dispose();
+    feedbackSummaryController.dispose();
+    for (final c in noteControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -2742,6 +2813,127 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   // Normalize settlement name for deduplication
   String _normalizeSettlement(String input) {
     return input.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  }
+
+  /// טען טיוטה קיימת מ-Firestore
+  Future<void> _loadDraft(String draftId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(draftId)
+          .get();
+      if (!doc.exists || !mounted) return;
+      final data = doc.data()!;
+      setState(() {
+        final role = data['role'] as String? ?? '';
+        if (roles.contains(role)) {
+          selectedRole = role;
+        } else if (role.isNotEmpty) {
+          selectedRole = 'אחר';
+          _customRole = role;
+          customRoleController.text = role;
+        }
+        evaluatedName = data['name'] as String? ?? '';
+        evaluatedNameController.text = evaluatedName;
+        settlement = data['settlement'] as String? ?? '';
+        settlementController.text = settlement;
+        selectedFolder = data['folder'] as String? ?? '';
+        scenario = data['scenario'] as String? ?? '';
+        scenarioController.text = scenario;
+        feedbackSummary = data['summary'] as String? ?? '';
+        feedbackSummaryController.text = feedbackSummary;
+        // Restore scores and active criteria
+        final savedScores = (data['scores'] as Map<String, dynamic>?) ?? {};
+        final savedNotes = (data['notes'] as Map<String, dynamic>?) ?? {};
+        final savedCriteria = List<String>.from(data['criteriaList'] ?? []);
+        for (final c in availableCriteria) {
+          if (savedScores.containsKey(c)) {
+            scores[c] = (savedScores[c] as num?)?.toInt() ?? 0;
+          }
+          if (savedNotes.containsKey(c)) {
+            notes[c] = savedNotes[c] as String? ?? '';
+            noteControllers.putIfAbsent(c, () => TextEditingController()).text = notes[c]!;
+          }
+          activeCriteria[c] = savedCriteria.contains(c);
+        }
+      });
+      debugPrint('✅ Draft loaded: $draftId');
+    } catch (e) {
+      debugPrint('❌ Failed to load draft: $e');
+    }
+  }
+
+  /// הפעל autosave אחרי 900ms של שקט
+  void _triggerAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 900), () {
+      _saveDraft();
+    });
+  }
+
+  /// שמירה זמנית ל-Firestore (טיוטה)
+  Future<void> _saveDraft() async {
+    if (_isSaving) return;
+    if (evaluatedName.trim().isEmpty) return;
+    final uid = currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
+
+    try {
+      String resolvedInstructorName = instructorNameDisplay;
+      if (uid.isNotEmpty) {
+        resolvedInstructorName = await resolveUserHebrewName(uid);
+      }
+
+      final String effectiveRole =
+          selectedRole == 'אחר' ? _customRole.trim() : (selectedRole ?? '');
+
+      final Map<String, dynamic> draftData = {
+        'module': 'personal_feedback',
+        'type': 'personal_feedback',
+        'exercise': selectedExercise ?? '',
+        'isTemporary': true,
+        'role': effectiveRole,
+        'name': evaluatedName.trim(),
+        'settlement': settlement,
+        'folder': selectedFolder ?? '',
+        'scenario': scenario,
+        'summary': feedbackSummary,
+        'scores': Map<String, dynamic>.from(scores),
+        'notes': Map<String, dynamic>.from(notes),
+        'criteriaList': activeCriteria.entries
+            .where((e) => e.value)
+            .map((e) => e.key)
+            .toList(),
+        'instructorName': resolvedInstructorName,
+        'instructorRole': instructorRoleDisplay,
+        'instructorId': uid,
+        'createdByName': resolvedInstructorName,
+        'createdByUid': uid,
+        'createdAt': _dateManuallySet
+            ? Timestamp.fromDate(_selectedDateTime)
+            : FieldValue.serverTimestamp(),
+        'dateManuallySet': _dateManuallySet,
+        'commandText': '',
+        'commandStatus': 'פתוח',
+        'attendeesCount': 0,
+      };
+
+      if (_currentDraftId == null) {
+        final ref = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .add(draftData);
+        _currentDraftId = ref.id;
+        debugPrint('✅ Draft created: $_currentDraftId');
+      } else {
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(_currentDraftId)
+            .set(draftData, SetOptions(merge: true));
+        debugPrint('✅ Draft updated: $_currentDraftId');
+      }
+    } catch (e) {
+      debugPrint('❌ Autosave error: $e');
+    }
   }
 
   // Add custom settlement to Firestore
@@ -2787,6 +2979,31 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       return;
     }
 
+    // דיאלוג אישור לפני שמירה
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('שמירת משוב'),
+          content: const Text('האם לשמור את המשוב? לא ניתן לערוך לאחר השמירה.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('שמור', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
     setState(() {
       _isSaving = true;
     });
@@ -2822,6 +3039,16 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('אנא בחר תפקיד')));
+      return;
+    }
+
+    if (selectedRole == 'אחר' && _customRole.trim().isEmpty) {
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אנא הזן תפקיד')));
       return;
     }
 
@@ -2909,8 +3136,11 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         }
       }
 
+      final String effectiveRole =
+          selectedRole == 'אחר' ? _customRole.trim() : (selectedRole ?? '');
+
       final Map<String, dynamic> doc = {
-        'role': selectedRole,
+        'role': effectiveRole,
         'name': evaluatedName.trim(),
         'exercise': selectedExercise ?? '',
         'scores': finalScores,
@@ -2934,6 +3164,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         'settlement': settlement,
         'attendeesCount': 0,
         'instructorId': uid,
+        'module': 'personal_feedback',
+        'type': 'personal_feedback',
+        'isTemporary': false,
       };
 
       // Debug logging for folder routing
@@ -2951,6 +3184,19 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       final ref = await FirebaseFirestore.instance
           .collection('feedbacks')
           .add(doc);
+
+      // מחק טיוטה אם קיימת
+      if (_currentDraftId != null) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .doc(_currentDraftId)
+              .delete();
+          _currentDraftId = null;
+        } catch (e) {
+          debugPrint('⚠️ Failed to delete draft: $e');
+        }
+      }
 
       // Update local cache (optional but useful for immediate UI refresh)
       final model = FeedbackModel.fromMap(doc, id: ref.id);
@@ -3252,30 +3498,58 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                     items: items
                         .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                         .toList(),
-                    onChanged: (v) => setState(() => selectedRole = v),
+                    onChanged: (v) => setState(() {
+                      selectedRole = v;
+                      _customRole = '';
+                      customRoleController.clear();
+                      _triggerAutosave();
+                    }),
                   );
                 },
               ),
+              if (selectedRole == 'אחר') ...[  
+                const SizedBox(height: 8),
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: 'הזן תפקיד',
+                    hintText: 'הקלד תפקיד...',
+                    border: OutlineInputBorder(),
+                  ),
+                  controller: customRoleController,
+                  onChanged: (v) => setState(() {
+                    _customRole = v.trim();
+                    _triggerAutosave();
+                  }),
+                ),
+              ],
               const SizedBox(height: 12),
 
               // 4. שם הנבדק
               TextField(
+                controller: evaluatedNameController,
                 decoration: const InputDecoration(
                   labelText: 'שם הנבדק',
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (v) => evaluatedName = v,
+                onChanged: (v) {
+                  evaluatedName = v;
+                  _triggerAutosave();
+                },
               ),
               const SizedBox(height: 12),
 
               // 5. תרחיש
               TextField(
+                controller: scenarioController,
                 decoration: const InputDecoration(
                   labelText: 'תרחיש',
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 2,
-                onChanged: (v) => setState(() => scenario = v),
+                onChanged: (v) => setState(() {
+                  scenario = v;
+                  _triggerAutosave();
+                }),
               ),
               const SizedBox(height: 12),
               const Divider(),
@@ -3293,8 +3567,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   return FilterChip(
                     label: Text(c),
                     selected: activeCriteria[c] ?? false,
-                    onSelected: (sel) =>
-                        setState(() => activeCriteria[c] = sel),
+                    onSelected: (sel) => setState(() {
+                      activeCriteria[c] = sel;
+                      _triggerAutosave();
+                    }),
                   );
                 }).toList(),
               ),
@@ -3346,7 +3622,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                                   ),
                                   elevation: selected ? 4 : 1,
                                 ),
-                                onPressed: () => setState(() => scores[c] = v),
+                                onPressed: () => setState(() {
+                                  scores[c] = v;
+                                  _triggerAutosave();
+                                }),
                                 child: Text(
                                   v.toString(),
                                   style: const TextStyle(
@@ -3373,9 +3652,13 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                       ),
                       const SizedBox(height: 8),
                       TextField(
+                        controller: noteControllers.putIfAbsent(c, () => TextEditingController()),
                         decoration: const InputDecoration(labelText: 'הערות'),
                         maxLines: 2,
-                        onChanged: (t) => notes[c] = t,
+                        onChanged: (t) {
+                          notes[c] = t;
+                          _triggerAutosave();
+                        },
                       ),
                     ],
                   ),
@@ -3389,6 +3672,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               ),
               const SizedBox(height: 8),
               TextField(
+                controller: feedbackSummaryController,
                 decoration: const InputDecoration(
                   labelText: 'סיכום',
                   hintText: 'הזן סיכום כללי של המשוב...',
@@ -3396,7 +3680,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   alignLabelWithHint: true,
                 ),
                 maxLines: 4,
-                onChanged: (v) => setState(() => feedbackSummary = v),
+                onChanged: (v) => setState(() {
+                  feedbackSummary = v;
+                  _triggerAutosave();
+                }),
               ),
               const SizedBox(height: 20),
               SizedBox(
@@ -3474,6 +3761,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   bool _isLoadingFeedbacks = false;
   String _feedbackFilterRole = 'הכל'; // Filter by role
   String _feedbackFilterName = ''; // Filter by name
+  DateTime? _draftCreatedAt; // תאריך יצירת הטיוטה – לסינון משובים לקישור
 
   // ✅ Autocomplete trainees for 474 folder
   List<String> _autocompleteTrainees = [];
@@ -3637,6 +3925,12 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
             (data['linkedFeedbackIds'] as List?)?.cast<String>() ?? [];
         _selectedFeedbackIds.clear();
         _selectedFeedbackIds.addAll(linkedIds);
+
+        // שמור תאריך יצירת הטיוטה לסינון משובים
+        final draftCa = data['createdAt'];
+        if (draftCa is Timestamp) {
+          _draftCreatedAt = draftCa.toDate();
+        }
       });
 
       // Load trainees for autocomplete if needed
@@ -3800,6 +4094,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
             .collection('feedbacks')
             .add(draftData);
         _currentDraftId = ref.id;
+        _draftCreatedAt = DateTime.now();
         debugPrint('✅ Draft created: $_currentDraftId');
       } else {
         // Update existing draft
@@ -3925,9 +4220,14 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
     setState(() => _isLoadingFeedbacks = true);
 
     try {
-      // Get today's date range (start and end of day)
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
+      // Use draft creation date if available, otherwise use today
+      final referenceDate = _draftCreatedAt ?? DateTime.now();
+      final startOfDay = DateTime(
+        referenceDate.year,
+        referenceDate.month,
+        referenceDate.day,
+      );
+      final endOfDay = startOfDay.add(const Duration(days: 1));
 
       debugPrint(
         '🔍 Loading feedbacks for settlement: $selectedSettlement, date: ${startOfDay.toIso8601String()}',
@@ -3950,7 +4250,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       for (final doc in snapshot.docs) {
         final data = doc.data();
 
-        // Filter by date (today only) - client-side
+        // Filter by date (reference day) - client-side
         DateTime? createdAt;
         final ca = data['createdAt'];
         if (ca is Timestamp) {
@@ -3964,13 +4264,11 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
           continue;
         }
 
-        // Check if today
-        final isToday =
-            createdAt.year == now.year &&
-            createdAt.month == now.month &&
-            createdAt.day == now.day;
+        // Check if within the reference day
+        final isOnReferenceDay =
+            !createdAt.isBefore(startOfDay) && createdAt.isBefore(endOfDay);
 
-        if (!isToday) {
+        if (!isOnReferenceDay) {
           continue;
         }
 
@@ -5194,6 +5492,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                               _selectedFeedbackIds.remove(feedback.id);
                             }
                           });
+                          _triggerAutosave();
                         },
                         title: Text(
                           '${feedback.role} — ${feedback.name}',
