@@ -49,6 +49,17 @@ Set-Content $pubspecPath -Value $newPubspecContent -Encoding UTF8
 Write-Host "   ✅ pubspec.yaml updated successfully" -ForegroundColor Green
 Write-Host ""
 
+# Step 3b: Update web/version.json to match pubspec.yaml version
+Write-Host "✏️  Updating web/version.json..." -ForegroundColor Yellow
+$versionJson = @{
+    version   = $versionName
+    build     = $newBuildNumber
+    timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+} | ConvertTo-Json
+Set-Content "web\version.json" -Value $versionJson -Encoding UTF8
+Write-Host "   ✅ web/version.json updated to $versionName+$newBuildNumber" -ForegroundColor Green
+Write-Host ""
+
 # Step 4: Clean build artifacts
 Write-Host "🧹 Cleaning build artifacts..." -ForegroundColor Yellow
 flutter clean
