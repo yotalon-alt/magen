@@ -629,17 +629,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           backgroundColor: Colors.green[800],
           foregroundColor: Colors.white,
           actions: [
-            Tooltip(
-              message: 'הוסף אותי לכל האימונים',
-              child: InkWell(
-                onTap: _addMeToAllEvents,
-                borderRadius: BorderRadius.circular(20),
-                child: const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Icon(Icons.person_add, color: Colors.white),
-                ),
-              ),
-            ),
             if (currentUser?.role == 'Admin')
               IconButton(
                 icon: const Icon(Icons.download, color: Colors.white),
@@ -1122,6 +1111,19 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
               color: Colors.white,
             ),
           ),
+          const Spacer(),
+          if (title.contains('לביצוע'))
+            Tooltip(
+              message: 'הוסף אותי לכל האימונים',
+              child: InkWell(
+                onTap: _addMeToAllEvents,
+                borderRadius: BorderRadius.circular(20),
+                child: const Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Icon(Icons.person_add, color: Colors.white, size: 22),
+                ),
+              ),
+            ),
         ],
       ),
     );
