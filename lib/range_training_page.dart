@@ -5005,6 +5005,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   maxLines: 4,
                   onChanged: (v) {
                     setState(() => trainingSummary = v);
+                    _scheduleAutoSave();
                   },
                 ),
                 const SizedBox(height: 24),
