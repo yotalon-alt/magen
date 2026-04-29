@@ -687,6 +687,23 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
         // Filters section
         _buildFiltersSection(_settlements, _trainingTypes, _instructors),
 
+        // הוסף אותי לכל האימונים - תמיד נראה
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _addMeToAllEvents,
+              icon: const Icon(Icons.person_add),
+              label: const Text('הוסף אותי לכל האימונים'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[600],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ),
+
         // Add button (Admin only)
         if (currentUser?.role == 'Admin')
           Padding(
