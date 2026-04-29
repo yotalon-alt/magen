@@ -630,8 +630,7 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
           foregroundColor: Colors.white,
           actions: [
             IconButton(
-              icon: const Icon(Icons.person_add),
-              color: Colors.white,
+              icon: const Icon(Icons.person_add, color: Colors.white),
               onPressed: _addMeToAllEvents,
               tooltip: 'הוסף אותי לכל האימונים',
             ),
