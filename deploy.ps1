@@ -72,7 +72,7 @@ Write-Host ""
 
 # Step 5: Build Flutter web app
 Write-Host "🔨 Building Flutter web app..." -ForegroundColor Yellow
-flutter build web
+flutter build web --release
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ ERROR: flutter build web failed" -ForegroundColor Red
     exit 1
