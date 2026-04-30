@@ -3185,21 +3185,19 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
         debugPrint('===============================================\n');
       }
 
-      final ref = await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .add(doc);
-
-      // מחק טיוטה אם קיימת
-      if (_currentDraftId != null) {
-        try {
-          await FirebaseFirestore.instance
-              .collection('feedbacks')
-              .doc(_currentDraftId)
-              .delete();
-          _currentDraftId = null;
-        } catch (e) {
-          debugPrint('⚠️ Failed to delete draft: $e');
-        }
+      // ✅ FIX: If a draft exists, update it in-place (isTemporary: false on same doc)
+      // instead of creating a new doc + deleting old one (delete requires special permission).
+      final DocumentReference ref;
+      if (_currentDraftId != null && _currentDraftId!.isNotEmpty) {
+        ref = FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(_currentDraftId);
+        await ref.set(doc);
+        _currentDraftId = null;
+        debugPrint('✅ Draft converted to final in-place: ${ref.id}');
+      } else {
+        ref = await FirebaseFirestore.instance.collection('feedbacks').add(doc);
+        debugPrint('✅ New final feedback created: ${ref.id}');
       }
 
       // Update local cache (optional but useful for immediate UI refresh)
