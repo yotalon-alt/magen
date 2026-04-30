@@ -1129,24 +1129,6 @@ class _TrainingProgram474PageState extends State<TrainingProgram474Page> {
             ),
           ),
           const Spacer(),
-          if (title.contains('לביצוע'))
-            ElevatedButton.icon(
-              onPressed: _addMeToAllEvents,
-              icon: const Icon(Icons.person_add, size: 18),
-              label: const Text('הוסף אותי'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.green[800],
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
         ],
       ),
     );
