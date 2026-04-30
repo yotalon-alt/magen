@@ -13774,6 +13774,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
             () => {
               'count': 0,
               'trainees': <String>{},
+              'traineeCount': 0,
               'feedbacks': <FeedbackModel>[],
             },
           );
@@ -13865,6 +13866,10 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                 (settlementData[f.settlement]![typeKey]!['trainees']
                         as Set<String>)
                     .add(name);
+                settlementData[f.settlement]![typeKey]!['traineeCount'] =
+                    (settlementData[f.settlement]![typeKey]!['traineeCount']
+                        as int) +
+                    1;
               }
             }
           }
@@ -13905,6 +13910,10 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                 (settlementData[f.settlement]![typeKey]!['trainees']
                         as Set<String>)
                     .add(name);
+                settlementData[f.settlement]![typeKey]!['traineeCount'] =
+                    (settlementData[f.settlement]![typeKey]!['traineeCount']
+                        as int) +
+                    1;
               }
             }
           }
@@ -13924,6 +13933,10 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                 (settlementData[f.settlement]![typeKey]!['trainees']
                         as Set<String>)
                     .add(name);
+                settlementData[f.settlement]![typeKey]!['traineeCount'] =
+                    (settlementData[f.settlement]![typeKey]!['traineeCount']
+                        as int) +
+                    1;
               }
             }
           }
@@ -14223,7 +14236,13 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                             ),
                             const SizedBox(height: 12),
                             _buildSummaryRow(
-                              '🎯 סה"כ כדורים שנורו',
+                              '� מתאמנים',
+                              '${settlementData.values.fold(0, (acc, types) => acc + types.values.fold(0, (a, t) => a + ((t['traineeCount'] as int?) ?? 0)))}',
+                              Colors.tealAccent,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryRow(
+                              '�🎯 סה"כ כדורים שנורו',
                               '$totalBulletsFired',
                               Colors.orangeAccent,
                             ),
@@ -14260,161 +14279,169 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ...feedbacksByType.entries.map((entry) {
-                      final type = entry.key;
-                      final count = entry.value;
-                      final percentage = totalFeedbacks > 0
-                          ? ((count / totalFeedbacks) * 100).toStringAsFixed(1)
-                          : '0.0';
-                      final pct = totalFeedbacks > 0
-                          ? (count / totalFeedbacks)
-                          : 0.0;
+                    ...feedbacksByType.entries
+                        .where(
+                          (entry) => entry.key != 'מחלקות ההגנה – חטיבה 474',
+                        )
+                        .map((entry) {
+                          final type = entry.key;
+                          final count = entry.value;
+                          final percentage = totalFeedbacks > 0
+                              ? ((count / totalFeedbacks) * 100)
+                                    .toStringAsFixed(1)
+                              : '0.0';
+                          final pct = totalFeedbacks > 0
+                              ? (count / totalFeedbacks)
+                              : 0.0;
 
-                      // Check if this is defense platoons (personal names, not settlements)
-                      final isDefensePlatoons =
-                          type == 'מחלקות ההגנה – חטיבה 474';
+                          // Check if this is defense platoons (personal names, not settlements)
+                          final isDefensePlatoons =
+                              type == 'מחלקות ההגנה – חטיבה 474';
 
-                      // Calculate average trainees (only for non-defense types)
-                      int totalTraineesForType = 0;
-                      if (!isDefensePlatoons) {
-                        // Count unique trainees across all settlements for this type
-                        for (final settlementEntry in settlementData.entries) {
-                          final settlementTypes = settlementEntry.value;
-                          if (settlementTypes.containsKey(type)) {
-                            final trainees =
-                                settlementTypes[type]!['trainees']
-                                    as Set<String>? ??
-                                {};
-                            totalTraineesForType += trainees.length;
+                          // Calculate average trainees (only for non-defense types)
+                          int totalTraineesForType = 0;
+                          if (!isDefensePlatoons) {
+                            // Count unique trainees across all settlements for this type
+                            for (final settlementEntry
+                                in settlementData.entries) {
+                              final settlementTypes = settlementEntry.value;
+                              if (settlementTypes.containsKey(type)) {
+                                final trainees =
+                                    settlementTypes[type]!['trainees']
+                                        as Set<String>? ??
+                                    {};
+                                totalTraineesForType += trainees.length;
+                              }
+                            }
                           }
-                        }
-                      }
-                      final avgTrainees = !isDefensePlatoons && count > 0
-                          ? (totalTraineesForType / count).toStringAsFixed(2)
-                          : null;
+                          final avgTrainees = !isDefensePlatoons && count > 0
+                              ? (totalTraineesForType / count).toStringAsFixed(
+                                  2,
+                                )
+                              : null;
 
-                      IconData icon;
-                      Color color;
-                      switch (type) {
-                        case 'מטווחים 474':
-                          icon = Icons.gps_fixed;
-                          color = Colors.deepOrange;
-                          break;
-                        case 'מחלקות ההגנה – חטיבה 474':
-                          icon = Icons.shield;
-                          color = Colors.blue;
-                          break;
-                        case 'משוב תרגילי הפתעה':
-                          icon = Icons.flash_on;
-                          color = Colors.amber;
-                          break;
-                        case 'משוב סיכום אימון 474':
-                          icon = Icons.assessment;
-                          color = Colors.green;
-                          break;
-                        default:
-                          icon = Icons.info;
-                          color = Colors.grey;
-                      }
+                          IconData icon;
+                          Color color;
+                          switch (type) {
+                            case 'מטווחים 474':
+                              icon = Icons.gps_fixed;
+                              color = Colors.deepOrange;
+                              break;
+                            case 'מחלקות ההגנה – חטיבה 474':
+                              icon = Icons.shield;
+                              color = Colors.blue;
+                              break;
+                            case 'משוב תרגילי הפתעה':
+                              icon = Icons.flash_on;
+                              color = Colors.amber;
+                              break;
+                            case 'משוב סיכום אימון 474':
+                              icon = Icons.assessment;
+                              color = Colors.green;
+                              break;
+                            default:
+                              icon = Icons.info;
+                              color = Colors.grey;
+                          }
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Card(
-                          color: Colors.blueGrey.shade800,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Card(
+                              color: Colors.blueGrey.shade800,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(icon, color: color, size: 28),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        _getTypeDisplayName(type),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '$count',
-                                      style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                        color: color,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Container(
-                                        height: 12,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white24,
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                        ),
-                                        child: FractionallySizedBox(
-                                          widthFactor: pct.clamp(0.0, 1.0),
-                                          alignment: Alignment.centerRight,
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: color,
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
+                                    Row(
+                                      children: [
+                                        Icon(icon, color: color, size: 28),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            _getTypeDisplayName(type),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      '$percentage%',
-                                      style: TextStyle(
-                                        color: color,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                // Show average trainees (only for non-defense platoons)
-                                if (avgTrainees != null) ...[
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(
-                                        Icons.people,
-                                        color: Colors.lightBlueAccent,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'ממוצע חניכים באימון: $avgTrainees',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.lightBlueAccent,
-                                          fontWeight: FontWeight.w500,
+                                        Text(
+                                          '$count',
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: color,
+                                          ),
                                         ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            height: 12,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white24,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: FractionallySizedBox(
+                                              widthFactor: pct.clamp(0.0, 1.0),
+                                              alignment: Alignment.centerRight,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: color,
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          '$percentage%',
+                                          style: TextStyle(
+                                            color: color,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    // Show average trainees (only for non-defense platoons)
+                                    if (avgTrainees != null) ...[
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.people,
+                                            color: Colors.lightBlueAccent,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'ממוצע חניכים באימון: $avgTrainees',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.lightBlueAccent,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
-                                  ),
-                                ],
-                              ],
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    }),
+                          );
+                        }),
 
                     const SizedBox(height: 16),
                     const Divider(),
@@ -14445,8 +14472,17 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                         .map((entry) {
                           final instructorName = entry.key;
                           final typeCounts = entry.value;
-                          final totalInstructorTrainings = typeCounts.values
-                              .fold(0, (acc, value) => acc + value);
+                          // סה"כ אימונים - לא כולל מחלקות הגנה (משוב תסביר)
+                          final totalInstructorTrainings = typeCounts.entries
+                              .where((e) => e.key != 'מחלקות ההגנה – חטיבה 474')
+                              .fold(0, (acc, e) => acc + e.value);
+
+                          // הפרד בין סוגי אימון לבין מחלקות הגנה
+                          final trainingEntries = typeCounts.entries
+                              .where((e) => e.key != 'מחלקות ההגנה – חטיבה 474')
+                              .toList();
+                          final defenseCount =
+                              typeCounts['מחלקות ההגנה – חטיבה 474'];
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 16.0),
@@ -14489,8 +14525,8 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                     ),
                                     const SizedBox(height: 12),
 
-                                    // Training types breakdown
-                                    ...typeCounts.entries.map((typeEntry) {
+                                    // Training types breakdown (without defense platoons)
+                                    ...trainingEntries.map((typeEntry) {
                                       final type = typeEntry.key;
                                       final count = typeEntry.value;
 
@@ -14500,10 +14536,6 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                         case 'מטווחים 474':
                                           icon = Icons.gps_fixed;
                                           color = Colors.deepOrange;
-                                          break;
-                                        case 'מחלקות ההגנה – חטיבה 474':
-                                          icon = Icons.shield;
-                                          color = Colors.blue;
                                           break;
                                         case 'משוב תרגילי הפתעה':
                                           icon = Icons.flash_on;
@@ -14547,6 +14579,42 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                         ),
                                       );
                                     }),
+
+                                    // מחלקות הגנה - בתחתית, עם "משובים"
+                                    if (defenseCount != null &&
+                                        defenseCount > 0)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8.0,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.shield,
+                                              color: Colors.blue,
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Expanded(
+                                              child: Text(
+                                                'מחלקות הגנה 474',
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              '$defenseCount משובים',
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.blue,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -14677,7 +14745,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                             ),
                                           ),
                                           Text(
-                                            '${(data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
+                                            '${data['מטווחים 474']!['traineeCount'] as int? ?? (data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
                                             style: const TextStyle(
                                               fontSize: 15,
                                               color: Colors.greenAccent,
@@ -14750,7 +14818,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                             ),
                                           ),
                                           Text(
-                                            '${(data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
+                                            '${data['משוב תרגילי הפתעה']!['traineeCount'] as int? ?? (data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
                                             style: const TextStyle(
                                               fontSize: 15,
                                               color: Colors.greenAccent,
@@ -14852,7 +14920,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                             ),
                                           ),
                                           Text(
-                                            '${(data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
+                                            '${data['משוב סיכום אימון 474']!['traineeCount'] as int? ?? (data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
                                             style: const TextStyle(
                                               fontSize: 15,
                                               color: Colors.greenAccent,
