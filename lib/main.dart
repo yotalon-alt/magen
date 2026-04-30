@@ -14650,6 +14650,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                         totalSettlementTrainings +=
                             (typeData['count'] as int?) ?? 0;
                         totalSettlementTrainees +=
+                            (typeData['traineeCount'] as int?) ??
                             ((typeData['trainees'] as Set<String>?) ?? {})
                                 .length;
                       }
