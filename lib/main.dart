@@ -5796,7 +5796,9 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.settlement.isNotEmpty ? f.settlement : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
+      mainTitle = f.settlement.isNotEmpty
+          ? f.settlement
+          : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -15427,8 +15429,7 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
               ],
 
               // Settlement for Defense Companies
-              if (folderType == 'defense' &&
-                  f.settlement.isNotEmpty) ...[
+              if (folderType == 'defense' && f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
                     const Icon(Icons.location_on, size: 16, color: Colors.blue),
@@ -17344,7 +17345,9 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.settlement.isNotEmpty ? f.settlement : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
+      mainTitle = f.settlement.isNotEmpty
+          ? f.settlement
+          : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
