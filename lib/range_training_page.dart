@@ -1182,6 +1182,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     });
 
     debugPrint('   After add: stations.length=${stations.length}');
+    // Persist newly added stations/principles even before table values are filled.
+    _scheduleAutoSave();
   }
 
   void _removeStation(int index) {
@@ -4948,7 +4950,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 setState(() {
                                   station.name = v ?? '';
                                 });
-                                // NO AUTOSAVE - user must manually save
+                                _scheduleAutoSave();
                               },
                             ),
                           ],
