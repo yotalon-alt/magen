@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -93,6 +93,11 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
     'displayLabel': 'סיכום אימון 474',
     'isHidden': true,
   }, // ✅ MOVED: Now part of הגמר חטיבה 474
+  {
+    'title': 'תרגילים גזרתיים',
+    'displayLabel': 'תרגילים גזרתיים',
+    'isHidden': true,
+  }, // ✅ Part of הגמר חטיבה 474
   {'title': 'מיונים – כללי', 'isHidden': true}, // ✅ SOFT DELETE: Hidden from UI
   {
     'title': 'עבודה במבנה',
@@ -3840,6 +3845,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
       if (trainingSummaryFolder == 'סיכום אימון כללי') {
         folderKey = 'training_summary_general';
+      } else if (trainingSummaryFolder == 'תרגילים גזרתיים') {
+        folderKey = 'training_summary_sectoral';
       } else {
         folderKey = 'training_summary_474';
       }
@@ -4322,6 +4329,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
       if (trainingSummaryFolder == 'סיכום אימון כללי') {
         folderKey = 'training_summary_general';
+      } else if (trainingSummaryFolder == 'תרגילים גזרתיים') {
+        folderKey = 'training_summary_sectoral';
       } else {
         folderKey = 'training_summary_474';
       }
@@ -4518,6 +4527,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                     value: 'סיכום אימון כללי',
                     child: Text('סיכום אימון כללי'),
                   ),
+                  DropdownMenuItem(
+                    value: 'תרגילים גזרתיים',
+                    child: Text('תרגילים גזרתיים'),
+                  ),
                 ],
                 onChanged: (v) => setState(() {
                   trainingSummaryFolder = v;
@@ -4534,7 +4547,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              if (trainingSummaryFolder == 'סיכום אימון כללי') ...[
+              if (trainingSummaryFolder == 'סיכום אימון כללי' ||
+                  trainingSummaryFolder == 'תרגילים גזרתיים') ...[
                 // General folder: free text input
                 TextField(
                   controller: TextEditingController(text: selectedSettlement)
@@ -5777,13 +5791,12 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       typeLabel = 'תרגיל הפתעה';
       mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // רק יישוב
     } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
-        _selectedFolder == 'סיכום אימון כללי') {
+        _selectedFolder == 'סיכום אימון כללי' ||
+        _selectedFolder == 'תרגילים גזרתיים') {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.trainingType.isNotEmpty
-          ? f.trainingType
-          : 'סיכום אימון'; // סוג אימון
+      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -5812,7 +5825,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement and date with delete button
+              // Header: title on right, date+delete on left (standard layout)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -5883,7 +5896,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               if (typeLabel.isNotEmpty &&
                   _selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
                   _selectedFolder != 'משוב סיכום אימון 474' &&
-                  _selectedFolder != 'סיכום אימון כללי') ...[
+                  _selectedFolder != 'סיכום אימון כללי' &&
+                  _selectedFolder != 'תרגילים גזרתיים') ...[
                 Row(
                   children: [
                     Icon(folderIcon, size: 16, color: iconColor),
@@ -5902,7 +5916,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
               // Settlement for Defense Companies and Training Summary
               if ((_selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                       _selectedFolder == 'משוב סיכום אימון 474' ||
-                      _selectedFolder == 'סיכום אימון כללי') &&
+                      _selectedFolder == 'סיכום אימון כללי' ||
+                      _selectedFolder == 'תרגילים גזרתיים') &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
@@ -6042,6 +6057,42 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           feedbacksData: validData,
           fileNamePrefix: 'surprise_drills_selected',
         );
+      } else if (_selectedFolder == 'תרגילים גזרתיים') {
+        // Export sectoral training summaries using training summary export
+        final feedbackModels = validData
+            .map(
+              (data) => FeedbackModel.fromMap(data, id: data['id'] as String?),
+            )
+            .whereType<FeedbackModel>()
+            .toList();
+        final keys = [
+          'id',
+          'settlement',
+          'trainingType',
+          'trainingContent',
+          'attendeesCount',
+          'instructorName',
+          'instructorRole',
+          'summary',
+          'folder',
+        ];
+        final headers = [
+          'ID',
+          'יישוב',
+          'סוג אימון',
+          'תוכן אימון',
+          'מספר חניכים',
+          'מדריך',
+          'תפקיד מדריך',
+          'סיכום',
+          'תיקייה',
+        ];
+        await FeedbackExportService.exportWithSchema(
+          keys: keys,
+          headers: headers,
+          feedbacks: feedbackModels,
+          fileNamePrefix: 'תרגילים_גזרתיים_selected',
+        );
       } else {
         // Export general feedbacks (משובים כללי, מחלקות ההגנה)
         // Convert feedbacksData to FeedbackModel list
@@ -6164,7 +6215,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     // For training summary folders, use trainingType instead of exercise
     final isTrainingSummaryFolder =
         _selectedFolder == 'משוב סיכום אימון 474' ||
-        _selectedFolder == 'סיכום אימון כללי';
+        _selectedFolder == 'סיכום אימון כללי' ||
+        _selectedFolder == 'תרגילים גזרתיים';
 
     final exercises = feedbacks
         .map((f) {
@@ -6207,7 +6259,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     // For training summary folders, filter by trainingType instead of exercise
     final isTrainingSummaryFolder =
         _selectedFolder == 'משוב סיכום אימון 474' ||
-        _selectedFolder == 'סיכום אימון כללי';
+        _selectedFolder == 'סיכום אימון כללי' ||
+        _selectedFolder == 'תרגילים גזרתיים';
 
     return feedbacks.where((f) {
       // Settlement filter
@@ -6367,7 +6420,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               f.folder == '474 Ranges' ||
                               f.folder == 'מחלקות ההגנה – חטיבה 474' ||
                               f.folder == 'משוב תרגילי הפתעה' ||
-                              f.folder == 'משוב סיכום אימון 474'),
+                              f.folder == 'משוב סיכום אימון 474' ||
+                              f.folder == 'תרגילים גזרתיים'),
                     )
                     .length;
               } else if (folder == 'כללי') {
@@ -6718,6 +6772,13 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
         );
       }
       debugPrint('================================================\n');
+    } else if (_selectedFolder == 'תרגילים גזרתיים') {
+      // ✅ SECTORAL TRAINING: Filter by folder == 'תרגילים גזרתיים' or folderKey == 'training_summary_sectoral'
+      filteredFeedbacks = feedbackStorage.where((f) {
+        if (f.isTemporary == true) return false;
+        return f.folder == 'תרגילים גזרתיים' ||
+            f.folderKey == 'training_summary_sectoral';
+      }).toList();
     } else {
       // Other folders: use standard folder filtering + exclude temporary
       filteredFeedbacks = feedbackStorage
@@ -6736,7 +6797,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
 
     final isTrainingSummaryFolder =
         _selectedFolder == 'משוב סיכום אימון 474' ||
-        _selectedFolder == 'סיכום אימון כללי';
+        _selectedFolder == 'סיכום אימון כללי' ||
+        _selectedFolder == 'תרגילים גזרתיים';
 
     // Apply settlement filter for range feedbacks (legacy behavior)
     List<FeedbackModel> preFilteredFeedbacks = filteredFeedbacks;
@@ -6782,7 +6844,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                     _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                     _selectedFolder == 'משובים – כללי' ||
                     _selectedFolder == 'משוב תרגילי הפתעה' ||
-                    _selectedFolder == 'תרגילי הפתעה כללי') &&
+                    _selectedFolder == 'תרגילי הפתעה כללי' ||
+                    _selectedFolder == 'תרגילים גזרתיים') &&
                 isAdmin &&
                 finalFilteredFeedbacks.isNotEmpty)
               IconButton(
@@ -6847,7 +6910,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           _selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                           _selectedFolder == 'משובים – כללי' ||
                           _selectedFolder == 'משוב תרגילי הפתעה' ||
-                          _selectedFolder == 'תרגילי הפתעה כללי'))
+                          _selectedFolder == 'תרגילי הפתעה כללי' ||
+                          _selectedFolder == 'תרגילים גזרתיים'))
                     Container(
                       color: Colors.blueGrey.shade700,
                       padding: const EdgeInsets.symmetric(
@@ -7467,7 +7531,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               _selectedFolder == 'מטווחי ירי' ||
                               _selectedFolder == 'משובים – כללי' ||
                               _selectedFolder == 'תרגילי הפתעה כללי' ||
-                              _selectedFolder == 'סיכום אימון כללי';
+                              _selectedFolder == 'סיכום אימון כללי' ||
+                              _selectedFolder == 'תרגילים גזרתיים';
 
                           if (useDetailedCard && !_selectionMode) {
                             return _buildDetailedFeedbackCard(f);
@@ -7494,7 +7559,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                 : f.name;
                           } else if (_selectedFolder ==
                                   'משוב סיכום אימון 474' ||
-                              _selectedFolder == 'סיכום אימון כללי') {
+                              _selectedFolder == 'סיכום אימון כללי' ||
+                              _selectedFolder == 'תרגילים גזרתיים') {
                             title = f.trainingType.isNotEmpty
                                 ? f.trainingType
                                 : 'סיכום אימון';
@@ -7528,6 +7594,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                             }
                             // הוסף סוג אימון למשובי סיכום אימון 474
                             if ((f.folder == 'משוב סיכום אימון 474' ||
+                                    f.folder == 'תרגילים גזרתיים' ||
                                     f.module == 'training_summary') &&
                                 f.trainingType.isNotEmpty) {
                               metadataLines.add('סוג אימון: ${f.trainingType}');
@@ -11024,6 +11091,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   builder: (context) {
                     final isTrainingSummary =
                         feedback.folder == 'משוב סיכום אימון 474' ||
+                        feedback.folder == 'תרגילים גזרתיים' ||
                         feedback.module == 'training_summary';
 
                     if (isTrainingSummary) {
@@ -13655,6 +13723,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   int totalFeedbacks = 0;
   int totalMeshuvim = 0; // מחלקות ההגנה 474 only
   int totalImunim = 0; // מטווחים 474 + תרגילי הפתעה 474 + סיכום אימון 474
+  int totalSectoralTrainings = 0; // תרגילים גזרתיים
   Map<String, int> feedbacksByType = {};
   Set<String> uniqueSettlements = {};
   // Per-settlement data: settlement -> {trainingType -> {count: int, trainees: Set<String>}}
@@ -13689,6 +13758,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
     totalFeedbacks = 0;
     totalMeshuvim = 0;
     totalImunim = 0;
+    totalSectoralTrainings = 0;
     totalTrainees = 0;
     totalBulletsFired = 0;
     totalPointsScored = 0;
@@ -13726,6 +13796,15 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
       }).toList();
 
       totalFeedbacks = brigadeFeeds.length;
+      // Count תרגילים גזרתיים separately (not in brigadeFeeds filter)
+      totalSectoralTrainings = feedbackStorage
+          .where(
+            (f) =>
+                !f.isTemporary &&
+                (f.folder == 'תרגילים גזרתיים' ||
+                    f.folderKey == 'training_summary_sectoral'),
+          )
+          .length;
       final Set<String> uniqueTraineesSet = {};
       // Track trainees per type for average calculation
       final Map<String, Set<String>> traineesPerType = {};
@@ -13998,6 +14077,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         {'מדד': 'סה"כ משובים (מחלקות הגנה)', 'ערך': totalMeshuvim},
         {'מדד': 'סה"כ אימונים', 'ערך': totalImunim},
         {'מדד': 'סה"כ יישובים', 'ערך': uniqueSettlements.length},
+        {'מדד': 'סה"כ תרגילים גזרתיים', 'ערך': totalSectoralTrainings},
       ];
 
       // Section 2: פילוח לפי סוג אימון
@@ -14263,6 +14343,12 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                               '🏘️ סה"כ יישובים',
                               '${uniqueSettlements.length}',
                               Colors.purpleAccent,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryRow(
+                              '🗺️ סה"כ תרגילים גזרתיים',
+                              '$totalSectoralTrainings',
+                              Colors.pinkAccent,
                             ),
                           ],
                         ),
@@ -15147,9 +15233,11 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
       folderType = 'surprise';
     } else if (f.folder == 'משוב סיכום אימון 474' ||
         f.folder == 'סיכום אימון כללי' ||
+        f.folder == 'תרגילים גזרתיים' ||
         f.module == 'training_summary' ||
         f.folderKey == 'training_summary_474' ||
-        f.folderKey == 'training_summary_general') {
+        f.folderKey == 'training_summary_general' ||
+        f.folderKey == 'training_summary_sectoral') {
       folderType = 'training_summary';
     } else if (f.folder == 'משובים – כללי') {
       folderType = 'general';
@@ -15184,7 +15272,18 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
         folderIcon = Icons.summarize;
         iconColor = Colors.teal;
         typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-        mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+        // For תרגילים גזרתיים show settlement as main title
+        mainTitle =
+            (f.folder == 'תרגילים גזרתיים' ||
+                f.folderKey == 'training_summary_sectoral')
+            ? (f.settlement.isNotEmpty
+                  ? f.settlement
+                  : f.trainingType.isNotEmpty
+                  ? f.trainingType
+                  : 'תרגיל גזרתי')
+            : f.trainingType.isNotEmpty
+            ? f.trainingType
+            : 'סיכום אימון';
         break;
       case 'general':
         folderIcon = Icons.fitness_center;
@@ -15213,7 +15312,7 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Main title and date with delete button
+              // Header: title on right, date+delete on left (standard layout)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -16622,6 +16721,12 @@ class _Brigade474FinalFoldersPageState
         'icon': Icons.assessment,
         'color': Colors.green,
       },
+      {
+        'title': 'תרגילים גזרתיים',
+        'internalValue': 'תרגילים גזרתיים',
+        'icon': Icons.terrain,
+        'color': Colors.purple,
+      },
     ];
 
     return Directionality(
@@ -17192,13 +17297,12 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       typeLabel = 'תרגיל הפתעה';
       mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // רק יישוב
     } else if (_selectedFolder == 'משוב סיכום אימון 474' ||
-        _selectedFolder == 'סיכום אימון כללי') {
+        _selectedFolder == 'סיכום אימון כללי' ||
+        _selectedFolder == 'תרגילים גזרתיים') {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.trainingType.isNotEmpty
-          ? f.trainingType
-          : 'סיכום אימון'; // סוג אימון
+      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -17226,7 +17330,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header: Settlement/Title and date with delete button
+              // Header: title on right, date+delete on left (standard layout)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -17297,7 +17401,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
               if (typeLabel.isNotEmpty &&
                   _selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
                   _selectedFolder != 'משוב סיכום אימון 474' &&
-                  _selectedFolder != 'סיכום אימון כללי') ...[
+                  _selectedFolder != 'סיכום אימון כללי' &&
+                  _selectedFolder != 'תרגילים גזרתיים') ...[
                 Row(
                   children: [
                     Icon(folderIcon, size: 16, color: iconColor),
@@ -17316,7 +17421,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
               // Settlement for Defense Companies and Training Summary
               if ((_selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
                       _selectedFolder == 'משוב סיכום אימון 474' ||
-                      _selectedFolder == 'סיכום אימון כללי') &&
+                      _selectedFolder == 'סיכום אימון כללי' ||
+                      _selectedFolder == 'תרגילים גזרתיים') &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
