@@ -5796,7 +5796,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -5897,7 +5897,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   _selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
                   _selectedFolder != 'משוב סיכום אימון 474' &&
                   _selectedFolder != 'סיכום אימון כללי' &&
-                  _selectedFolder != 'תרגילים גזרתיים') ...[
+                  _selectedFolder != 'תרגילים גזרתיים' &&
+                  f.module != 'training_summary' &&
+                  f.folder != 'משוב סיכום אימון 474' &&
+                  f.folder != 'סיכום אימון כללי' &&
+                  f.folder != 'תרגילים גזרתיים') ...[
                 Row(
                   children: [
                     Icon(folderIcon, size: 16, color: iconColor),
@@ -5913,11 +5917,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies and Training Summary
-              if ((_selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
-                      _selectedFolder == 'משוב סיכום אימון 474' ||
-                      _selectedFolder == 'סיכום אימון כללי' ||
-                      _selectedFolder == 'תרגילים גזרתיים') &&
+              // Settlement for Defense Companies
+              if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
@@ -5934,8 +5935,32 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                 const SizedBox(height: 6),
               ],
 
-              // Exercise info - show for all folders
-              if (f.exercise.isNotEmpty) ...[
+              // Training type for Training Summary folders
+              if ((_selectedFolder == 'משוב סיכום אימון 474' ||
+                      _selectedFolder == 'סיכום אימון כללי' ||
+                      _selectedFolder == 'תרגילים גזרתיים') &&
+                  f.trainingType.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.summarize, size: 16, color: Colors.teal),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'סוג אימון: ${f.trainingType}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Exercise info - hide for training summary folders
+              if (f.exercise.isNotEmpty &&
+                  _selectedFolder != 'משוב סיכום אימון 474' &&
+                  _selectedFolder != 'סיכום אימון כללי' &&
+                  _selectedFolder != 'תרגילים גזרתיים' &&
+                  f.module != 'training_summary') ...[
                 Row(
                   children: [
                     const Icon(
@@ -15281,9 +15306,9 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                   : f.trainingType.isNotEmpty
                   ? f.trainingType
                   : 'תרגיל גזרתי')
-            : f.trainingType.isNotEmpty
-            ? f.trainingType
-            : 'סיכום אימון';
+            : f.settlement.isNotEmpty
+            ? f.settlement
+            : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
         break;
       case 'general':
         folderIcon = Icons.fitness_center;
@@ -15401,9 +15426,8 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies and Training Summary
-              if ((folderType == 'defense' ||
-                      folderType == 'training_summary') &&
+              // Settlement for Defense Companies
+              if (folderType == 'defense' &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
@@ -15412,6 +15436,24 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                     Expanded(
                       child: Text(
                         'יישוב: ${f.settlement}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Training type for Training Summary folders
+              if (folderType == 'training_summary' &&
+                  f.trainingType.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.summarize, size: 16, color: Colors.teal),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'סוג אימון: ${f.trainingType}',
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
@@ -17302,7 +17344,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
       folderIcon = Icons.summarize;
       iconColor = Colors.teal;
       typeLabel = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
-      mainTitle = f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : (f.trainingType.isNotEmpty ? f.trainingType : 'סיכום אימון');
     } else if (_selectedFolder == 'משובים – כללי') {
       folderIcon = Icons.fitness_center;
       iconColor = Colors.green;
@@ -17402,7 +17444,11 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                   _selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
                   _selectedFolder != 'משוב סיכום אימון 474' &&
                   _selectedFolder != 'סיכום אימון כללי' &&
-                  _selectedFolder != 'תרגילים גזרתיים') ...[
+                  _selectedFolder != 'תרגילים גזרתיים' &&
+                  f.module != 'training_summary' &&
+                  f.folder != 'משוב סיכום אימון 474' &&
+                  f.folder != 'סיכום אימון כללי' &&
+                  f.folder != 'תרגילים גזרתיים') ...[
                 Row(
                   children: [
                     Icon(folderIcon, size: 16, color: iconColor),
@@ -17418,11 +17464,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies and Training Summary
-              if ((_selectedFolder == 'מחלקות ההגנה – חטיבה 474' ||
-                      _selectedFolder == 'משוב סיכום אימון 474' ||
-                      _selectedFolder == 'סיכום אימון כללי' ||
-                      _selectedFolder == 'תרגילים גזרתיים') &&
+              // Settlement for Defense Companies
+              if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
                   f.settlement.isNotEmpty) ...[
                 Row(
                   children: [
@@ -17439,8 +17482,32 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                 const SizedBox(height: 6),
               ],
 
-              // Exercise info - show for all folders
-              if (f.exercise.isNotEmpty) ...[
+              // Training type for Training Summary folders
+              if ((_selectedFolder == 'משוב סיכום אימון 474' ||
+                      _selectedFolder == 'סיכום אימון כללי' ||
+                      _selectedFolder == 'תרגילים גזרתיים') &&
+                  f.trainingType.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.summarize, size: 16, color: Colors.teal),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'סוג אימון: ${f.trainingType}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Exercise info - hide for training summary folders
+              if (f.exercise.isNotEmpty &&
+                  _selectedFolder != 'משוב סיכום אימון 474' &&
+                  _selectedFolder != 'סיכום אימון כללי' &&
+                  _selectedFolder != 'תרגילים גזרתיים' &&
+                  f.module != 'training_summary') ...[
                 Row(
                   children: [
                     const Icon(
@@ -18448,7 +18515,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                                   _selectedFolder == 'מטווחי ירי' ||
                                   _selectedFolder == 'משובים – כללי' ||
                                   _selectedFolder == 'תרגילי הפתעה כללי' ||
-                                  _selectedFolder == 'סיכום אימון כללי') &&
+                                  _selectedFolder == 'סיכום אימון כללי' ||
+                                  _selectedFolder == 'תרגילים גזרתיים') &&
                               !_selectionMode;
 
                           if (useDetailedCard) {
