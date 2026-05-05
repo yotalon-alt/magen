@@ -13888,6 +13888,12 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
   // Per-instructor data: instructorName -> {typeKey -> count}
   Map<String, Map<String, int>> instructorData = {};
 
+  // UI state for collapsible sections + search
+  bool _isInstructorExpanded = false;
+  bool _isSettlementExpanded = false;
+  String _instructorFilter = '';
+  String _settlementFilter = '';
+
   /// Helper: Convert internal type key to display name
   String _getTypeDisplayName(String typeKey) {
     switch (typeKey) {
@@ -14690,540 +14696,641 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                     const Divider(),
                     const SizedBox(height: 16),
 
-                    // Instructor breakdown
-                    const Text(
-                      'פילוח לפי מדריך',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...(instructorData.entries.toList()..sort((a, b) {
-                          final totalA = a.value.values.fold(
-                            0,
-                            (acc, value) => acc + value,
-                          );
-                          final totalB = b.value.values.fold(
-                            0,
-                            (acc, value) => acc + value,
-                          );
-                          return totalB.compareTo(
-                            totalA,
-                          ); // Sort by total descending
-                        }))
-                        .map((entry) {
-                          final instructorName = entry.key;
-                          final typeCounts = entry.value;
-                          // סה"כ אימונים - לא כולל מחלקות הגנה (משוב תסביר)
-                          final totalInstructorTrainings = typeCounts.entries
-                              .where((e) => e.key != 'מחלקות ההגנה – חטיבה 474')
-                              .fold(0, (acc, e) => acc + e.value);
-
-                          // הפרד בין סוגי אימון לבין מחלקות הגנה
-                          final trainingEntries = typeCounts.entries
-                              .where((e) => e.key != 'מחלקות ההגנה – חטיבה 474')
-                              .toList();
-                          final defenseCount =
-                              typeCounts['מחלקות ההגנה – חטיבה 474'];
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
-                            child: Card(
-                              color: Colors.blueGrey.shade700,
-                              elevation: 4,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Instructor header
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.person,
-                                          color: Colors.lightBlueAccent,
-                                          size: 24,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            instructorName,
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.lightBlueAccent,
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          'סה"כ: $totalInstructorTrainings',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.orangeAccent,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-
-                                    // Training types breakdown (without defense platoons)
-                                    ...trainingEntries.map((typeEntry) {
-                                      final type = typeEntry.key;
-                                      final count = typeEntry.value;
-
-                                      IconData icon;
-                                      Color color;
-                                      switch (type) {
-                                        case 'מטווחים 474':
-                                          icon = Icons.gps_fixed;
-                                          color = Colors.deepOrange;
-                                          break;
-                                        case 'משוב תרגילי הפתעה':
-                                          icon = Icons.flash_on;
-                                          color = Colors.amber;
-                                          break;
-                                        case 'משוב סיכום אימון 474':
-                                          icon = Icons.assessment;
-                                          color = Colors.green;
-                                          break;
-                                        default:
-                                          icon = Icons.info;
-                                          color = Colors.grey;
-                                      }
-
-                                      return Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 8.0,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(icon, color: color, size: 20),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                _getTypeDisplayName(type),
-                                                style: const TextStyle(
-                                                  fontSize: 15,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                            Text(
-                                              '$count אימונים',
-                                              style: TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.bold,
-                                                color: color,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }),
-
-                                    // מחלקות הגנה - בתחתית, עם "משובים"
-                                    if (defenseCount != null &&
-                                        defenseCount > 0)
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 8.0,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              Icons.shield,
-                                              color: Colors.blue,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            const Expanded(
-                                              child: Text(
-                                                'מחלקות הגנה 474',
-                                                style: TextStyle(
-                                                  fontSize: 15,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                            Text(
-                                              '$defenseCount משובים',
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.blue,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
+                    // Instructor breakdown - collapsible
+                    Card(
+                      color: Colors.blueGrey.shade700,
+                      elevation: 4,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => setState(
+                          () => _isInstructorExpanded = !_isInstructorExpanded,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.person,
+                                color: Colors.lightBlueAccent,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'פילוח לפי מדריך (${instructorData.length})',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.lightBlueAccent,
                                 ),
                               ),
-                            ),
-                          );
-                        }),
+                              const Spacer(),
+                              Icon(
+                                _isInstructorExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: Colors.white70,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_isInstructorExpanded) ...[
+                      const SizedBox(height: 12),
+                      // Search field
+                      TextField(
+                        decoration: const InputDecoration(
+                          hintText: 'חיפוש לפי שם מדריך...',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onChanged: (v) =>
+                            setState(() => _instructorFilter = v.trim()),
+                      ),
+                      const SizedBox(height: 12),
+                      ...(instructorData.entries.toList()..sort((a, b) {
+                            final totalA = a.value.values.fold(
+                              0,
+                              (acc, value) => acc + value,
+                            );
+                            final totalB = b.value.values.fold(
+                              0,
+                              (acc, value) => acc + value,
+                            );
+                            return totalB.compareTo(totalA);
+                          }))
+                          .where(
+                            (e) =>
+                                _instructorFilter.isEmpty ||
+                                e.key.contains(_instructorFilter),
+                          )
+                          .map((entry) {
+                            final instructorName = entry.key;
+                            final typeCounts = entry.value;
+                            final totalInstructorTrainings = typeCounts.entries
+                                .where(
+                                  (e) => e.key != 'מחלקות ההגנה – חטיבה 474',
+                                )
+                                .fold(0, (acc, e) => acc + e.value);
+                            final trainingEntries = typeCounts.entries
+                                .where(
+                                  (e) => e.key != 'מחלקות ההגנה – חטיבה 474',
+                                )
+                                .toList();
+                            final defenseCount =
+                                typeCounts['מחלקות ההגנה – חטיבה 474'];
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Card(
+                                color: Colors.blueGrey.shade700,
+                                elevation: 4,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.person,
+                                            color: Colors.lightBlueAccent,
+                                            size: 24,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              instructorName,
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.lightBlueAccent,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            'סה"כ: $totalInstructorTrainings',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.orangeAccent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      ...trainingEntries.map((typeEntry) {
+                                        final type = typeEntry.key;
+                                        final count = typeEntry.value;
+                                        IconData icon;
+                                        Color color;
+                                        switch (type) {
+                                          case 'מטווחים 474':
+                                            icon = Icons.gps_fixed;
+                                            color = Colors.deepOrange;
+                                            break;
+                                          case 'משוב תרגילי הפתעה':
+                                            icon = Icons.flash_on;
+                                            color = Colors.amber;
+                                            break;
+                                          case 'משוב סיכום אימון 474':
+                                            icon = Icons.assessment;
+                                            color = Colors.green;
+                                            break;
+                                          default:
+                                            icon = Icons.info;
+                                            color = Colors.grey;
+                                        }
+                                        return Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8.0,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                icon,
+                                                color: color,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  _getTypeDisplayName(type),
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                '$count אימונים',
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: color,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }),
+                                      if (defenseCount != null &&
+                                          defenseCount > 0)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8.0,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.shield,
+                                                color: Colors.blue,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Expanded(
+                                                child: Text(
+                                                  'מחלקות הגנה 474',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                '$defenseCount משובים',
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                    ],
 
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 16),
 
-                    // Settlements detailed breakdown
-                    const Text(
-                      'פילוח לפי יישוב',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Sort settlements alphabetically
-                    ...(uniqueSettlements.toList()..sort()).map((settlement) {
-                      final data = settlementData[settlement];
-                      if (data == null || data.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-
-                      // Calculate total trainees and trainings for this settlement
-                      int totalSettlementTrainings = 0;
-                      int totalSettlementTrainees = 0;
-
-                      for (final typeData in data.values) {
-                        totalSettlementTrainings +=
-                            (typeData['count'] as int?) ?? 0;
-                        totalSettlementTrainees +=
-                            (typeData['traineeCount'] as int?) ??
-                            ((typeData['trainees'] as Set<String>?) ?? {})
-                                .length;
-                      }
-
-                      // Calculate average
-                      final average = totalSettlementTrainings > 0
-                          ? (totalSettlementTrainees / totalSettlementTrainings)
-                          : 0.0;
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Card(
-                          color: Colors.blueGrey.shade700,
-                          elevation: 4,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Settlement header
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.location_on,
-                                      color: Colors.orangeAccent,
-                                      size: 24,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      settlement,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.orangeAccent,
-                                      ),
-                                    ),
-                                  ],
+                    // Settlements detailed breakdown - collapsible
+                    Card(
+                      color: Colors.blueGrey.shade700,
+                      elevation: 4,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => setState(
+                          () => _isSettlementExpanded = !_isSettlementExpanded,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on,
+                                color: Colors.orangeAccent,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'פילוח לפי יישוב (${uniqueSettlements.length})',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orangeAccent,
                                 ),
-                                const SizedBox(height: 12),
-
-                                // Training types breakdown (only show if exists)
-                                if (data.containsKey('מטווחים 474') &&
-                                    data['מטווחים 474']!['count'] > 0) ...[
-                                  InkWell(
-                                    onTap: () {
-                                      final feedbacks =
-                                          data['מטווחים 474']!['feedbacks']
-                                              as List<FeedbackModel>;
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              _FeedbacksListFiltered(
-                                                feedbacks: feedbacks,
-                                                title:
-                                                    'מטווחים 474 - $settlement',
-                                              ),
-                                        ),
-                                      );
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Colors.orangeAccent.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Text(
-                                            '🎯 מטווחים:',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${data['מטווחים 474']!['count']} אימונים',
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const Text(
-                                            ' | ',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${data['מטווחים 474']!['traineeCount'] as int? ?? (data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.greenAccent,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          const Icon(
-                                            Icons.arrow_back,
-                                            size: 18,
-                                            color: Colors.orangeAccent,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-
-                                if (data.containsKey('משוב תרגילי הפתעה') &&
-                                    data['משוב תרגילי הפתעה']!['count'] >
-                                        0) ...[
-                                  InkWell(
-                                    onTap: () {
-                                      final feedbacks =
-                                          data['משוב תרגילי הפתעה']!['feedbacks']
-                                              as List<FeedbackModel>;
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => _FeedbacksListFiltered(
-                                            feedbacks: feedbacks,
-                                            title:
-                                                'תרגילי הפתעה 474 - $settlement',
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Colors.orangeAccent.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Text(
-                                            '⚡ תרגילי הפתעה:',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${data['משוב תרגילי הפתעה']!['count']} אימונים',
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const Text(
-                                            ' | ',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${data['משוב תרגילי הפתעה']!['traineeCount'] as int? ?? (data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.greenAccent,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          const Icon(
-                                            Icons.arrow_back,
-                                            size: 18,
-                                            color: Colors.orangeAccent,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-
-                                if (data.containsKey(
-                                      'מחלקות ההגנה – חטיבה 474',
-                                    ) &&
-                                    data['מחלקות ההגנה – חטיבה 474']!['count'] >
-                                        0) ...[
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        '🛡️ מחלקות הגנה:',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${data['מחלקות ההגנה – חטיבה 474']!['count']} אימונים',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      // No trainees count for defense platoons (personal names)
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-
-                                if (data.containsKey('משוב סיכום אימון 474') &&
-                                    data['משוב סיכום אימון 474']!['count'] >
-                                        0) ...[
-                                  InkWell(
-                                    onTap: () {
-                                      final feedbacks =
-                                          data['משוב סיכום אימון 474']!['feedbacks']
-                                              as List<FeedbackModel>;
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => _FeedbacksListFiltered(
-                                            feedbacks: feedbacks,
-                                            title:
-                                                'סיכום אימון 474 - $settlement',
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Colors.orangeAccent.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Text(
-                                            '📋 סיכום אימון:',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${data['משוב סיכום אימון 474']!['count']} אימונים',
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const Text(
-                                            ' | ',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${data['משוב סיכום אימון 474']!['traineeCount'] as int? ?? (data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.greenAccent,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          const Icon(
-                                            Icons.arrow_back,
-                                            size: 18,
-                                            color: Colors.orangeAccent,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-
-                                // Divider before average
-                                const Divider(
-                                  color: Colors.white30,
-                                  thickness: 1,
-                                ),
-                                const SizedBox(height: 8),
-
-                                // Average trainees per training
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(
-                                      Icons.analytics,
-                                      color: Colors.lightBlueAccent,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'ממוצע:',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${average.toStringAsFixed(2)} חניכים באימון',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.lightBlueAccent,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                _isSettlementExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: Colors.white70,
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    }),
+                      ),
+                    ),
+                    if (_isSettlementExpanded) ...[
+                      const SizedBox(height: 12),
+                      // Search field
+                      TextField(
+                        decoration: const InputDecoration(
+                          hintText: 'חיפוש לפי שם יישוב...',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onChanged: (v) =>
+                            setState(() => _settlementFilter = v.trim()),
+                      ),
+                      const SizedBox(height: 12),
+                      // Sort settlements alphabetically, then filter
+                      ...(uniqueSettlements.toList()..sort())
+                          .where(
+                            (s) =>
+                                _settlementFilter.isEmpty ||
+                                s.contains(_settlementFilter),
+                          )
+                          .map((settlement) {
+                            final data = settlementData[settlement];
+                            if (data == null || data.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+
+                            int totalSettlementTrainings = 0;
+                            int totalSettlementTrainees = 0;
+                            for (final typeData in data.values) {
+                              totalSettlementTrainings +=
+                                  (typeData['count'] as int?) ?? 0;
+                              totalSettlementTrainees +=
+                                  (typeData['traineeCount'] as int?) ??
+                                  ((typeData['trainees'] as Set<String>?) ?? {})
+                                      .length;
+                            }
+                            final average = totalSettlementTrainings > 0
+                                ? (totalSettlementTrainees /
+                                      totalSettlementTrainings)
+                                : 0.0;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Card(
+                                color: Colors.blueGrey.shade700,
+                                elevation: 4,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Settlement header
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.location_on,
+                                            color: Colors.orangeAccent,
+                                            size: 24,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            settlement,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.orangeAccent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+
+                                      if (data.containsKey('מטווחים 474') &&
+                                          data['מטווחים 474']!['count'] >
+                                              0) ...[
+                                        InkWell(
+                                          onTap: () {
+                                            final feedbacks =
+                                                data['מטווחים 474']!['feedbacks']
+                                                    as List<FeedbackModel>;
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    _FeedbacksListFiltered(
+                                                      feedbacks: feedbacks,
+                                                      title:
+                                                          'מטווחים 474 - $settlement',
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                color: Colors.orangeAccent
+                                                    .withValues(alpha: 0.3),
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Text(
+                                                  '🎯 מטווחים:',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '${data['מטווחים 474']!['count']} אימונים',
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  ' | ',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${data['מטווחים 474']!['traineeCount'] as int? ?? (data['מטווחים 474']!['trainees'] as Set<String>).length} חניכים',
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.greenAccent,
+                                                  ),
+                                                ),
+                                                const Spacer(),
+                                                const Icon(
+                                                  Icons.arrow_back,
+                                                  size: 18,
+                                                  color: Colors.orangeAccent,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
+
+                                      if (data.containsKey(
+                                            'משוב תרגילי הפתעה',
+                                          ) &&
+                                          data['משוב תרגילי הפתעה']!['count'] >
+                                              0) ...[
+                                        InkWell(
+                                          onTap: () {
+                                            final feedbacks =
+                                                data['משוב תרגילי הפתעה']!['feedbacks']
+                                                    as List<FeedbackModel>;
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    _FeedbacksListFiltered(
+                                                      feedbacks: feedbacks,
+                                                      title:
+                                                          'תרגילי הפתעה 474 - $settlement',
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                color: Colors.orangeAccent
+                                                    .withValues(alpha: 0.3),
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Text(
+                                                  '⚡ תרגילי הפתעה:',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '${data['משוב תרגילי הפתעה']!['count']} אימונים',
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  ' | ',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${data['משוב תרגילי הפתעה']!['traineeCount'] as int? ?? (data['משוב תרגילי הפתעה']!['trainees'] as Set<String>).length} חניכים',
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.greenAccent,
+                                                  ),
+                                                ),
+                                                const Spacer(),
+                                                const Icon(
+                                                  Icons.arrow_back,
+                                                  size: 18,
+                                                  color: Colors.orangeAccent,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
+
+                                      if (data.containsKey(
+                                            'מחלקות ההגנה – חטיבה 474',
+                                          ) &&
+                                          data['מחלקות ההגנה – חטיבה 474']!['count'] >
+                                              0) ...[
+                                        Row(
+                                          children: [
+                                            const Text(
+                                              '🛡️ מחלקות הגנה:',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              '${data['מחלקות ההגנה – חטיבה 474']!['count']} אימונים',
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
+
+                                      if (data.containsKey(
+                                            'משוב סיכום אימון 474',
+                                          ) &&
+                                          data['משוב סיכום אימון 474']!['count'] >
+                                              0) ...[
+                                        InkWell(
+                                          onTap: () {
+                                            final feedbacks =
+                                                data['משוב סיכום אימון 474']!['feedbacks']
+                                                    as List<FeedbackModel>;
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    _FeedbacksListFiltered(
+                                                      feedbacks: feedbacks,
+                                                      title:
+                                                          'סיכום אימון 474 - $settlement',
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                color: Colors.orangeAccent
+                                                    .withValues(alpha: 0.3),
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Text(
+                                                  '📋 סיכום אימון:',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '${data['משוב סיכום אימון 474']!['count']} אימונים',
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const Text(
+                                                  ' | ',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${data['משוב סיכום אימון 474']!['traineeCount'] as int? ?? (data['משוב סיכום אימון 474']!['trainees'] as Set<String>).length} חניכים',
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.greenAccent,
+                                                  ),
+                                                ),
+                                                const Spacer(),
+                                                const Icon(
+                                                  Icons.arrow_back,
+                                                  size: 18,
+                                                  color: Colors.orangeAccent,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
+
+                                      const Divider(
+                                        color: Colors.white30,
+                                        thickness: 1,
+                                      ),
+                                      const SizedBox(height: 8),
+
+                                      // Average trainees per training
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.analytics,
+                                            color: Colors.lightBlueAccent,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Text(
+                                            'ממוצע:',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${average.toStringAsFixed(2)} חניכים באימון',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.lightBlueAccent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                    ],
                   ],
                 ),
               ),
