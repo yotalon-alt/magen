@@ -437,7 +437,12 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
-    ).timeout(const Duration(seconds: 8));
+    ).timeout(const Duration(seconds: 5));
+    // Enable Firestore offline persistence (cache) for faster subsequent loads
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
     // ignore: avoid_print
     print('Firebase initialized successfully in main()');
   } catch (e) {
@@ -875,7 +880,7 @@ class _AuthGateState extends State<AuthGate> {
               .collection('users')
               .doc(user.uid)
               .get()
-              .timeout(const Duration(seconds: 10)),
+              .timeout(const Duration(seconds: 5)),
           builder: (context, docSnap) {
             // Still loading profile
             if (docSnap.connectionState == ConnectionState.waiting) {
@@ -2886,7 +2891,11 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
       // ✅ CRITICAL: Validate folder routing for specific feedback types
       final targetExercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
-      final allowedFolders = ['מחלקות ההגנה – חטיבה 474', 'משובים – כללי'];
+      final allowedFolders = [
+        'מחלקות ההגנה – חטיבה 474',
+        'משובים – כללי',
+        'תרגילים גזרתיים',
+      ];
 
       if (targetExercises.contains(selectedExercise)) {
         if (!allowedFolders.contains(selectedFolder)) {
@@ -2924,6 +2933,10 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
           case 'משובים – כללי':
             folderKey = 'general_feedback';
             folderLabel = 'משובים כללי';
+            break;
+          case 'תרגילים גזרתיים':
+            folderKey = 'sectoral_exercises';
+            folderLabel = 'תרגילים גזרתיים';
             break;
           default:
             // Should never reach here due to validation above
@@ -3120,6 +3133,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                     allowedFolders = [
                       'מחלקות ההגנה – חטיבה 474',
                       'משובים – כללי',
+                      'תרגילים גזרתיים',
                     ];
                   } else {
                     // For other exercises, keep the original 2 folders
@@ -3138,6 +3152,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                         return internalValue;
                     }
                   }
+
+                  // Settlement behavior per folder
+                  // Note: 'תרגילים גזרתיים' uses free-text settlement (like משובים – כללי)
 
                   return DropdownButtonFormField<String>(
                     initialValue: selectedFolder,
@@ -3192,7 +3209,8 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   onChanged: (v) => setState(() => settlement = v ?? ''),
                 ),
                 const SizedBox(height: 12),
-              ] else if (selectedFolder == 'משובים – כללי') ...[
+              ] else if (selectedFolder == 'משובים – כללי' ||
+                  selectedFolder == 'תרגילים גזרתיים') ...[
                 // Other folders: Manual text field with autocomplete
                 const Text(
                   'יישוב',
@@ -4078,7 +4096,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
             (exercise == 'מעגל פתוח' ||
                 exercise == 'מעגל פרוץ' ||
                 exercise == 'סריקות רחוב') &&
-            (folder == 'מחלקות ההגנה – חטיבה 474' || folder == 'משובים – כללי');
+            (folder == 'מחלקות ההגנה – חטיבה 474' ||
+                folder == 'משובים – כללי' ||
+                folder == 'תרגילים גזרתיים');
 
         if (!isPersonalFeedback) {
           debugPrint(
@@ -5136,8 +5156,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               ),
               const SizedBox(height: 20),
 
-              // ✨ 11. Link personal feedbacks section (only for 474 folder)
-              if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
+              // ✨ 11. Link personal feedbacks section (for 474 and sectoral folders)
+              if ((trainingSummaryFolder == 'משוב סיכום אימון 474' ||
+                      trainingSummaryFolder == 'תרגילים גזרתיים') &&
                   selectedSettlement.isNotEmpty) ...[
                 const Divider(thickness: 2),
                 const SizedBox(height: 12),
@@ -11459,6 +11480,115 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   },
                 ),
               ],
+
+              // ✅ SECTORAL LINKED FEEDBACKS: Only for training summaries in תרגילים גזרתיים
+              if ((feedback.folder == 'תרגילים גזרתיים' ||
+                      feedback.folderKey == 'training_summary_sectoral') &&
+                  feedback.module == 'training_summary' &&
+                  feedback.settlement.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 12),
+                const Text(
+                  'משובים אישיים קשורים',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'יישוב: ${feedback.settlement} | אותו תאריך יצירה',
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Builder(
+                  builder: (ctx) {
+                    const personalExercises = [
+                      'מעגל פתוח',
+                      'מעגל פרוץ',
+                      'סריקות רחוב',
+                    ];
+                    final feedbackDate = feedback.createdAt.toLocal();
+                    final linked =
+                        feedbackStorage.where((f) {
+                            final fDate = f.createdAt.toLocal();
+                            return !f.isTemporary &&
+                                f.folder == 'תרגילים גזרתיים' &&
+                                personalExercises.contains(f.exercise) &&
+                                f.settlement == feedback.settlement &&
+                                fDate.year == feedbackDate.year &&
+                                fDate.month == feedbackDate.month &&
+                                fDate.day == feedbackDate.day;
+                          }).toList()
+                          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+                    if (linked.isEmpty) {
+                      return const Text(
+                        'לא נמצאו משובים אישיים קשורים',
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                      );
+                    }
+
+                    return Column(
+                      children: linked.map((f) {
+                        final dateStr = DateFormat(
+                          'dd/MM/yyyy',
+                        ).format(f.createdAt.toLocal());
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          child: InkWell(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    FeedbackDetailsPage(feedback: f),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.person,
+                                    size: 20,
+                                    color: Colors.green,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${f.name} — ${f.role}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${f.exercise} | $dateStr',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.arrow_back_ios,
+                                    size: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -16747,7 +16877,7 @@ class _Brigade474FinalFoldersPageState
         'color': Colors.deepOrange,
       },
       {
-        'title': 'מחלקות הגנה 474',
+        'title': 'משובים אישיים 474',
         'internalValue': 'מחלקות ההגנה – חטיבה 474',
         'icon': Icons.shield,
         'color': Colors.blue,
@@ -16831,12 +16961,180 @@ class _Brigade474FinalFoldersPageState
                 elevation: 2,
                 child: InkWell(
                   onTap: () {
-                    // Navigate to FeedbacksPage with selected folder
+                    if (title == 'תרגילים גזרתיים') {
+                      // Open intermediate page with 2 sub-folders
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SectoralExercisesFoldersPage(),
+                        ),
+                      );
+                    } else {
+                      // Navigate to FeedbacksPage with selected folder
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _FeedbacksPageWithFolder(
+                            selectedFolder: internalValue,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 32, color: color),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            title,
+                            textAlign: TextAlign.start,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$count משובים',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Intermediate screen showing 2 sub-folders of "תרגילים גזרתיים"
+class SectoralExercisesFoldersPage extends StatefulWidget {
+  const SectoralExercisesFoldersPage({super.key});
+
+  @override
+  State<SectoralExercisesFoldersPage> createState() =>
+      _SectoralExercisesFoldersPageState();
+}
+
+class _SectoralExercisesFoldersPageState
+    extends State<SectoralExercisesFoldersPage> {
+  bool _isRefreshing = false;
+
+  Future<void> _refreshFeedbacks() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('רשימת המשובים עודכנה')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('שגיאה בטעינת משובים')));
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const personalExercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+
+    // Count: סיכום אימון — folder == 'תרגילים גזרתיים' + module == 'training_summary'
+    final trainingSummaryCount = feedbackStorage
+        .where(
+          (f) =>
+              !f.isTemporary &&
+              f.folder == 'תרגילים גזרתיים' &&
+              f.module == 'training_summary',
+        )
+        .length;
+
+    // Count: משובים אישיים — folder == 'תרגילים גזרתיים' + exercise in personalExercises
+    final personalCount = feedbackStorage
+        .where(
+          (f) =>
+              !f.isTemporary &&
+              f.folder == 'תרגילים גזרתיים' &&
+              personalExercises.contains(f.exercise),
+        )
+        .length;
+
+    final subFolders = [
+      {
+        'title': 'סיכום אימון',
+        'icon': Icons.summarize,
+        'color': Colors.teal,
+        'count': trainingSummaryCount,
+        'filterType': 'training_summary',
+      },
+      {
+        'title': 'משובים אישיים',
+        'icon': Icons.person,
+        'color': Colors.green,
+        'count': personalCount,
+        'filterType': 'personal',
+      },
+    ];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('תרגילים גזרתיים'),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refreshFeedbacks,
+              tooltip: 'רענן רשימה',
+            ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView.builder(
+            itemCount: subFolders.length,
+            itemBuilder: (ctx, i) {
+              final folder = subFolders[i];
+              final title = folder['title'] as String;
+              final icon = folder['icon'] as IconData;
+              final color = folder['color'] as Color;
+              final count = folder['count'] as int;
+              final filterType = folder['filterType'] as String;
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => _FeedbacksPageWithFolder(
-                          selectedFolder: internalValue,
-                        ),
+                        builder: (_) =>
+                            _SectoralSubFolderView(filterType: filterType),
                       ),
                     );
                   },
@@ -16871,6 +17169,637 @@ class _Brigade474FinalFoldersPageState
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sub-folder view for SectoralExercisesFoldersPage
+class _SectoralSubFolderView extends StatefulWidget {
+  final String filterType; // 'training_summary' or 'personal'
+
+  const _SectoralSubFolderView({required this.filterType});
+
+  @override
+  State<_SectoralSubFolderView> createState() => _SectoralSubFolderViewState();
+}
+
+class _SectoralSubFolderViewState extends State<_SectoralSubFolderView> {
+  late List<FeedbackModel> _feedbacks;
+
+  // Filter state
+  bool _isFiltersExpanded = false;
+  String _filterSettlement = 'הכל';
+  String _filterSubType = 'הכל'; // trainingType or exercise
+  DateTime? _filterDateFrom;
+  DateTime? _filterDateTo;
+  bool _isExporting = false;
+
+  static const _personalExercises = ['מעגל פתוח', 'מעגל פרוץ', 'סריקות רחוב'];
+
+  @override
+  void initState() {
+    super.initState();
+    _buildFeedbackList();
+  }
+
+  void _buildFeedbackList() {
+    List<FeedbackModel> list;
+    if (widget.filterType == 'training_summary') {
+      list = feedbackStorage
+          .where(
+            (f) =>
+                !f.isTemporary &&
+                f.folder == 'תרגילים גזרתיים' &&
+                f.module == 'training_summary',
+          )
+          .toList();
+    } else {
+      list = feedbackStorage
+          .where(
+            (f) =>
+                !f.isTemporary &&
+                f.folder == 'תרגילים גזרתיים' &&
+                _personalExercises.contains(f.exercise),
+          )
+          .toList();
+    }
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _feedbacks = list;
+  }
+
+  bool get _hasActiveFilters =>
+      _filterSettlement != 'הכל' ||
+      _filterSubType != 'הכל' ||
+      _filterDateFrom != null ||
+      _filterDateTo != null;
+
+  List<FeedbackModel> get _filteredFeedbacks {
+    return _feedbacks.where((f) {
+      if (_filterSettlement != 'הכל' && f.settlement != _filterSettlement) {
+        return false;
+      }
+      if (_filterSubType != 'הכל') {
+        final val = widget.filterType == 'training_summary'
+            ? f.trainingType
+            : f.exercise;
+        if (val != _filterSubType) return false;
+      }
+      if (_filterDateFrom != null) {
+        final d = DateTime(
+          f.createdAt.year,
+          f.createdAt.month,
+          f.createdAt.day,
+        );
+        final from = DateTime(
+          _filterDateFrom!.year,
+          _filterDateFrom!.month,
+          _filterDateFrom!.day,
+        );
+        if (d.isBefore(from)) return false;
+      }
+      if (_filterDateTo != null) {
+        final d = DateTime(
+          f.createdAt.year,
+          f.createdAt.month,
+          f.createdAt.day,
+        );
+        final to = DateTime(
+          _filterDateTo!.year,
+          _filterDateTo!.month,
+          _filterDateTo!.day,
+        );
+        if (d.isAfter(to)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  List<String> _settlementOptions() {
+    final s =
+        _feedbacks
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return ['הכל', ...s];
+  }
+
+  List<String> _subTypeOptions() {
+    final vals =
+        _feedbacks
+            .map(
+              (f) => widget.filterType == 'training_summary'
+                  ? f.trainingType
+                  : f.exercise,
+            )
+            .where((v) => v.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return ['הכל', ...vals];
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _filterSettlement = 'הכל';
+      _filterSubType = 'הכל';
+      _filterDateFrom = null;
+      _filterDateTo = null;
+    });
+  }
+
+  Future<void> _exportFeedbacks() async {
+    final toExport = _filteredFeedbacks;
+    if (toExport.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין משובים לייצוא')));
+      return;
+    }
+    setState(() => _isExporting = true);
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      if (widget.filterType == 'training_summary') {
+        final keys = [
+          'folder',
+          'settlement',
+          'trainingType',
+          'attendeesCount',
+          'instructorName',
+          'summary',
+          'createdAt',
+        ];
+        final headers = [
+          'תיקייה',
+          'יישוב',
+          'סוג אימון',
+          'מספר נוכחים',
+          'מדריך',
+          'סיכום',
+          'תאריך',
+        ];
+        await FeedbackExportService.exportWithSchema(
+          keys: keys,
+          headers: headers,
+          feedbacks: toExport,
+          fileNamePrefix: 'sectoral_training_summary',
+        );
+      } else {
+        await FeedbackExportService.exportStandardFeedbacks(
+          feedbacks: toExport,
+          fileNamePrefix: 'sectoral_personal',
+        );
+      }
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ נוצר בהצלחה!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  Future<void> _deleteFeedback(String id, String label) async {
+    if (!canCurrentUserDeleteFeedbacks) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('אין הרשאה למחיקת משוב זה')));
+      return;
+    }
+    try {
+      await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
+      feedbackStorage.removeWhere((f) => f.id == id);
+      setState(() => _feedbacks.removeWhere((f) => f.id == id));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('המשוב "$label" נמחק בהצלחה')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה במחיקת משוב: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _confirmDelete(String id, String label, String dateStr) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת משוב'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'האם למחוק את המשוב?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Text(label),
+              Text('תאריך: $dateStr'),
+              const SizedBox(height: 12),
+              const Text(
+                'אזהרה: פעולה זו אינה ניתנת לביטול!',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _deleteFeedback(id, label);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('מחק לצמיתות'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterPanel() {
+    final settlements = _settlementOptions();
+    final subTypes = _subTypeOptions();
+    final subTypeLabel = widget.filterType == 'training_summary'
+        ? 'סוג אימון'
+        : 'תרגיל';
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      color: Colors.blueGrey.shade50,
+      child: ExpansionTile(
+        initiallyExpanded: _isFiltersExpanded,
+        onExpansionChanged: (v) => setState(() => _isFiltersExpanded = v),
+        leading: Icon(
+          Icons.filter_list,
+          color: _hasActiveFilters ? Colors.orange : Colors.blueGrey,
+        ),
+        title: Text(
+          _hasActiveFilters
+              ? 'סינון פעיל (${_filteredFeedbacks.length} תוצאות)'
+              : 'סינון',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _hasActiveFilters ? Colors.orange : Colors.black87,
+          ),
+        ),
+        trailing: _hasActiveFilters
+            ? TextButton(
+                onPressed: _clearFilters,
+                child: const Text('נקה', style: TextStyle(color: Colors.red)),
+              )
+            : null,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Column(
+              children: [
+                // Settlement filter
+                if (settlements.length > 1)
+                  DropdownButtonFormField<String>(
+                    initialValue: _filterSettlement,
+                    decoration: const InputDecoration(
+                      labelText: 'יישוב',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: settlements
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _filterSettlement = v ?? 'הכל'),
+                  ),
+                if (settlements.length > 1) const SizedBox(height: 8),
+
+                // SubType filter (trainingType or exercise)
+                if (subTypes.length > 1)
+                  DropdownButtonFormField<String>(
+                    initialValue: _filterSubType,
+                    decoration: InputDecoration(
+                      labelText: subTypeLabel,
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: subTypes
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _filterSubType = v ?? 'הכל'),
+                  ),
+                if (subTypes.length > 1) const SizedBox(height: 8),
+
+                // Date range filters
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _filterDateFrom ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            helpText: 'מתאריך',
+                          );
+                          if (picked != null) {
+                            setState(() => _filterDateFrom = picked);
+                          }
+                        },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'מתאריך',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          child: Text(
+                            _filterDateFrom != null
+                                ? DateFormat(
+                                    'dd/MM/yyyy',
+                                  ).format(_filterDateFrom!)
+                                : 'הכל',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _filterDateTo ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            helpText: 'עד תאריך',
+                          );
+                          if (picked != null) {
+                            setState(() => _filterDateTo = picked);
+                          }
+                        },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'עד תאריך',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          child: Text(
+                            _filterDateTo != null
+                                ? DateFormat(
+                                    'dd/MM/yyyy',
+                                  ).format(_filterDateTo!)
+                                : 'הכל',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_filterDateFrom != null || _filterDateTo != null)
+                      IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.red),
+                        onPressed: () => setState(() {
+                          _filterDateFrom = null;
+                          _filterDateTo = null;
+                        }),
+                        tooltip: 'נקה תאריכים',
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.filterType == 'training_summary'
+        ? 'סיכום אימון — תרגילים גזרתיים'
+        : 'משובים אישיים — תרגילים גזרתיים';
+
+    final displayed = _filteredFeedbacks;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(title),
+          leading: const StandardBackButton(),
+          actions: [
+            // Export button
+            IconButton(
+              icon: _isExporting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.download),
+              onPressed: _isExporting ? null : _exportFeedbacks,
+              tooltip: 'ייצוא לאקסל',
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            _buildFilterPanel(),
+            Expanded(
+              child: displayed.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.inbox, size: 64, color: Colors.grey),
+                          const SizedBox(height: 16),
+                          Text(
+                            _hasActiveFilters
+                                ? 'אין תוצאות לסינון הנוכחי'
+                                : 'אין משובים בתיקייה זו',
+                          ),
+                          const SizedBox(height: 16),
+                          if (_hasActiveFilters)
+                            ElevatedButton.icon(
+                              onPressed: _clearFilters,
+                              icon: const Icon(Icons.clear),
+                              label: const Text('נקה סינון'),
+                            )
+                          else
+                            ElevatedButton.icon(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.arrow_forward),
+                              label: const Text('חזרה'),
+                            ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      itemCount: displayed.length,
+                      itemBuilder: (ctx, i) {
+                        final f = displayed[i];
+                        final dateStr = DateFormat(
+                          'dd/MM/yyyy HH:mm',
+                        ).format(f.createdAt.toLocal());
+                        final mainTitle = f.settlement.isNotEmpty
+                            ? f.settlement
+                            : (f.name.isNotEmpty ? f.name : 'ללא שם');
+                        final subLabel = widget.filterType == 'training_summary'
+                            ? f.trainingType
+                            : f.exercise;
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          elevation: 2,
+                          child: InkWell(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    FeedbackDetailsPage(feedback: f),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              widget.filterType ==
+                                                      'training_summary'
+                                                  ? Icons.summarize
+                                                  : Icons.person,
+                                              size: 16,
+                                              color:
+                                                  widget.filterType ==
+                                                      'training_summary'
+                                                  ? Colors.teal
+                                                  : Colors.green,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                mainTitle,
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            dateStr,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                          if (canCurrentUserDeleteFeedbacks) ...[
+                                            const SizedBox(height: 4),
+                                            SizedBox(
+                                              height: 28,
+                                              child: ElevatedButton.icon(
+                                                onPressed: () => _confirmDelete(
+                                                  f.id ?? '',
+                                                  mainTitle,
+                                                  dateStr,
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.delete,
+                                                  size: 14,
+                                                ),
+                                                label: const Text(
+                                                  'מחק',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      Colors.red.shade700,
+                                                  foregroundColor: Colors.white,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  if (subLabel.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      widget.filterType == 'training_summary'
+                                          ? 'סוג אימון: $subLabel'
+                                          : 'תרגיל: $subLabel',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'מדריך: ${f.instructorName}',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );
