@@ -5803,8 +5803,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
       folderIcon = Icons.shield;
       iconColor = Colors.purple;
-      typeLabel = '${f.role} - ${f.name}';
-      mainTitle = '${f.role} — ${f.name}'; // תפקיד — שם
+      typeLabel = '${f.role} — ${f.name}';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // יישוב
     } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
         _selectedFolder == 'תרגילי הפתעה כללי') {
       folderIcon = Icons.flash_on;
@@ -5940,16 +5940,16 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies
+              // Role & Name for Defense Companies
               if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
-                  f.settlement.isNotEmpty) ...[
+                  (f.role.isNotEmpty || f.name.isNotEmpty)) ...[
                 Row(
                   children: [
-                    const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                    const Icon(Icons.shield, size: 16, color: Colors.purple),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'יישוב: ${f.settlement}',
+                        '${f.role} — ${f.name}',
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
@@ -14499,13 +14499,13 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                             _buildSummaryRow(
                               '🏘️ סה"כ יישובים',
                               '${uniqueSettlements.length}',
-                              Colors.purpleAccent,
+                              Colors.white,
                             ),
                             const SizedBox(height: 12),
                             _buildSummaryRow(
                               '🗺️ סה"כ תרגילים גזרתיים',
                               '$totalSectoralTrainings',
-                              Colors.pinkAccent,
+                              Colors.white,
                             ),
                           ],
                         ),
@@ -15416,8 +15416,8 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
       case 'defense':
         folderIcon = Icons.shield;
         iconColor = Colors.purple;
-        typeLabel = '${f.role} - ${f.name}';
-        mainTitle = '${f.role} — ${f.name}';
+        typeLabel = '${f.role} — ${f.name}';
+        mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name;
         break;
       case 'surprise':
         folderIcon = Icons.flash_on;
@@ -15558,15 +15558,16 @@ class _FeedbacksListFilteredState extends State<_FeedbacksListFiltered> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies
-              if (folderType == 'defense' && f.settlement.isNotEmpty) ...[
+              // Role & Name for Defense Companies
+              if (folderType == 'defense' &&
+                  (f.role.isNotEmpty || f.name.isNotEmpty)) ...[
                 Row(
                   children: [
-                    const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                    const Icon(Icons.shield, size: 16, color: Colors.purple),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'יישוב: ${f.settlement}',
+                        '${f.role} — ${f.name}',
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
@@ -17452,150 +17453,276 @@ class _SectoralSubFolderViewState extends State<_SectoralSubFolderView> {
         : 'תרגיל';
 
     return Card(
-      margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-      color: Colors.blueGrey.shade50,
-      child: ExpansionTile(
-        initiallyExpanded: _isFiltersExpanded,
-        onExpansionChanged: (v) => setState(() => _isFiltersExpanded = v),
-        leading: Icon(
-          Icons.filter_list,
-          color: _hasActiveFilters ? Colors.orange : Colors.blueGrey,
-        ),
-        title: Text(
-          _hasActiveFilters
-              ? 'סינון פעיל (${_filteredFeedbacks.length} תוצאות)'
-              : 'סינון',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: _hasActiveFilters ? Colors.orange : Colors.black87,
-          ),
-        ),
-        trailing: _hasActiveFilters
-            ? TextButton(
-                onPressed: _clearFilters,
-                child: const Text('נקה', style: TextStyle(color: Colors.red)),
-              )
-            : null,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Column(
-              children: [
-                // Settlement filter
-                if (settlements.length > 1)
-                  DropdownButtonFormField<String>(
-                    initialValue: _filterSettlement,
-                    decoration: const InputDecoration(
-                      labelText: 'יישוב',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: settlements
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _filterSettlement = v ?? 'הכל'),
-                  ),
-                if (settlements.length > 1) const SizedBox(height: 8),
-
-                // SubType filter (trainingType or exercise)
-                if (subTypes.length > 1)
-                  DropdownButtonFormField<String>(
-                    initialValue: _filterSubType,
-                    decoration: InputDecoration(
-                      labelText: subTypeLabel,
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: subTypes
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _filterSubType = v ?? 'הכל'),
-                  ),
-                if (subTypes.length > 1) const SizedBox(height: 8),
-
-                // Date range filters
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _filterDateFrom ?? DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                            helpText: 'מתאריך',
-                          );
-                          if (picked != null) {
-                            setState(() => _filterDateFrom = picked);
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'מתאריך',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          child: Text(
-                            _filterDateFrom != null
-                                ? DateFormat(
-                                    'dd/MM/yyyy',
-                                  ).format(_filterDateFrom!)
-                                : 'הכל',
-                            style: const TextStyle(fontSize: 13),
-                          ),
+      color: Colors.blueGrey.shade800,
+      margin: const EdgeInsets.all(8.0),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header row with toggle button
+            InkWell(
+              onTap: () =>
+                  setState(() => _isFiltersExpanded = !_isFiltersExpanded),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.filter_list,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'סינון',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _filterDateTo ?? DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                            helpText: 'עד תאריך',
-                          );
-                          if (picked != null) {
-                            setState(() => _filterDateTo = picked);
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'עד תאריך',
-                            border: OutlineInputBorder(),
-                            isDense: true,
+                      if (_hasActiveFilters) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
                           ),
-                          child: Text(
-                            _filterDateTo != null
-                                ? DateFormat(
-                                    'dd/MM/yyyy',
-                                  ).format(_filterDateTo!)
-                                : 'הכל',
-                            style: const TextStyle(fontSize: 13),
+                          decoration: BoxDecoration(
+                            color: Colors.orangeAccent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'פעיל',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    if (_filterDateFrom != null || _filterDateTo != null)
-                      IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.red),
-                        onPressed: () => setState(() {
-                          _filterDateFrom = null;
-                          _filterDateTo = null;
-                        }),
-                        tooltip: 'נקה תאריכים',
-                      ),
-                  ],
-                ),
-              ],
+                      ],
+                    ],
+                  ),
+                  Icon(
+                    _isFiltersExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.white70,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            // Collapsible filter content
+            if (_isFiltersExpanded) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.start,
+                children: [
+                  // Settlement filter
+                  if (settlements.length > 1)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'יישוב',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          width: 200,
+                          child: DropdownButtonFormField<String>(
+                            initialValue:
+                                settlements.contains(_filterSettlement)
+                                ? _filterSettlement
+                                : 'הכל',
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                            ),
+                            items: settlements
+                                .map(
+                                  (s) => DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setState(() => _filterSettlement = v ?? 'הכל'),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                  // SubType filter (trainingType or exercise)
+                  if (subTypes.length > 1)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          subTypeLabel,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          width: 200,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: subTypes.contains(_filterSubType)
+                                ? _filterSubType
+                                : 'הכל',
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                            ),
+                            items: subTypes
+                                .map(
+                                  (s) => DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setState(() => _filterSubType = v ?? 'הכל'),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                  // Date range filters
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'טווח תאריכים',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 140,
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      _filterDateFrom ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime.now(),
+                                  helpText: 'מתאריך',
+                                );
+                                if (picked != null) {
+                                  setState(() => _filterDateFrom = picked);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'מתאריך',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                child: Text(
+                                  _filterDateFrom != null
+                                      ? DateFormat(
+                                          'dd/MM/yyyy',
+                                        ).format(_filterDateFrom!)
+                                      : 'הכל',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 140,
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _filterDateTo ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime.now(),
+                                  helpText: 'עד תאריך',
+                                );
+                                if (picked != null) {
+                                  setState(() => _filterDateTo = picked);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'עד תאריך',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                child: Text(
+                                  _filterDateTo != null
+                                      ? DateFormat(
+                                          'dd/MM/yyyy',
+                                        ).format(_filterDateTo!)
+                                      : 'הכל',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_filterDateFrom != null || _filterDateTo != null)
+                            IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.red),
+                              onPressed: () => setState(() {
+                                _filterDateFrom = null;
+                                _filterDateTo = null;
+                              }),
+                              tooltip: 'נקה תאריכים',
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_hasActiveFilters)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _clearFilters,
+                    icon: const Icon(Icons.clear, color: Colors.redAccent),
+                    label: const Text(
+                      'נקה סינון',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -18260,8 +18387,8 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
     } else if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474') {
       folderIcon = Icons.shield;
       iconColor = Colors.purple;
-      typeLabel = '${f.role} - ${f.name}';
-      mainTitle = '${f.role} — ${f.name}'; // תפקיד — שם
+      typeLabel = '${f.role} — ${f.name}';
+      mainTitle = f.settlement.isNotEmpty ? f.settlement : f.name; // יישוב
     } else if (_selectedFolder == 'משוב תרגילי הפתעה' ||
         _selectedFolder == 'תרגילי הפתעה כללי') {
       folderIcon = Icons.flash_on;
@@ -18396,16 +18523,16 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
                 const SizedBox(height: 6),
               ],
 
-              // Settlement for Defense Companies
+              // Role & Name for Defense Companies
               if (_selectedFolder == 'מחלקות ההגנה – חטיבה 474' &&
-                  f.settlement.isNotEmpty) ...[
+                  (f.role.isNotEmpty || f.name.isNotEmpty)) ...[
                 Row(
                   children: [
-                    const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                    const Icon(Icons.shield, size: 16, color: Colors.purple),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'יישוב: ${f.settlement}',
+                        '${f.role} — ${f.name}',
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
