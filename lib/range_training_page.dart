@@ -561,6 +561,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           controller.dispose();
         }
         _textControllers.clear();
+
+        // ✅ FIX: נקה גם focus nodes כדי שחניכים שהוסרו לא ישאירו nodes עם keys ישנים
+        for (final node in _focusNodes.values) {
+          node.dispose();
+        }
+        _focusNodes.clear();
+
+        // ✅ FIX: עדכן _loadedDraftTrainees מיידית כדי שאם _updateAttendeesCount
+        // נקרא לפני ה-autosave, לא ישחזר חניכים שהוסרו
+        _loadedDraftTrainees = List<TraineeRowModel>.from(traineeRows);
       });
 
       // ✅ FIX: Save trainee names immediately after selection
