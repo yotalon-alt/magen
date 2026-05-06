@@ -820,7 +820,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   @override
   void dispose() {
     _draftListener?.cancel(); // ✅ Cancel real-time listener
-    _autoSaveTimer?.cancel();
+    // ✅ FIX: אם יש timer פעיל בעת יציאה — שמור מיד כדי לא לאבד נתונים
+    if (_autoSaveTimer?.isActive == true) {
+      _autoSaveTimer?.cancel();
+      _saveTemporarily(); // מופעל ברקע, לא מחכים — לא מאט את הניווט
+    } else {
+      _autoSaveTimer?.cancel();
+    }
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
     _manualStageController.dispose();
