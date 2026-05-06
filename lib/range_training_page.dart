@@ -261,6 +261,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   StreamSubscription<DocumentSnapshot>? _draftListener;
   bool _isLoadingRemoteChanges = false;
   String? _lastRemoteUpdateBy;
+  Map<String, dynamic>?
+  _pendingRemoteData; // ✅ FIX: snapshot שהגיע בזמן _isSaving
 
   // ✅ STABLE CONTROLLERS: Prevent focus loss on rebuild
   // Key format: "trainee_{idx}" for name fields, "trainee_{idx}_station_{stationIdx}" for numeric fields
@@ -3184,6 +3186,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // );
     } finally {
       _isSaving = false;
+      // ✅ FIX: עבד snapshot שהגיע בזמן השמירה
+      if (_pendingRemoteData != null) {
+        final pending = _pendingRemoteData!;
+        _pendingRemoteData = null;
+        debugPrint('🔄 REALTIME: Processing queued remote data after save');
+        _mergeRemoteChanges(pending);
+      }
     }
   }
 
@@ -3254,9 +3263,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   /// ✅ REAL-TIME SYNC: Merge remote changes with local state
   /// SMART MERGE: Keeps non-empty values from both local and remote
   void _mergeRemoteChanges(Map<String, dynamic> remoteData) {
-    // Prevent recursion (merging while saving)
-    if (_isLoadingRemoteChanges || _isSaving) {
-      debugPrint('⏸️ REALTIME: Skipping merge (already saving or loading)');
+    // Prevent recursion (merging while loading)
+    if (_isSaving) {
+      // ✅ FIX: שמור לעיבוד אחרי שהשמירה מסתיימת — אל תזרוק!
+      _pendingRemoteData = remoteData;
+      debugPrint('⏸️ REALTIME: Queued remote data (saving in progress)');
+      return;
+    }
+    if (_isLoadingRemoteChanges) {
+      debugPrint('⏸️ REALTIME: Skipping merge (already loading)');
       return;
     }
 
