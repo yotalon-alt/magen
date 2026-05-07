@@ -655,7 +655,13 @@ class _InstructorCourseFeedbackPageState
   @override
   void dispose() {
     _draftListener?.cancel(); // ✅ Cancel real-time listener
-    _autosaveTimer?.cancel();
+    // ✅ FIX: אם יש timer פעיל בעת יציאה — שמור מיד כדי לא לאבד נתונים
+    if (_autosaveTimer?.isActive == true) {
+      _autosaveTimer?.cancel();
+      _autosaveDraft(); // מופעל ברקע, לא מחכים — לא מאט את הניווט
+    } else {
+      _autosaveTimer?.cancel();
+    }
     _hativaController.dispose();
     _candidateNameController.dispose();
     _hitsController.dispose();
