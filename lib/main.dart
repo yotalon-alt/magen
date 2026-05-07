@@ -19,6 +19,7 @@ import 'surprise_drills_entry_page.dart';
 import 'training_summary_entry_page.dart';
 import 'weapon_reset_page.dart';
 import 'widgets/standard_back_button.dart';
+import 'widgets/connectivity_banner.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
 import 'services/trainee_autocomplete_service.dart';
@@ -1676,52 +1677,54 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
-        body: Stack(
-          children: [
-            SafeArea(
-              child: _loadingData
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 12),
-                          Text('טוען נתונים...'),
-                        ],
-                      ),
-                    )
-                  : IndexedStack(index: selectedIndex, children: _pages),
-            ),
-          ],
-        ),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: selectedIndex,
-          onTap: (i) => setState(() => selectedIndex = i),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.blueGrey.shade900,
-          selectedItemColor: Colors.orangeAccent,
-          unselectedItemColor: Colors.white,
-          showUnselectedLabels: true,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'בית'),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment),
-              label: 'תרגילים',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.feedback),
-              label: 'משובים',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart),
-              label: 'סטטיסטיקה',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book),
-              label: 'חומר עיוני',
-            ),
-          ],
+      child: ConnectivityBanner(
+        child: Scaffold(
+          body: Stack(
+            children: [
+              SafeArea(
+                child: _loadingData
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 12),
+                            Text('טוען נתונים...'),
+                          ],
+                        ),
+                      )
+                    : IndexedStack(index: selectedIndex, children: _pages),
+              ),
+            ],
+          ),
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: selectedIndex,
+            onTap: (i) => setState(() => selectedIndex = i),
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.blueGrey.shade900,
+            selectedItemColor: Colors.orangeAccent,
+            unselectedItemColor: Colors.white,
+            showUnselectedLabels: true,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'בית'),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.assignment),
+                label: 'תרגילים',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.feedback),
+                label: 'משובים',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart),
+                label: 'סטטיסטיקה',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.menu_book),
+                label: 'חומר עיוני',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2560,7 +2563,13 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   @override
   void dispose() {
-    _autosaveTimer?.cancel();
+    // ✅ FIX: אם יש timer פעיל בעת יציאה — שמור מיד כדי לא לאבד נתונים
+    if (_autosaveTimer?.isActive == true) {
+      _autosaveTimer?.cancel();
+      _saveDraft(); // מופעל ברקע, לא מחכים — לא מאט את הניווט
+    } else {
+      _autosaveTimer?.cancel();
+    }
     settlementController.dispose();
     evaluatedNameController.dispose();
     scenarioController.dispose();
@@ -3622,7 +3631,13 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   @override
   void dispose() {
-    _autosaveTimer?.cancel(); // ✨ Cancel autosave timer
+    // ✅ FIX: אם יש timer פעיל בעת יציאה — שמור מיד כדי לא לאבד נתונים
+    if (_autosaveTimer?.isActive == true) {
+      _autosaveTimer?.cancel();
+      _saveDraft(); // מופעל ברקע, לא מחכים — לא מאט את הניווט
+    } else {
+      _autosaveTimer?.cancel(); // ✨ Cancel autosave timer
+    }
     _attendeesCountController.dispose();
     _instructorsCountController.dispose();
     _trainingTypeController.dispose();
