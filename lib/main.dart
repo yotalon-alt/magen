@@ -11733,7 +11733,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     ),
                     elevation: 8,
                   ),
-                  child: const Text('סטטיסטיקה מטווחים'),
+                  child: const Text('סטטיסטיקת מטווחים'),
                 ),
               ),
               const SizedBox(height: 32),
@@ -11760,7 +11760,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     ),
                     elevation: 8,
                   ),
-                  child: const Text('סטטיסטיקה תרגילי הפתעה'),
+                  child: const Text('סטטיסטיקת תרגילי הפתעה'),
                 ),
               ),
               const SizedBox(height: 32),
@@ -11954,8 +11954,8 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
     // role aggregates
     final Map<String, List<int>> roleValues = {};
-    // instructor aggregates
-    final Map<String, List<int>> instrValues = {};
+    // settlement aggregates
+    final Map<String, List<int>> settlementValues = {};
 
     for (final f in filtered) {
       // Per-exercise criterion aggregation
@@ -11986,13 +11986,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
           }
         }
       }
-      if (f.instructorName.isNotEmpty) {
-        instrValues.putIfAbsent(f.instructorName, () => []);
+      if (f.settlement.isNotEmpty) {
+        settlementValues.putIfAbsent(f.settlement, () => []);
         for (final v in f.scores.values) {
           if (v != 0) {
-            final list = instrValues[f.instructorName];
+            final list = settlementValues[f.settlement];
             if (list == null) {
-              instrValues[f.instructorName] = [v];
+              settlementValues[f.settlement] = [v];
             } else {
               list.add(v);
             }
@@ -12087,7 +12087,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                       'מעגל פרוץ – ממוצע לפי קריטריון',
                       'סריקות רחוב – ממוצע לפי קריטריון',
                       'ממוצע לפי תפקיד',
-                      'ממוצע לפי מדריך',
+                      'ממוצע לפי יישוב',
                     ],
                     onExport: (selectedSections) async {
                       final sectionsData =
@@ -12138,17 +12138,17 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                         sectionsData['ממוצע לפי תפקיד'] = data;
                       }
 
-                      if (selectedSections.contains('ממוצע לפי מדריך')) {
+                      if (selectedSections.contains('ממוצע לפי יישוב')) {
                         final data = <Map<String, dynamic>>[];
-                        for (final entry in instrValues.entries) {
+                        for (final entry in settlementValues.entries) {
                           final avg = avgOf(entry.value);
                           data.add({
-                            'מדריך': entry.key,
+                            'יישוב': entry.key,
                             'ממוצע': avg.toStringAsFixed(1),
                             'מספר הערכות': entry.value.length,
                           });
                         }
-                        sectionsData['ממוצע לפי מדריך'] = data;
+                        sectionsData['ממוצע לפי יישוב'] = data;
                       }
 
                       return sectionsData;
@@ -12711,24 +12711,62 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               const Divider(),
               const SizedBox(height: 8),
               const Text(
-                'ממוצע לפי מדריך',
+                'ממוצע לפי יישוב',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              if (instrValues.isEmpty)
+              if (settlementValues.isEmpty)
                 const ListTile(title: Text('-'))
               else
-                ...instrValues.entries.map((e) {
+                ...settlementValues.entries.map((e) {
                   final a = avgOf(e.value);
-                  return ListTile(
-                    dense: true,
-                    title: Text(
-                      e.key,
-                      style: const TextStyle(color: Colors.black87),
-                    ),
-                    trailing: Text(
-                      a.toStringAsFixed(1),
-                      style: const TextStyle(color: Colors.greenAccent),
+                  final pct = (a / 5.0).clamp(0.0, 1.0);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e.key,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: FractionallySizedBox(
+                                  widthFactor: pct,
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.teal,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              a.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Colors.teal,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   );
                 }),
@@ -12989,7 +13027,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('סטטיסטיקה מטווחים'),
+          title: const Text('סטטיסטיקת מטווחים'),
           leading: const StandardBackButton(),
           actions: [
             IconButton(
@@ -12999,11 +13037,10 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 showDialog(
                   context: context,
                   builder: (ctx) => StatisticsExportDialog(
-                    tabName: 'סטטיסטיקה מטווחים',
+                    tabName: 'סטטיסטיקת מטווחים',
                     availableSections: const [
                       'ממוצע לפי יישוב',
                       'ממוצע לפי מקצה',
-                      'מגמה לאורך זמן',
                     ],
                     onExport: (selectedSections) async {
                       final sectionsData =
@@ -13094,29 +13131,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           });
                         }
                         sectionsData['ממוצע לפי מקצה'] = data;
-                      }
-
-                      if (selectedSections.contains('מגמה לאורך זמן')) {
-                        final Map<String, List<int>> byDate = {};
-                        for (final f in filtered) {
-                          final d =
-                              '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
-                          byDate.putIfAbsent(d, () => []);
-                          for (final v in f.scores.values) {
-                            if (v != 0) byDate[d]!.add(v);
-                          }
-                        }
-                        final data = <Map<String, dynamic>>[];
-                        final entries = byDate.entries.toList()
-                          ..sort((a, b) => a.key.compareTo(b.key));
-                        for (final entry in entries) {
-                          data.add({
-                            'תאריך': entry.key,
-                            'ממוצע': avgOf(entry.value).toStringAsFixed(1),
-                            'מספר הערכות': entry.value.length,
-                          });
-                        }
-                        sectionsData['מגמה לאורך זמן'] = data;
                       }
 
                       return sectionsData;
@@ -13763,7 +13777,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                       alignment: Alignment.centerRight,
                                       child: Container(
                                         decoration: BoxDecoration(
-                                          color: Colors.greenAccent,
+                                          color: Colors.teal,
                                           borderRadius: BorderRadius.circular(
                                             6,
                                           ),
@@ -13776,7 +13790,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 Text(
                                   '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
                                   style: const TextStyle(
-                                    color: Colors.greenAccent,
+                                    color: Colors.teal,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -13792,79 +13806,6 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
               const Divider(),
               const SizedBox(height: 8),
-              const Text(
-                'מגמה לאורך זמן (ממוצעים לפי יום)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              // Simple trend: group by date and show average of all scores that day
-              Builder(
-                builder: (ctx) {
-                  final Map<String, List<int>> byDate = {};
-                  for (final f in filtered) {
-                    final d =
-                        '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
-                    byDate.putIfAbsent(d, () => []);
-                    for (final v in f.scores.values) {
-                      if (v != 0) byDate[d]!.add(v);
-                    }
-                  }
-                  final entries = byDate.entries.toList()
-                    ..sort((a, b) => a.key.compareTo(b.key));
-                  if (entries.isEmpty) return const Text('-');
-                  return Column(
-                    children: entries.map((en) {
-                      final dayAvg = avgOf(en.value);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 120,
-                              child: Text(
-                                en.key,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Container(
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  color: Colors.white24,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: FractionallySizedBox(
-                                  widthFactor: (dayAvg / 5.0).clamp(0.0, 1.0),
-                                  alignment: Alignment.centerRight,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.purpleAccent,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              dayAvg.toStringAsFixed(1),
-                              style: const TextStyle(
-                                color: Colors.purpleAccent,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
             ],
           ),
         ),
@@ -16016,7 +15957,7 @@ class _SurpriseDrillsStatisticsPageState
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('סטטיסטיקה תרגילי הפתעה'),
+          title: const Text('סטטיסטיקת תרגילי הפתעה'),
           leading: const StandardBackButton(),
           actions: [
             IconButton(
@@ -16026,7 +15967,7 @@ class _SurpriseDrillsStatisticsPageState
                 showDialog(
                   context: context,
                   builder: (ctx) => StatisticsExportDialog(
-                    tabName: 'סטטיסטיקה תרגילי הפתעה',
+                    tabName: 'סטטיסטיקת תרגילי הפתעה',
                     availableSections: const [
                       'ממוצע לפי עיקרון (כללי)',
                       'ממוצע לפי יישוב',
