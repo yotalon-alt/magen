@@ -48,22 +48,27 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
 
   TrainingEvent? _existingEvent;
   bool _isDirty = false; // true only after user changes something
+  bool _isLoadingData = false; // true while loading existing event data
 
   @override
   void initState() {
     super.initState();
     _locationController.addListener(() {
-      if (!_isDirty && _locationController.text.isNotEmpty) {
+      if (!_isDirty && !_isLoadingData && _locationController.text.isNotEmpty) {
         setState(() => _isDirty = true);
       }
     });
     _customSettlementController.addListener(() {
-      if (!_isDirty && _customSettlementController.text.isNotEmpty) {
+      if (!_isDirty &&
+          !_isLoadingData &&
+          _customSettlementController.text.isNotEmpty) {
         setState(() => _isDirty = true);
       }
     });
     _customTrainingTypeController.addListener(() {
-      if (!_isDirty && _customTrainingTypeController.text.isNotEmpty) {
+      if (!_isDirty &&
+          !_isLoadingData &&
+          _customTrainingTypeController.text.isNotEmpty) {
         setState(() => _isDirty = true);
       }
     });
@@ -87,7 +92,10 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
 
   /// טען אירוע קיים לעריכה
   Future<void> _loadExistingEvent() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isLoadingData = true;
+    });
 
     final event = await TrainingProgram474Service.getTrainingEventById(
       widget.collectionName,
@@ -129,7 +137,10 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
       });
     }
 
-    setState(() => _isLoading = false);
+    setState(() {
+      _isLoading = false;
+      _isLoadingData = false;
+    });
   }
 
   /// האם מדריך יכול לערוך את המדריך הספציפי
