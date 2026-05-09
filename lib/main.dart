@@ -3038,7 +3038,6 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   bool get _hasUnsavedData {
     final hasAnyData =
-        selectedExercise != null ||
         selectedFolder != null ||
         evaluatedName.isNotEmpty ||
         scenario.isNotEmpty ||

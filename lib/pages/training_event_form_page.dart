@@ -47,10 +47,26 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
   ];
 
   TrainingEvent? _existingEvent;
+  bool _isDirty = false; // true only after user changes something
 
   @override
   void initState() {
     super.initState();
+    _locationController.addListener(() {
+      if (!_isDirty && _locationController.text.isNotEmpty) {
+        setState(() => _isDirty = true);
+      }
+    });
+    _customSettlementController.addListener(() {
+      if (!_isDirty && _customSettlementController.text.isNotEmpty) {
+        setState(() => _isDirty = true);
+      }
+    });
+    _customTrainingTypeController.addListener(() {
+      if (!_isDirty && _customTrainingTypeController.text.isNotEmpty) {
+        setState(() => _isDirty = true);
+      }
+    });
     if (widget.eventId != null) {
       _loadExistingEvent();
     }
@@ -141,7 +157,10 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
     );
 
     if (picked != null && mounted) {
-      setState(() => _selectedDate = picked);
+      setState(() {
+        _selectedDate = picked;
+        _isDirty = true;
+      });
     }
   }
 
@@ -158,6 +177,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
     setState(() {
       _selectedInstructors.add(name);
       _customInstructorController.clear();
+      _isDirty = true;
     });
   }
 
@@ -249,11 +269,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
     }
   }
 
-  bool get _hasUnsavedData =>
-      _selectedSettlement != null ||
-      _selectedTrainingType != null ||
-      _locationController.text.isNotEmpty ||
-      _selectedInstructors.isNotEmpty;
+  bool get _hasUnsavedData => _isDirty;
 
   Future<void> _handleBackPress() async {
     if (_hasUnsavedData) {
@@ -469,6 +485,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
                   setState(() {
                     _selectedSettlement = val;
                     _showCustomSettlement = val == 'אחר...';
+                    _isDirty = true;
                   });
                 },
           validator: (val) =>
@@ -525,6 +542,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
                   setState(() {
                     _selectedTrainingType = val;
                     _showCustomTrainingType = val == 'אחר...';
+                    _isDirty = true;
                   });
                 },
           validator: (val) =>
@@ -599,9 +617,10 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
                         ? const Icon(Icons.close, size: 18)
                         : null,
                     onDeleted: canEdit
-                        ? () => setState(
-                            () => _selectedInstructors.remove(instructor),
-                          )
+                        ? () => setState(() {
+                            _selectedInstructors.remove(instructor);
+                            _isDirty = true;
+                          })
                         : null,
                     backgroundColor: canEdit
                         ? Colors.blue.shade100
@@ -631,6 +650,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
                           } else {
                             _selectedInstructors.remove(instructor);
                           }
+                          _isDirty = true;
                         });
                       }
                     : null,
