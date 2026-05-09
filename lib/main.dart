@@ -2418,8 +2418,6 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     'פוש',
     'הכרזה',
     'הפצה',
-    'מיקום המפקד',
-    'מיקום הכוח',
     'חיילות פרט',
     'מקצועיות המחלקה',
     'הבנת האירוע',
@@ -2446,16 +2444,12 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
 
   // Full criteria list for סריקות רחוב (without פוש, הפצה, מיקום הכוח; תפקוד באירוע last)
   static const List<String> _sarikotRekhovCriteria = [
-    'הכרזה',
-    'מיקום המפקד',
-    'חיילות פרט',
-    'מקצועיות המחלקה',
-    'הבנת האירוע',
     'אבטחה היקפית',
     'שמירה על קשר בתוך הכוח הסורק',
     'שליטה בכוח',
     'יצירת גירוי והאזנה לשטח',
     'עבודה ממרכז הרחוב והחוצה',
+    'מיקום המפקד',
     'תפקוד באירוע',
   ];
 
@@ -3401,10 +3395,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                 c,
               ) {
                 final val = scores[c] ?? 0;
-                // Use 1-5 scale for "תפקוד באירוע", 1,3,5 for others
-                final scoreOptions = c == 'תפקוד באירוע'
-                    ? [1, 2, 3, 4, 5]
-                    : [1, 3, 5];
+                final scoreOptions = [1, 2, 3, 4, 5];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
                   child: Column(
@@ -11813,19 +11804,6 @@ class GeneralStatisticsPage extends StatefulWidget {
 }
 
 class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
-  // topic display names (Hebrew)
-  static const Map<String, String> topicMap = {
-    'פוש': 'פוש',
-    'הכרזה': 'הכרזה',
-    'הפצה': 'הפצה',
-    'מיקום המפקד': 'מיקום המפקד',
-    'מיקום הכוח': 'מיקום הכוח',
-    'חיילות פרט': 'חיילות פרט',
-    'מקצועיות המחלקה': 'מקצועיות המחלקה',
-    'הבנת האירוע': 'הבנת האירוע',
-    'תפקוד באירוע': 'תפקוד באירוע',
-  };
-
   // roles available for filtering (Hebrew)
   static const List<String> availableRoles = [
     'כל התפקידים',
@@ -11928,19 +11906,80 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
     final isAdmin = currentUser?.role == 'Admin';
 
-    // topic aggregates
-    final Map<String, List<int>> topicValues = {
-      for (final k in topicMap.keys) k: [],
+    // Criteria per exercise type
+    const maagalPatuachCriteria = [
+      'פוש',
+      'הכרזה',
+      'הפצה',
+      'מיקום המפקד',
+      'מיקום הכוח',
+      'חיילות פרט',
+      'מקצועיות המחלקה',
+      'הבנת האירוע',
+      'עקרונות לחימה',
+      'חתירה למגע',
+      'תפקוד באירוע',
+    ];
+    const maagalPoruzCriteria = [
+      'פוש',
+      'הכרזה',
+      'הפצה',
+      'מיקום המפקד',
+      'מיקום הכוח',
+      'חיילות פרט',
+      'מקצועיות המחלקה',
+      'הבנת האירוע',
+      'מיקום העתודה',
+      'שימוש בעתודה',
+      'קבלת החלטות',
+      'תפקוד באירוע',
+    ];
+    const sarikotRekhovCriteria = [
+      'הכרזה',
+      'מיקום המפקד',
+      'חיילות פרט',
+      'מקצועיות המחלקה',
+      'הבנת האירוע',
+      'אבטחה היקפית',
+      'שמירה על קשר בתוך הכוח הסורק',
+      'שליטה בכוח',
+      'יצירת גירוי והאזנה לשטח',
+      'עבודה ממרכז הרחוב והחוצה',
+      'תפקוד באירוע',
+    ];
+
+    final Map<String, List<int>> maagalPatuachValues = {
+      for (final k in maagalPatuachCriteria) k: [],
     };
+    final Map<String, List<int>> maagalPoruzValues = {
+      for (final k in maagalPoruzCriteria) k: [],
+    };
+    final Map<String, List<int>> sarikotRekhovValues = {
+      for (final k in sarikotRekhovCriteria) k: [],
+    };
+
     // role aggregates
     final Map<String, List<int>> roleValues = {};
     // instructor aggregates
     final Map<String, List<int>> instrValues = {};
 
     for (final f in filtered) {
-      for (final t in topicMap.keys) {
-        final val = f.scores[t];
-        if (val != null && val != 0) topicValues[t]!.add(val);
+      // Per-exercise criterion aggregation
+      if (f.exercise == 'מעגל פתוח') {
+        for (final c in maagalPatuachCriteria) {
+          final val = f.scores[c];
+          if (val != null && val != 0) maagalPatuachValues[c]!.add(val);
+        }
+      } else if (f.exercise == 'מעגל פרוץ') {
+        for (final c in maagalPoruzCriteria) {
+          final val = f.scores[c];
+          if (val != null && val != 0) maagalPoruzValues[c]!.add(val);
+        }
+      } else if (f.exercise == 'סריקות רחוב') {
+        for (final c in sarikotRekhovCriteria) {
+          final val = f.scores[c];
+          if (val != null && val != 0) sarikotRekhovValues[c]!.add(val);
+        }
       }
       roleValues.putIfAbsent(f.role, () => []);
       for (final v in f.scores.values) {
@@ -11966,6 +12005,60 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
           }
         }
       }
+    }
+
+    // Helper to build criterion progress bar
+    Widget buildCriterionBar(String label, List<int> vals) {
+      final a = avgOf(vals);
+      final pct = (a / 5.0).clamp(0.0, 1.0);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: pct,
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.orangeAccent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  a.toStringAsFixed(1),
+                  style: const TextStyle(
+                    color: Colors.orangeAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
     }
 
     // lists for dropdowns
@@ -11996,29 +12089,47 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                   builder: (ctx) => StatisticsExportDialog(
                     tabName: 'סטטיסטיקת משובים',
                     availableSections: const [
-                      'ממוצע לפי קריטריון',
+                      'מעגל פתוח – ממוצע לפי קריטריון',
+                      'מעגל פרוץ – ממוצע לפי קריטריון',
+                      'סריקות רחוב – ממוצע לפי קריטריון',
                       'ממוצע לפי תפקיד',
                       'ממוצע לפי מדריך',
-                      'מגמה לאורך זמן',
                     ],
                     onExport: (selectedSections) async {
                       final sectionsData =
                           <String, List<Map<String, dynamic>>>{};
 
-                      if (selectedSections.contains('ממוצע לפי קריטריון')) {
-                        final data = <Map<String, dynamic>>[];
-                        for (final entry in topicValues.entries) {
-                          final vals = entry.value;
-                          if (vals.isNotEmpty) {
-                            data.add({
-                              'קריטריון': topicMap[entry.key] ?? entry.key,
-                              'ממוצע': avgOf(vals).toStringAsFixed(1),
-                              'מספר הערכות': vals.length,
-                            });
+                      void addCriterionSection(
+                        String sectionName,
+                        Map<String, List<int>> valuesMap,
+                      ) {
+                        if (selectedSections.contains(sectionName)) {
+                          final data = <Map<String, dynamic>>[];
+                          for (final entry in valuesMap.entries) {
+                            if (entry.value.isNotEmpty) {
+                              data.add({
+                                'קריטריון': entry.key,
+                                'ממוצע': avgOf(entry.value).toStringAsFixed(1),
+                                'מספר הערכות': entry.value.length,
+                              });
+                            }
                           }
+                          sectionsData[sectionName] = data;
                         }
-                        sectionsData['ממוצע לפי קריטריון'] = data;
                       }
+
+                      addCriterionSection(
+                        'מעגל פתוח – ממוצע לפי קריטריון',
+                        maagalPatuachValues,
+                      );
+                      addCriterionSection(
+                        'מעגל פרוץ – ממוצע לפי קריטריון',
+                        maagalPoruzValues,
+                      );
+                      addCriterionSection(
+                        'סריקות רחוב – ממוצע לפי קריטריון',
+                        sarikotRekhovValues,
+                      );
 
                       if (selectedSections.contains('ממוצע לפי תפקיד')) {
                         final data = <Map<String, dynamic>>[];
@@ -12044,29 +12155,6 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                           });
                         }
                         sectionsData['ממוצע לפי מדריך'] = data;
-                      }
-
-                      if (selectedSections.contains('מגמה לאורך זמן')) {
-                        final Map<String, List<int>> byDate = {};
-                        for (final f in filtered) {
-                          final d =
-                              '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
-                          byDate.putIfAbsent(d, () => []);
-                          for (final v in f.scores.values) {
-                            if (v != 0) byDate[d]!.add(v);
-                          }
-                        }
-                        final data = <Map<String, dynamic>>[];
-                        final entries = byDate.entries.toList()
-                          ..sort((a, b) => a.key.compareTo(b.key));
-                        for (final entry in entries) {
-                          data.add({
-                            'תאריך': entry.key,
-                            'ממוצע': avgOf(entry.value).toStringAsFixed(1),
-                            'מספר הערכות': entry.value.length,
-                          });
-                        }
-                        sectionsData['מגמה לאורך זמן'] = data;
                       }
 
                       return sectionsData;
@@ -12504,66 +12592,65 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
               const SizedBox(height: 12),
               const Text(
-                'ממוצע לפי קריטריון',
+                'מעגל פתוח – ממוצע לפי קריטריון',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              ...topicMap.entries.map((e) {
-                final key = e.key;
-                final label = e.value;
-                final vals = topicValues[key] ?? [];
-                final a = avgOf(vals);
-                final pct = (a / 5.0).clamp(0.0, 1.0);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // שם הקריטריון מעל הפס
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: FractionallySizedBox(
-                                widthFactor: pct,
-                                alignment: Alignment.centerRight,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.orangeAccent,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            vals.isEmpty ? '-' : a.toStringAsFixed(1),
-                            style: const TextStyle(
-                              color: Colors.orangeAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+              ...maagalPatuachCriteria
+                  .where((c) => (maagalPatuachValues[c] ?? []).isNotEmpty)
+                  .map((c) => buildCriterionBar(c, maagalPatuachValues[c]!)),
+              if (maagalPatuachCriteria.every(
+                (c) => (maagalPatuachValues[c] ?? []).isEmpty,
+              ))
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    'אין נתונים',
+                    style: TextStyle(color: Colors.grey),
                   ),
-                );
-              }),
+                ),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'מעגל פרוץ – ממוצע לפי קריטריון',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...maagalPoruzCriteria
+                  .where((c) => (maagalPoruzValues[c] ?? []).isNotEmpty)
+                  .map((c) => buildCriterionBar(c, maagalPoruzValues[c]!)),
+              if (maagalPoruzCriteria.every(
+                (c) => (maagalPoruzValues[c] ?? []).isEmpty,
+              ))
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    'אין נתונים',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'סריקות רחוב – ממוצע לפי קריטריון',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...sarikotRekhovCriteria
+                  .where((c) => (sarikotRekhovValues[c] ?? []).isNotEmpty)
+                  .map((c) => buildCriterionBar(c, sarikotRekhovValues[c]!)),
+              if (sarikotRekhovCriteria.every(
+                (c) => (sarikotRekhovValues[c] ?? []).isEmpty,
+              ))
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    'אין נתונים',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
 
               const Divider(),
               const SizedBox(height: 8),
@@ -12651,90 +12738,6 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     ),
                   );
                 }),
-
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                'מגמה לאורך זמן (ממוצעים לפי יום)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              // Simple trend: group by date and show average of all scores that day
-              Builder(
-                builder: (ctx) {
-                  final Map<String, List<int>> byDate = {};
-                  for (final f in filtered) {
-                    final d =
-                        '${f.createdAt.year}-${f.createdAt.month}-${f.createdAt.day}';
-                    byDate.putIfAbsent(d, () => []);
-                    for (final v in f.scores.values) {
-                      if (v != 0) byDate[d]!.add(v);
-                    }
-                  }
-                  final entries = byDate.entries.toList()
-                    ..sort((a, b) => a.key.compareTo(b.key));
-                  if (entries.isEmpty) return const Text('-');
-                  return Column(
-                    children: entries.map((en) {
-                      final dayAvg = avgOf(en.value);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 120,
-                              child: Text(
-                                en.key,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Container(
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  color: Colors.white24,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: FractionallySizedBox(
-                                  widthFactor: (dayAvg / 5.0).clamp(0.0, 1.0),
-                                  alignment: Alignment.centerRight,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.purpleAccent,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              dayAvg.toStringAsFixed(1),
-                              style: const TextStyle(
-                                color: Colors.purpleAccent,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 12),
-              const Text('הערה', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              const Text(
-                'חישובים משתמשים בציונים 1/3/5; ממוצעים מעוגלים לאחת עשרונית.',
-              ),
             ],
           ),
         ),
