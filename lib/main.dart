@@ -3036,6 +3036,45 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
     }
   }
 
+  bool get _hasUnsavedData {
+    final hasAnyData =
+        selectedExercise != null ||
+        selectedFolder != null ||
+        evaluatedName.isNotEmpty ||
+        scenario.isNotEmpty ||
+        settlement.isNotEmpty;
+    final draftNotYetSaved = _currentDraftId == null;
+    final timerPending = _autosaveTimer?.isActive ?? false;
+    return hasAnyData && (draftNotYetSaved || timerPending);
+  }
+
+  Future<void> _handleBackPress() async {
+    if (_hasUnsavedData) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('נתונים לא שמורים'),
+          content: const Text('יש נתונים שטרם נשמרו. אם תצא עכשיו, הם יאבדו.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('הישאר'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'צא ללא שמירה',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -3043,7 +3082,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text('משוב - ${selectedExercise ?? ''}'),
-          leading: const StandardBackButton(),
+          leading: StandardBackButton(onPressed: () => _handleBackPress()),
         ),
         body: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -3212,8 +3251,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   onChanged: (v) => setState(() => settlement = v ?? ''),
                 ),
                 const SizedBox(height: 12),
-              ] else if (selectedFolder == 'משובים – כללי' ||
-                  selectedFolder == 'תרגילים גזרתיים') ...[
+              ] else if (selectedFolder == 'משובים – כללי') ...[
                 // Other folders: Manual text field with autocomplete
                 const Text(
                   'יישוב',
@@ -3934,7 +3972,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
   /// ✅ Load trainees for autocomplete from previous training summaries
   Future<void> _loadTraineesForAutocomplete(String settlement) async {
-    if (settlement.isEmpty || trainingSummaryFolder != 'משוב סיכום אימון 474') {
+    if (settlement.isEmpty ||
+        (trainingSummaryFolder != 'משוב סיכום אימון 474' &&
+            trainingSummaryFolder != 'תרגילים גזרתיים')) {
       setState(() => _autocompleteTrainees = []);
       return;
     }
@@ -4573,8 +4613,7 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              if (trainingSummaryFolder == 'סיכום אימון כללי' ||
-                  trainingSummaryFolder == 'תרגילים גזרתיים') ...[
+              if (trainingSummaryFolder == 'סיכום אימון כללי') ...[
                 // General folder: free text input
                 TextField(
                   controller: TextEditingController(text: selectedSettlement)
@@ -5017,8 +5056,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                                 // Name column - Autocomplete for 474, TextField for general
                                 Expanded(
                                   child:
-                                      trainingSummaryFolder ==
-                                              'משוב סיכום אימון 474' &&
+                                      (trainingSummaryFolder ==
+                                                  'משוב סיכום אימון 474' ||
+                                              trainingSummaryFolder ==
+                                                  'תרגילים גזרתיים') &&
                                           _autocompleteTrainees.isNotEmpty
                                       ? Autocomplete<String>(
                                           optionsBuilder:

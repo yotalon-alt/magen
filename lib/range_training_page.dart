@@ -3922,6 +3922,40 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     }
   }
 
+  bool get _hasUnsavedData {
+    final hasAnyData = selectedSettlement != null;
+    final draftNotYetSaved = _editingFeedbackId == null;
+    final timerPending = _autoSaveTimer?.isActive ?? false;
+    return hasAnyData && (draftNotYetSaved || timerPending);
+  }
+
+  Future<void> _handleBackPress() async {
+    if (_hasUnsavedData) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('נתונים לא שמורים'),
+          content: const Text('יש נתונים שטרם נשמרו. אם תצא עכשיו, הם יאבדו.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('הישאר'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'צא ללא שמירה',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     // קביעת שם המטווח/תרגיל להצגה
@@ -3934,7 +3968,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(rangeTitle),
-          leading: const StandardBackButton(),
+          leading: StandardBackButton(onPressed: () => _handleBackPress()),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),

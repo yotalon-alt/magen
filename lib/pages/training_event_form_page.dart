@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import '../main.dart';
 import '../services/training_program_474_service.dart';
+import '../widgets/standard_back_button.dart';
 
 /// טופס הוספה/עריכה של אירוע אימון
 class TrainingEventFormPage extends StatefulWidget {
@@ -248,6 +249,39 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
     }
   }
 
+  bool get _hasUnsavedData =>
+      _selectedSettlement != null ||
+      _selectedTrainingType != null ||
+      _locationController.text.isNotEmpty ||
+      _selectedInstructors.isNotEmpty;
+
+  Future<void> _handleBackPress() async {
+    if (_hasUnsavedData) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('נתונים לא שמורים'),
+          content: const Text('יש נתונים שטרם נשמרו. אם תצא עכשיו, הם יאבדו.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('הישאר'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'צא ללא שמירה',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -255,6 +289,7 @@ class _TrainingEventFormPageState extends State<TrainingEventFormPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(_isEditMode ? 'עריכת אירוע אימון' : 'הוספת אירוע אימון'),
+          leading: StandardBackButton(onPressed: () => _handleBackPress()),
           actions: [
             if (_isEditMode && _isInstructor && !_isAdmin)
               Padding(
