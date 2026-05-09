@@ -2035,18 +2035,6 @@ class _HomePageState extends State<HomePage>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // MAIN HEADING
-                        const Text(
-                          'מגנים על הבית!!!',
-                          style: TextStyle(
-                            fontSize: 42,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orangeAccent,
-                            letterSpacing: 1.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
                         // MAIN CARD
                         Card(
                           elevation: 8,
@@ -2056,42 +2044,33 @@ class _HomePageState extends State<HomePage>
                           ),
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(
-                              minWidth: 280,
-                              maxWidth: 520,
+                              minWidth: 320,
+                              maxWidth: double.infinity,
                             ),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                vertical: 28.0,
-                                horizontal: 24.0,
+                                vertical: 48.0,
+                                horizontal: 48.0,
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: const [
                                   Text(
-                                    'מגן אנושי',
+                                    'מערכת ניהול אימונים ומשובים',
                                     style: TextStyle(
-                                      fontSize: 28,
+                                      fontSize: 36,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.black,
+                                      color: Color(0xFF2E7D32),
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
-                                  SizedBox(height: 8),
+                                  SizedBox(height: 10),
                                   Text(
-                                    'משוב בית הספר להגנת היישוב',
+                                    'הגמ"ר חטיבה 474',
                                     style: TextStyle(
-                                      fontSize: 16,
+                                      fontSize: 18,
                                       color: Colors.black87,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  SizedBox(height: 6),
-                                  Text(
-                                    'חטיבה 474',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black54,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
@@ -2100,7 +2079,7 @@ class _HomePageState extends State<HomePage>
                             ),
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 48),
                         // TRAINING PROGRAM 474 BUTTON
                         ConstrainedBox(
                           constraints: const BoxConstraints(
