@@ -11911,8 +11911,6 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       'פוש',
       'הכרזה',
       'הפצה',
-      'מיקום המפקד',
-      'מיקום הכוח',
       'חיילות פרט',
       'מקצועיות המחלקה',
       'הבנת האירוע',
@@ -11935,16 +11933,12 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       'תפקוד באירוע',
     ];
     const sarikotRekhovCriteria = [
-      'הכרזה',
-      'מיקום המפקד',
-      'חיילות פרט',
-      'מקצועיות המחלקה',
-      'הבנת האירוע',
       'אבטחה היקפית',
       'שמירה על קשר בתוך הכוח הסורק',
       'שליטה בכוח',
       'יצירת גירוי והאזנה לשטח',
       'עבודה ממרכז הרחוב והחוצה',
+      'מיקום המפקד',
       'תפקוד באירוע',
     ];
 
@@ -17314,6 +17308,9 @@ class _SectoralSubFolderView extends StatefulWidget {
 class _SectoralSubFolderViewState extends State<_SectoralSubFolderView> {
   late List<FeedbackModel> _feedbacks;
 
+  // Refresh state
+  bool _isRefreshing = false;
+
   // Filter state
   bool _isFiltersExpanded = false;
   String _filterSettlement = 'הכל';
@@ -17435,6 +17432,31 @@ class _SectoralSubFolderViewState extends State<_SectoralSubFolderView> {
       _filterDateFrom = null;
       _filterDateTo = null;
     });
+  }
+
+  Future<void> _refreshFeedbacks() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      _buildFeedbackList();
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('רשימת המשובים עודכנה')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בטעינת משובים: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
   }
 
   Future<void> _exportFeedbacks() async {
@@ -17867,6 +17889,21 @@ class _SectoralSubFolderViewState extends State<_SectoralSubFolderView> {
           title: Text(title),
           leading: const StandardBackButton(),
           actions: [
+            // Refresh button
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refreshFeedbacks,
+              tooltip: 'רענן רשימה',
+            ),
             // Export button
             IconButton(
               icon: _isExporting
