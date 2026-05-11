@@ -5879,14 +5879,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final controller = TextEditingController(
       text: currentValue > 0 ? currentValue.toString() : '',
     );
-    final focusNode = FocusNode();
     await showDialog<void>(
       context: context,
       barrierColor: Colors.black45,
       builder: (ctx) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          focusNode.requestFocus();
-        });
         return Directionality(
           textDirection: TextDirection.rtl,
           child: Align(
@@ -5927,7 +5923,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       const SizedBox(height: 16),
                       TextField(
                         controller: controller,
-                        focusNode: focusNode,
                         autofocus: true,
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -5952,8 +5947,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             child: const Text('ביטול'),
                           ),
                           const SizedBox(width: 8),
-                          GestureDetector(
-                            onTapDown: (_) {
+                          ElevatedButton(
+                            onPressed: () {
                               final val = int.tryParse(controller.text) ?? 0;
                               if (maxValue > 0 && val > maxValue) {
                                 ScaffoldMessenger.of(ctx).showSnackBar(
@@ -5969,10 +5964,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               onConfirm(val);
                               Navigator.pop(ctx);
                             },
-                            child: ElevatedButton(
-                              onPressed: () {},
-                              child: const Text('אישור'),
-                            ),
+                            child: const Text('אישור'),
                           ),
                         ],
                       ),
@@ -5986,7 +5978,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       },
     );
     controller.dispose();
-    focusNode.dispose();
   }
 
   /// Opens a bottom sheet for entering hits + time for בוחן רמה stations — keyboard-aware layout
@@ -6004,14 +5995,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final timeController = TextEditingController(
       text: currentTime > 0 ? currentTime.toString() : '',
     );
-    final focusNode = FocusNode();
     await showDialog<void>(
       context: context,
       barrierColor: Colors.black45,
       builder: (ctx) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          focusNode.requestFocus();
-        });
         return Directionality(
           textDirection: TextDirection.rtl,
           child: Align(
@@ -6052,7 +6039,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       const SizedBox(height: 16),
                       TextField(
                         controller: hitsController,
-                        focusNode: focusNode,
                         autofocus: true,
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -6098,8 +6084,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             child: const Text('ביטול'),
                           ),
                           const SizedBox(width: 8),
-                          GestureDetector(
-                            onTapDown: (_) {
+                          ElevatedButton(
+                            onPressed: () {
                               final hits =
                                   int.tryParse(hitsController.text) ?? 0;
                               final time =
@@ -6118,10 +6104,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               onConfirm(hits, time);
                               Navigator.pop(ctx);
                             },
-                            child: ElevatedButton(
-                              onPressed: () {},
-                              child: const Text('אישור'),
-                            ),
+                            child: const Text('אישור'),
                           ),
                         ],
                       ),
@@ -6136,7 +6119,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     );
     hitsController.dispose();
     timeController.dispose();
-    focusNode.dispose();
   }
 
   Widget _buildTraineesTable() {
