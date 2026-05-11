@@ -5876,103 +5876,155 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     required int maxValue,
     required void Function(int) onConfirm,
   }) async {
-    final controller = TextEditingController(
-      text: currentValue > 0 ? currentValue.toString() : '',
-    );
+    String value = currentValue > 0 ? currentValue.toString() : '';
     await showDialog<void>(
       context: context,
       barrierColor: Colors.black45,
       builder: (ctx) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: Dialog(
-            alignment: const Alignment(0, -0.5),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: IntrinsicWidth(
-                stepWidth: 280,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      traineeName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            void onKey(String key) {
+              setDialogState(() {
+                if (key == '⌫') {
+                  if (value.isNotEmpty) {
+                    value = value.substring(0, value.length - 1);
+                  }
+                } else {
+                  value += key;
+                }
+              });
+            }
+
+            Widget numKey(String k) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(3),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    textStyle: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Text(
-                      stationName,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-                    if (maxValue > 0) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'מקסימום: $maxValue',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        labelText: label,
-                        border: const OutlineInputBorder(),
-                      ),
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                  ),
+                  onPressed: () => onKey(k),
+                  child: Text(k),
+                ),
+              ),
+            );
+
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: Dialog(
+                alignment: Alignment.center,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: IntrinsicWidth(
+                    stepWidth: 280,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('ביטול'),
+                        Text(
+                          traineeName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () {
-                            final val = int.tryParse(controller.text) ?? 0;
-                            if (maxValue > 0 && val > maxValue) {
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'הערך לא יכול לעלות על $maxValue',
-                                  ),
-                                  duration: const Duration(seconds: 1),
-                                ),
-                              );
-                              return;
-                            }
-                            onConfirm(val);
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text('אישור'),
+                        Text(
+                          stationName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (maxValue > 0) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'מקסימום: $maxValue',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.blue, width: 2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            value.isEmpty ? '0' : value,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(children: [numKey('7'), numKey('8'), numKey('9')]),
+                        Row(children: [numKey('4'), numKey('5'), numKey('6')]),
+                        Row(children: [numKey('1'), numKey('2'), numKey('3')]),
+                        Row(
+                          children: [
+                            const Expanded(child: SizedBox()),
+                            numKey('0'),
+                            numKey('⌫'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('ביטול'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () {
+                                final val = int.tryParse(value) ?? 0;
+                                if (maxValue > 0 && val > maxValue) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'הערך לא יכול לעלות על $maxValue',
+                                      ),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                onConfirm(val);
+                                Navigator.pop(ctx);
+                              },
+                              child: const Text('אישור'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
-    controller.dispose();
   }
 
   /// Opens a bottom sheet for entering hits + time for בוחן רמה stations — keyboard-aware layout
@@ -5984,130 +6036,199 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     required double currentTime,
     required void Function(int hits, double time) onConfirm,
   }) async {
-    final hitsController = TextEditingController(
-      text: currentHits > 0 ? currentHits.toString() : '',
-    );
-    final timeController = TextEditingController(
-      text: currentTime > 0 ? currentTime.toString() : '',
-    );
+    String hitsValue = currentHits > 0 ? currentHits.toString() : '';
+    String timeValue = currentTime > 0 ? currentTime.toString() : '';
+    int activeField = 0; // 0=hits, 1=time
+
     await showDialog<void>(
       context: context,
       barrierColor: Colors.black45,
       builder: (ctx) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: Dialog(
-            alignment: const Alignment(0, -0.5),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: IntrinsicWidth(
-                stepWidth: 280,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      traineeName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            void onKey(String key) {
+              setDialogState(() {
+                if (activeField == 0) {
+                  if (key == '⌫') {
+                    if (hitsValue.isNotEmpty) {
+                      hitsValue = hitsValue.substring(0, hitsValue.length - 1);
+                    }
+                  } else if (key != '.') {
+                    hitsValue += key;
+                  }
+                } else {
+                  if (key == '⌫') {
+                    if (timeValue.isNotEmpty) {
+                      timeValue = timeValue.substring(0, timeValue.length - 1);
+                    }
+                  } else if (key == '.') {
+                    if (!timeValue.contains('.')) timeValue += '.';
+                  } else {
+                    timeValue += key;
+                  }
+                }
+              });
+            }
+
+            final dotDisabled = activeField == 0;
+
+            Widget numKey(String k, {bool disabled = false}) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(3),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    textStyle: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Text(
-                      stationName,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
+                    backgroundColor: disabled ? Colors.grey.shade300 : null,
+                    foregroundColor: disabled ? Colors.grey : null,
+                  ),
+                  onPressed: disabled ? null : () => onKey(k),
+                  child: Text(k),
+                ),
+              ),
+            );
+
+            Widget fieldDisplay(String fieldLabel, String val, int fieldIndex) {
+              final isActive = activeField == fieldIndex;
+              return GestureDetector(
+                onTap: () => setDialogState(() => activeField = fieldIndex),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isActive ? Colors.blue : Colors.grey.shade400,
+                      width: isActive ? 2.5 : 1.5,
                     ),
-                    if (maxHits > 0) ...[
-                      const SizedBox(height: 4),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
                       Text(
-                        'מקסימום פגיעות: $maxHits',
-                        style: const TextStyle(
+                        fieldLabel,
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.blue,
+                          color: isActive ? Colors.blue : Colors.grey,
+                        ),
+                      ),
+                      Text(
+                        val.isEmpty ? '0' : val,
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: hitsController,
-                      autofocus: true,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        labelText: 'פגיעות',
-                        border: OutlineInputBorder(),
-                      ),
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: timeController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d*$'),
-                        ),
-                      ],
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        labelText: 'זמן (שניות)',
-                        border: OutlineInputBorder(),
-                      ),
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                  ),
+                ),
+              );
+            }
+
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: Dialog(
+                alignment: Alignment.center,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: IntrinsicWidth(
+                    stepWidth: 300,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('ביטול'),
+                        Text(
+                          traineeName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () {
-                            final hits = int.tryParse(hitsController.text) ?? 0;
-                            final time =
-                                double.tryParse(timeController.text) ?? 0.0;
-                            if (maxHits > 0 && hits > maxHits) {
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'פגיעות לא יכולות לעלות על $maxHits',
-                                  ),
-                                  duration: const Duration(seconds: 1),
-                                ),
-                              );
-                              return;
-                            }
-                            onConfirm(hits, time);
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text('אישור'),
+                        Text(
+                          stationName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (maxHits > 0) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'מקסימום פגיעות: $maxHits',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        fieldDisplay('פגיעות', hitsValue, 0),
+                        const SizedBox(height: 8),
+                        fieldDisplay('זמן (שניות)', timeValue, 1),
+                        const SizedBox(height: 10),
+                        Row(children: [numKey('7'), numKey('8'), numKey('9')]),
+                        Row(children: [numKey('4'), numKey('5'), numKey('6')]),
+                        Row(children: [numKey('1'), numKey('2'), numKey('3')]),
+                        Row(
+                          children: [
+                            numKey('.', disabled: dotDisabled),
+                            numKey('0'),
+                            numKey('⌫'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('ביטול'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () {
+                                final hits = int.tryParse(hitsValue) ?? 0;
+                                final time = double.tryParse(timeValue) ?? 0.0;
+                                if (maxHits > 0 && hits > maxHits) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'פגיעות לא יכולות לעלות על $maxHits',
+                                      ),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                onConfirm(hits, time);
+                                Navigator.pop(ctx);
+                              },
+                              child: const Text('אישור'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
-    hitsController.dispose();
-    timeController.dispose();
   }
 
   Widget _buildTraineesTable() {
