@@ -62,6 +62,7 @@ class ShortRangeStageModel {
   final bool isManual; // True if "מקצה ידני"
   final int bulletsCount; // Bullet count for this stage
   final int? timeLimit; // Time limit in seconds - for "בוחן רמה" only
+  final bool isSharedTarget; // מטרה משותפת - bullets counted, hits not
 
   const ShortRangeStageModel({
     this.selectedStage,
@@ -69,6 +70,7 @@ class ShortRangeStageModel {
     this.isManual = false,
     this.bulletsCount = 0,
     this.timeLimit,
+    this.isSharedTarget = false,
   });
 
   /// Check if this stage is "בוחן רמה"
@@ -97,20 +99,24 @@ class LongRangeStageModel {
   // Short Range: Used for hit validation and percentage calculations
   int bulletsCount;
 
+  bool isSharedTarget; // מטרה משותפת - bullets counted, hits not
+
   LongRangeStageModel({
     required this.name,
     this.maxPoints = 0,
     this.achievedPoints = 0,
     this.isManual = false,
     this.bulletsCount = 0,
+    this.isSharedTarget = false,
   });
 
   Map<String, dynamic> toJson() => {
     'name': name,
-    'maxPoints': maxPoints, // Direct score value entered by instructor
+    'maxPoints': maxPoints,
     'achievedPoints': achievedPoints,
     'isManual': isManual,
-    'bulletsCount': bulletsCount, // For tracking only (doesn't affect scoring)
+    'bulletsCount': bulletsCount,
+    'isSharedTarget': isSharedTarget,
   };
 
   factory LongRangeStageModel.fromJson(Map<String, dynamic> json) {
@@ -120,6 +126,7 @@ class LongRangeStageModel {
       achievedPoints: (json['achievedPoints'] as num?)?.toInt() ?? 0,
       isManual: json['isManual'] as bool? ?? false,
       bulletsCount: (json['bulletsCount'] as num?)?.toInt() ?? 0,
+      isSharedTarget: json['isSharedTarget'] as bool? ?? false,
     );
   }
 }
@@ -155,6 +162,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     'מניפה',
     'בוחן רמה',
     'איפוס',
+    'מחסות ימין',
+    'מחסות שמאל',
+    'מחסות דילוגים',
     'מקצה ידני',
   ];
 
@@ -1237,9 +1247,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   int _getTraineeTotalHits(int traineeIndex) {
     if (traineeIndex >= traineeRows.length) return 0;
-
+    final displayStations = _getDisplayStations();
     int total = 0;
     traineeRows[traineeIndex].values.forEach((stationIndex, hits) {
+      // Skip shared target stations - bullets count, hits don't
+      if (stationIndex < displayStations.length &&
+          displayStations[stationIndex].isSharedTarget) {
+        return;
+      }
       total += hits;
     });
     return total;
@@ -2067,6 +2082,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'isManual': stage.isManual,
             'isLevelTester': stage.selectedStage == 'בוחן רמה',
             'selectedRubrics': ['זמן', 'פגיעות'],
+            'isSharedTarget': stage.isSharedTarget,
           };
         }).toList();
       } else if (_rangeType == 'ארוכים') {
@@ -2091,6 +2107,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'hits': null,
             'isLevelTester': false,
             'selectedRubrics': ['זמן', 'פגיעות'],
+            'isSharedTarget': stage.isSharedTarget,
           };
         }).toList();
       } else {
@@ -2970,6 +2987,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'isManual': stage.isManual,
             'isLevelTester': stage.selectedStage == 'בוחן רמה',
             'selectedRubrics': ['זמן', 'פגיעות'],
+            'isSharedTarget': stage.isSharedTarget,
           };
         }).toList();
         if (stationsData.isEmpty && stations.isNotEmpty) {
@@ -2993,6 +3011,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             'hits': null,
             'isLevelTester': false,
             'selectedRubrics': ['זמן', 'פגיעות'],
+            'isSharedTarget': stage.isSharedTarget,
           };
         }).toList();
         if (stationsData.isEmpty && stations.isNotEmpty) {
@@ -3544,10 +3563,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       ?.map((x) => x.toString())
                       .toList() ??
                   ['זמן', 'פגיעות'],
-              maxPoints: (m['maxPoints'] as num?)
-                  ?.toInt(), // Long Range: max score
-              achievedPoints: (m['achievedPoints'] as num?)
-                  ?.toInt(), // Long Range: achieved score
+              maxPoints: (m['maxPoints'] as num?)?.toInt(),
+              achievedPoints: (m['achievedPoints'] as num?)?.toInt(),
+              isSharedTarget: m['isSharedTarget'] as bool? ?? false,
             ),
           );
         }
@@ -3742,6 +3760,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   manualName: station.name,
                   isManual: true,
                   bulletsCount: bullets,
+                  isSharedTarget: station.isSharedTarget,
                 ),
               );
             } else {
@@ -3758,6 +3777,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     manualName: station.name,
                     isManual: true,
                     bulletsCount: bullets,
+                    isSharedTarget: station.isSharedTarget,
                   ),
                 );
               } else {
@@ -3767,6 +3787,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     manualName: '',
                     isManual: false,
                     bulletsCount: bullets,
+                    isSharedTarget: station.isSharedTarget,
                   ),
                 );
               }
@@ -3804,6 +3825,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                   bulletsCount: bulletsCount, // ✅ Tracking only
                   achievedPoints: achievedPoints, // ✅ Restore achieved points
                   isManual: isManual,
+                  isSharedTarget: station.isSharedTarget,
                 ),
               );
             }
@@ -5157,6 +5179,31 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     );
   }
 
+  /// Toggle shared target flag for a station column (long-press on header)
+  void _toggleSharedTarget(int stationIndex) {
+    setState(() {
+      if (_rangeType == 'קצרים' && stationIndex < shortRangeStagesList.length) {
+        final s = shortRangeStagesList[stationIndex];
+        shortRangeStagesList[stationIndex] = ShortRangeStageModel(
+          selectedStage: s.selectedStage,
+          manualName: s.manualName,
+          isManual: s.isManual,
+          bulletsCount: s.bulletsCount,
+          timeLimit: s.timeLimit,
+          isSharedTarget: !s.isSharedTarget,
+        );
+      } else if (_rangeType == 'ארוכים' &&
+          stationIndex < longRangeStagesList.length) {
+        longRangeStagesList[stationIndex].isSharedTarget =
+            !longRangeStagesList[stationIndex].isSharedTarget;
+      } else if (widget.mode == 'surprise' && stationIndex < stations.length) {
+        stations[stationIndex].isSharedTarget =
+            !stations[stationIndex].isSharedTarget;
+      }
+    });
+    _scheduleAutoSave();
+  }
+
   /// Build stations list from Short Range stages for table display
   List<RangeStation> _getDisplayStations() {
     if (_rangeType == 'קצרים' && shortRangeStagesList.isNotEmpty) {
@@ -5175,6 +5222,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           isManual: stage.isManual,
           isLevelTester: stage.selectedStage == 'בוחן רמה',
           selectedRubrics: ['זמן', 'פגיעות'],
+          isSharedTarget: stage.isSharedTarget,
         );
       }).toList();
     }
@@ -5190,6 +5238,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           isManual: stage.isManual,
           isLevelTester: false,
           selectedRubrics: ['זמן', 'פגיעות'],
+          isSharedTarget: stage.isSharedTarget,
         );
       }).toList();
     }
@@ -5303,59 +5352,88 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           final station = entry.value;
                           return SizedBox(
                             width: 95,
-                            child: Container(
-                              height: 56,
-                              padding: const EdgeInsets.all(4.0),
-                              decoration: BoxDecoration(
-                                color: station.isLevelTester
-                                    ? Colors.orange.shade50
-                                    : Colors.blueGrey.shade50,
-                                border: Border(
-                                  left: BorderSide(color: Colors.grey.shade300),
-                                  bottom: BorderSide(
-                                    color: Colors.grey.shade300,
+                            child: GestureDetector(
+                              onLongPress: () =>
+                                  _toggleSharedTarget(stationIndex),
+                              child: Container(
+                                height: 56,
+                                padding: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  color: station.isSharedTarget
+                                      ? Colors.purple.shade50
+                                      : station.isLevelTester
+                                      ? Colors.orange.shade50
+                                      : Colors.blueGrey.shade50,
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                    bottom: BorderSide(
+                                      color: station.isSharedTarget
+                                          ? Colors.purple.shade300
+                                          : Colors.grey.shade300,
+                                      width: station.isSharedTarget ? 2 : 1,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    station.name.isEmpty
-                                        ? 'שלב ${stationIndex + 1}'
-                                        : station.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                      color: station.isLevelTester
-                                          ? Colors.orange.shade900
-                                          : Colors.black87,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if ((station.maxPoints ?? 0) > 0) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'מקס: ${_rangeType == 'ארוכים' && stationIndex < longRangeStagesList.length ? longRangeStagesList[stationIndex].maxPoints : station.bulletsCount}',
-                                      style: TextStyle(
-                                        fontSize: 8,
-                                        color: station.isLevelTester
-                                            ? Colors.orange.shade700
-                                            : Colors.black54,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (station.isSharedTarget)
+                                      Icon(
+                                        Icons.people,
+                                        size: 12,
+                                        color: Colors.purple.shade600,
                                       ),
+                                    Text(
+                                      station.name.isEmpty
+                                          ? 'שלב ${stationIndex + 1}'
+                                          : station.name,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                        color: station.isSharedTarget
+                                            ? Colors.purple.shade800
+                                            : station.isLevelTester
+                                            ? Colors.orange.shade900
+                                            : Colors.black87,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
+                                    if (station.isSharedTarget)
+                                      Text(
+                                        'משותף',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          color: Colors.purple.shade600,
+                                        ),
+                                      )
+                                    else ...[
+                                      if ((station.maxPoints ?? 0) > 0) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'מקס: ${_rangeType == 'ארוכים' && stationIndex < longRangeStagesList.length ? longRangeStagesList[stationIndex].maxPoints : station.bulletsCount}',
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            color: station.isLevelTester
+                                                ? Colors.orange.shade700
+                                                : Colors.black54,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${_rangeType == 'ארוכים' && stationIndex < longRangeStagesList.length ? longRangeStagesList[stationIndex].maxPoints : station.bulletsCount}',
+                                        style: const TextStyle(
+                                          fontSize: 8,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                    ],
                                   ],
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${_rangeType == 'ארוכים' && stationIndex < longRangeStagesList.length ? longRangeStagesList[stationIndex].maxPoints : station.bulletsCount}',
-                                    style: const TextStyle(
-                                      fontSize: 8,
-                                      color: Colors.black54,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                           );
@@ -5507,6 +5585,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     entry,
                                   ) {
                                     final stationIndex = entry.key;
+                                    final station = entry.value;
                                     final currentScore = row.getValue(
                                       stationIndex,
                                     );
@@ -5514,6 +5593,37 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         'row_${rowIndex}_station_$stationIndex';
                                     final focusKey =
                                         'row_${rowIndex}_station_$stationIndex';
+                                    // מטרה משותפת: show locked cell
+                                    if (station.isSharedTarget) {
+                                      return SizedBox(
+                                        width: stationColumnWidth,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4.0),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.shade50,
+                                            border: Border(
+                                              left: BorderSide(
+                                                color: Colors.purple.shade200,
+                                              ),
+                                              bottom: BorderSide(
+                                                color: Colors.grey.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '~',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.purple.shade300,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
                                     return SizedBox(
                                       width: stationColumnWidth,
                                       child: Container(
@@ -5528,37 +5638,73 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                           ),
                                         ),
-                                        child: TextField(
-                                          controller: _getController(
-                                            controllerKey,
-                                            currentScore.toString(),
-                                          ),
-                                          focusNode: _getFocusNode(focusKey),
-                                          decoration: const InputDecoration(
-                                            hintText: '0',
-                                            isDense: true,
-                                            border: OutlineInputBorder(),
-                                            contentPadding:
-                                                EdgeInsets.symmetric(
-                                                  horizontal: 6,
-                                                  vertical: 6,
+                                        child:
+                                            displayStations[stationIndex]
+                                                .isSharedTarget
+                                            ? Container(
+                                                alignment: Alignment.center,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.purple.shade50,
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
                                                 ),
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(fontSize: 12),
-                                          maxLines: 1,
-                                          keyboardType: TextInputType.number,
-                                          onChanged: (v) {
-                                            final parsed = int.tryParse(v) ?? 0;
-                                            row.setValue(stationIndex, parsed);
-                                            _scheduleAutoSave();
-                                          },
-                                          onSubmitted: (v) {
-                                            final parsed = int.tryParse(v) ?? 0;
-                                            row.setValue(stationIndex, parsed);
-                                            _saveImmediately();
-                                          },
-                                        ),
+                                                child: Text(
+                                                  '~',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color:
+                                                        Colors.purple.shade300,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              )
+                                            : TextField(
+                                                controller: _getController(
+                                                  controllerKey,
+                                                  currentScore.toString(),
+                                                ),
+                                                focusNode: _getFocusNode(
+                                                  focusKey,
+                                                ),
+                                                decoration:
+                                                    const InputDecoration(
+                                                      hintText: '0',
+                                                      isDense: true,
+                                                      border:
+                                                          OutlineInputBorder(),
+                                                      contentPadding:
+                                                          EdgeInsets.symmetric(
+                                                            horizontal: 6,
+                                                            vertical: 6,
+                                                          ),
+                                                    ),
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                                maxLines: 1,
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                onChanged: (v) {
+                                                  final parsed =
+                                                      int.tryParse(v) ?? 0;
+                                                  row.setValue(
+                                                    stationIndex,
+                                                    parsed,
+                                                  );
+                                                  _scheduleAutoSave();
+                                                },
+                                                onSubmitted: (v) {
+                                                  final parsed =
+                                                      int.tryParse(v) ?? 0;
+                                                  row.setValue(
+                                                    stationIndex,
+                                                    parsed,
+                                                  );
+                                                  _saveImmediately();
+                                                },
+                                              ),
                                       ),
                                     );
                                   }),
@@ -5681,6 +5827,192 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         ),
       ),
     );
+  }
+
+  /// Opens a dialog for entering a numeric value — mobile-friendly large input
+  Future<void> _showCellInputDialog({
+    required String traineeName,
+    required String stationName,
+    required String label,
+    required int currentValue,
+    required int maxValue,
+    required void Function(int) onConfirm,
+  }) async {
+    final controller = TextEditingController(
+      text: currentValue > 0 ? currentValue.toString() : '',
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            traineeName,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                stationName,
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              if (maxValue > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'מקסימום: $maxValue',
+                  style: const TextStyle(fontSize: 12, color: Colors.blue),
+                ),
+              ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  labelText: label,
+                  border: const OutlineInputBorder(),
+                ),
+                style: const TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final val = int.tryParse(controller.text) ?? 0;
+                if (maxValue > 0 && val > maxValue) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('הערך לא יכול לעלות על $maxValue'),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                  return;
+                }
+                onConfirm(val);
+                Navigator.pop(ctx);
+              },
+              child: const Text('אישור'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+  }
+
+  /// Opens a dialog for entering hits + time for בוחן רמה stations
+  Future<void> _showLevelTesterDialog({
+    required String traineeName,
+    required String stationName,
+    required int currentHits,
+    required int maxHits,
+    required double currentTime,
+    required void Function(int hits, double time) onConfirm,
+  }) async {
+    final hitsController = TextEditingController(
+      text: currentHits > 0 ? currentHits.toString() : '',
+    );
+    final timeController = TextEditingController(
+      text: currentTime > 0 ? currentTime.toString() : '',
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            traineeName,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                stationName,
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              if (maxHits > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'מקסימום פגיעות: $maxHits',
+                  style: const TextStyle(fontSize: 12, color: Colors.blue),
+                ),
+              ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: hitsController,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  labelText: 'פגיעות',
+                  border: OutlineInputBorder(),
+                ),
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: timeController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                ],
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  labelText: 'זמן (שניות)',
+                  border: OutlineInputBorder(),
+                ),
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final hits = int.tryParse(hitsController.text) ?? 0;
+                final time = double.tryParse(timeController.text) ?? 0.0;
+                if (maxHits > 0 && hits > maxHits) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('פגיעות לא יכולות לעלות על $maxHits'),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                  return;
+                }
+                onConfirm(hits, time);
+                Navigator.pop(ctx);
+              },
+              child: const Text('אישור'),
+            ),
+          ],
+        );
+      },
+    );
+    hitsController.dispose();
+    timeController.dispose();
   }
 
   Widget _buildTraineesTable() {
@@ -5821,63 +6153,97 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       final station = entry.value;
                                       return SizedBox(
                                         width: 95,
-                                        child: Container(
-                                          height:
-                                              widget.mode == 'surprise' &&
-                                                  kIsWeb
-                                              ? 68
-                                              : 56,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            color: station.isLevelTester
-                                                ? Colors.orange.shade50
-                                                : Colors.blueGrey.shade50,
-                                            border: Border(
-                                              left: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade300,
+                                        child: GestureDetector(
+                                          onLongPress: () =>
+                                              _toggleSharedTarget(stationIndex),
+                                          child: Container(
+                                            height:
+                                                widget.mode == 'surprise' &&
+                                                    kIsWeb
+                                                ? 68
+                                                : 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: station.isSharedTarget
+                                                  ? Colors.purple.shade50
+                                                  : station.isLevelTester
+                                                  ? Colors.orange.shade50
+                                                  : Colors.blueGrey.shade50,
+                                              border: Border(
+                                                left: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                bottom: BorderSide(
+                                                  color: station.isSharedTarget
+                                                      ? Colors.purple.shade300
+                                                      : Colors.grey.shade300,
+                                                  width: station.isSharedTarget
+                                                      ? 2
+                                                      : 1,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                station.name.isEmpty
-                                                    ? '$_itemLabel ${stationIndex + 1}'
-                                                    : station.name,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 11,
-                                                  color: station.isLevelTester
-                                                      ? Colors.orange.shade800
-                                                      : Colors.black87,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                softWrap: false,
-                                              ),
-                                              if (stationIndex <
-                                                      longRangeStagesList
-                                                          .length &&
-                                                  longRangeStagesList[stationIndex]
-                                                          .maxPoints >
-                                                      0) ...[
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                if (station.isSharedTarget)
+                                                  Icon(
+                                                    Icons.people,
+                                                    size: 12,
+                                                    color:
+                                                        Colors.purple.shade600,
+                                                  ),
                                                 Text(
-                                                  '${longRangeStagesList[stationIndex].maxPoints}',
+                                                  station.name.isEmpty
+                                                      ? '$_itemLabel ${stationIndex + 1}'
+                                                      : station.name,
                                                   style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.grey.shade600,
-                                                    fontWeight: FontWeight.w600,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 11,
+                                                    color:
+                                                        station.isSharedTarget
+                                                        ? Colors.purple.shade800
+                                                        : station.isLevelTester
+                                                        ? Colors.orange.shade800
+                                                        : Colors.black87,
                                                   ),
                                                   textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  softWrap: false,
                                                 ),
+                                                if (station.isSharedTarget)
+                                                  Text(
+                                                    'משותף',
+                                                    style: TextStyle(
+                                                      fontSize: 8,
+                                                      color: Colors
+                                                          .purple
+                                                          .shade600,
+                                                    ),
+                                                  )
+                                                else if (stationIndex <
+                                                        longRangeStagesList
+                                                            .length &&
+                                                    longRangeStagesList[stationIndex]
+                                                            .maxPoints >
+                                                        0) ...[
+                                                  Text(
+                                                    '${longRangeStagesList[stationIndex].maxPoints}',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color:
+                                                          Colors.grey.shade600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ],
                                               ],
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       );
@@ -5986,113 +6352,150 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       ) {
                                         final stationIndex = entry.key;
                                         final station = entry.value;
-                                        return Container(
-                                          width: stationColumnWidth,
-                                          // ✅ WEB FIX: Increase height for surprise drills to show "מקס׳: 10" without clipping
-                                          height:
-                                              widget.mode == 'surprise' &&
-                                                  kIsWeb
-                                              ? 68
-                                              : 56,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            color: station.isLevelTester
-                                                ? Colors
-                                                      .orange
-                                                      .shade50 // Highlight בוחן רמה header
-                                                : Colors.blueGrey.shade50,
-                                            border: Border(
-                                              left: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade300,
+                                        return GestureDetector(
+                                          onLongPress: () =>
+                                              _toggleSharedTarget(stationIndex),
+                                          child: Container(
+                                            width: stationColumnWidth,
+                                            // ✅ WEB FIX: Increase height for surprise drills to show "מקס׳: 10" without clipping
+                                            height:
+                                                widget.mode == 'surprise' &&
+                                                    kIsWeb
+                                                ? 68
+                                                : 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: station.isSharedTarget
+                                                  ? Colors.purple.shade50
+                                                  : station.isLevelTester
+                                                  ? Colors.orange.shade50
+                                                  : Colors.blueGrey.shade50,
+                                              border: Border(
+                                                left: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                bottom: BorderSide(
+                                                  color: station.isSharedTarget
+                                                      ? Colors.purple.shade300
+                                                      : Colors.grey.shade300,
+                                                  width: station.isSharedTarget
+                                                      ? 2
+                                                      : 1,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                station.name.isEmpty
-                                                    ? '$_itemLabel ${stationIndex + 1}'
-                                                    : station.name,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 11,
-                                                  color: station.isLevelTester
-                                                      ? Colors.orange.shade800
-                                                      : Colors.black87,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                softWrap: false,
-                                              ),
-                                              // ✅ SURPRISE DRILLS: Show "מקס׳: 10" for each principle
-                                              if (widget.mode ==
-                                                  'surprise') ...[
-                                                const SizedBox(
-                                                  height: 2,
-                                                ), // ✅ WEB FIX: Add spacing for better visibility
-                                                const Text(
-                                                  'מקס׳: 10',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.black54,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ]
-                                              // בוחן רמה: Show bullet count number
-                                              else if (widget.mode == 'range' &&
-                                                  station.isLevelTester) ...[
-                                                Text(
-                                                  '${station.bulletsCount}',
-                                                  style: TextStyle(
-                                                    fontSize: 9,
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                if (station.isSharedTarget)
+                                                  Icon(
+                                                    Icons.people,
+                                                    size: 12,
                                                     color:
-                                                        Colors.orange.shade700,
-                                                    fontWeight: FontWeight.w600,
+                                                        Colors.purple.shade600,
                                                   ),
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ] else if (widget.mode ==
-                                                      'range' &&
-                                                  _rangeType == 'ארוכים' &&
-                                                  stationIndex <
-                                                      longRangeStagesList
-                                                          .length &&
-                                                  longRangeStagesList[stationIndex]
-                                                          .maxPoints >
-                                                      0) ...[
                                                 Text(
-                                                  '${longRangeStagesList[stationIndex].maxPoints}',
+                                                  station.name.isEmpty
+                                                      ? '$_itemLabel ${stationIndex + 1}'
+                                                      : station.name,
                                                   style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.grey.shade600,
-                                                    fontWeight: FontWeight.w600,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 11,
+                                                    color:
+                                                        station.isSharedTarget
+                                                        ? Colors.purple.shade800
+                                                        : station.isLevelTester
+                                                        ? Colors.orange.shade800
+                                                        : Colors.black87,
                                                   ),
                                                   textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  softWrap: false,
                                                 ),
-                                              ] else if (widget.mode ==
-                                                      'range' &&
-                                                  _rangeType == 'קצרים' &&
-                                                  station.bulletsCount > 0) ...[
-                                                // Short Range: Show just the number
-                                                Text(
-                                                  '${station.bulletsCount}',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.grey.shade600,
-                                                    fontWeight: FontWeight.w600,
+                                                if (station.isSharedTarget)
+                                                  Text(
+                                                    'משותף',
+                                                    style: TextStyle(
+                                                      fontSize: 8,
+                                                      color: Colors
+                                                          .purple
+                                                          .shade600,
+                                                    ),
+                                                  )
+                                                // ✅ SURPRISE DRILLS: Show "מקס׳: 10" for each principle
+                                                else if (widget.mode ==
+                                                    'surprise') ...[
+                                                  const SizedBox(height: 2),
+                                                  const Text(
+                                                    'מקס׳: 10',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.black54,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    textAlign: TextAlign.center,
                                                   ),
-                                                  textAlign: TextAlign.center,
-                                                ),
+                                                ]
+                                                // בוחן רמה: Show bullet count number
+                                                else if (widget.mode ==
+                                                        'range' &&
+                                                    station.isLevelTester) ...[
+                                                  Text(
+                                                    '${station.bulletsCount}',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      color: Colors
+                                                          .orange
+                                                          .shade700,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ] else if (widget.mode ==
+                                                        'range' &&
+                                                    _rangeType == 'ארוכים' &&
+                                                    stationIndex <
+                                                        longRangeStagesList
+                                                            .length &&
+                                                    longRangeStagesList[stationIndex]
+                                                            .maxPoints >
+                                                        0) ...[
+                                                  Text(
+                                                    '${longRangeStagesList[stationIndex].maxPoints}',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color:
+                                                          Colors.grey.shade600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ] else if (widget.mode ==
+                                                        'range' &&
+                                                    _rangeType == 'קצרים' &&
+                                                    station.bulletsCount >
+                                                        0) ...[
+                                                  // Short Range: Show just the number
+                                                  Text(
+                                                    '${station.bulletsCount}',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color:
+                                                          Colors.grey.shade600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ],
                                               ],
-                                            ],
+                                            ),
                                           ),
                                         );
                                       }),
@@ -6373,90 +6776,137 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                 entry,
                                               ) {
                                                 final stationIndex = entry.key;
+                                                final station = entry.value;
                                                 final currentValue = row
                                                     .getValue(stationIndex);
-                                                final controllerKey =
-                                                    'trainee_${traineeIdx}_station_$stationIndex';
-                                                final focusKey =
-                                                    'trainee_${traineeIdx}_station_$stationIndex';
+
+                                                // מטרה משותפת: bullets count but no hits
+                                                if (station.isSharedTarget) {
+                                                  return SizedBox(
+                                                    width: 95,
+                                                    height: rowHeight - 4,
+                                                    child: Container(
+                                                      margin:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 2.0,
+                                                            vertical: 1.0,
+                                                          ),
+                                                      alignment:
+                                                          Alignment.center,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors
+                                                            .purple
+                                                            .shade50,
+                                                        border: Border.all(
+                                                          color: Colors
+                                                              .purple
+                                                              .shade200,
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
+                                                            ),
+                                                      ),
+                                                      child: Text(
+                                                        '~',
+                                                        style: TextStyle(
+                                                          fontSize: 16,
+                                                          color: Colors
+                                                              .purple
+                                                              .shade300,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
 
                                                 return SizedBox(
                                                   width: 95,
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 2.0,
-                                                          vertical: 1.0,
-                                                        ),
-                                                    child: TextField(
-                                                      controller: _getController(
-                                                        controllerKey,
-                                                        row.values.containsKey(
+                                                  height: rowHeight - 4,
+                                                  child: InkWell(
+                                                    onTap: () async {
+                                                      final stationLabel =
+                                                          stationIndex <
+                                                              longRangeStagesList
+                                                                  .length
+                                                          ? longRangeStagesList[stationIndex]
+                                                                .name
+                                                          : 'מקצה ${stationIndex + 1}';
+                                                      final maxPoints =
+                                                          stationIndex <
+                                                              longRangeStagesList
+                                                                  .length
+                                                          ? longRangeStagesList[stationIndex]
+                                                                .maxPoints
+                                                          : 0;
+                                                      await _showCellInputDialog(
+                                                        traineeName: row.name,
+                                                        stationName:
+                                                            stationLabel,
+                                                        label: 'נקודות',
+                                                        currentValue:
+                                                            currentValue,
+                                                        maxValue: maxPoints,
+                                                        onConfirm: (val) {
+                                                          setState(
+                                                            () => row.setValue(
                                                               stationIndex,
-                                                            )
-                                                            ? currentValue
-                                                                  .toString()
-                                                            : '',
-                                                      ),
-                                                      focusNode: _getFocusNode(
-                                                        focusKey,
-                                                      ),
-                                                      decoration: const InputDecoration(
-                                                        hintText: '0',
-                                                        isDense: true,
-                                                        border:
-                                                            OutlineInputBorder(),
-                                                        contentPadding:
-                                                            EdgeInsets.symmetric(
-                                                              horizontal: 4,
-                                                              vertical: 8,
+                                                              val,
+                                                            ),
+                                                          );
+                                                          _scheduleAutoSave();
+                                                        },
+                                                      );
+                                                    },
+                                                    child: Container(
+                                                      margin:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 2.0,
+                                                            vertical: 1.0,
+                                                          ),
+                                                      alignment:
+                                                          Alignment.center,
+                                                      decoration: BoxDecoration(
+                                                        color: currentValue > 0
+                                                            ? Colors
+                                                                  .blue
+                                                                  .shade50
+                                                            : null,
+                                                        border: Border.all(
+                                                          color: Colors
+                                                              .grey
+                                                              .shade300,
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
                                                             ),
                                                       ),
-                                                      textAlign:
-                                                          TextAlign.center,
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
+                                                      child: Text(
+                                                        currentValue > 0
+                                                            ? currentValue
+                                                                  .toString()
+                                                            : '—',
+                                                        style: TextStyle(
+                                                          fontSize: 14,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color:
+                                                              currentValue > 0
+                                                              ? Colors
+                                                                    .blue
+                                                                    .shade800
+                                                              : Colors
+                                                                    .grey
+                                                                    .shade400,
+                                                        ),
+                                                        textAlign:
+                                                            TextAlign.center,
                                                       ),
-                                                      keyboardType:
-                                                          TextInputType.number,
-                                                      inputFormatters: [
-                                                        FilteringTextInputFormatter
-                                                            .digitsOnly,
-                                                      ],
-                                                      onChanged: (v) {
-                                                        if (v.isEmpty) {
-                                                          row.setValue(
-                                                            stationIndex,
-                                                            0,
-                                                          );
-                                                        } else {
-                                                          final score =
-                                                              int.tryParse(v) ??
-                                                              0;
-                                                          row.setValue(
-                                                            stationIndex,
-                                                            score,
-                                                          );
-                                                        }
-                                                        _scheduleAutoSave();
-                                                      },
-                                                      onSubmitted: (v) {
-                                                        if (v.isEmpty) {
-                                                          row.setValue(
-                                                            stationIndex,
-                                                            0,
-                                                          );
-                                                        } else {
-                                                          final score =
-                                                              int.tryParse(v) ??
-                                                              0;
-                                                          row.setValue(
-                                                            stationIndex,
-                                                            score,
-                                                          );
-                                                        }
-                                                        _saveImmediately();
-                                                      },
                                                     ),
                                                   ),
                                                 );
@@ -6717,523 +7167,254 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                     );
                                                   }
 
-                                                  final controllerKey =
-                                                      'trainee_${traineeIdx}_station_$stationIndex';
-                                                  final focusKey =
-                                                      'trainee_${traineeIdx}_station_$stationIndex';
+                                                  // מטרה משותפת: bullets count but no hits entry
+                                                  if (station.isSharedTarget) {
+                                                    return SizedBox(
+                                                      width: stationColumnWidth,
+                                                      height: rowHeight - 4,
+                                                      child: Container(
+                                                        margin:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 2.0,
+                                                              vertical: 1.0,
+                                                            ),
+                                                        alignment:
+                                                            Alignment.center,
+                                                        decoration: BoxDecoration(
+                                                          color: Colors
+                                                              .purple
+                                                              .shade50,
+                                                          border: Border.all(
+                                                            color: Colors
+                                                                .purple
+                                                                .shade200,
+                                                          ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
+                                                              ),
+                                                        ),
+                                                        child: Text(
+                                                          '~',
+                                                          style: TextStyle(
+                                                            fontSize: 16,
+                                                            color: Colors
+                                                                .purple
+                                                                .shade300,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
 
-                                                  // בוחן רמה: Compact dual input (hits + time) in SAME cell
+                                                  // בוחן רמה: tap to open dialog with hits + time
                                                   if (station.isLevelTester &&
                                                       widget.mode == 'range') {
                                                     final timeValue = row
                                                         .getTimeValue(
                                                           stationIndex,
                                                         );
-                                                    final timeControllerKey =
-                                                        'trainee_${traineeIdx}_station_${stationIndex}_time';
-                                                    final timeFocusKey =
-                                                        'trainee_${traineeIdx}_station_${stationIndex}_time';
-
-                                                    // Compact vertical stack: hits on top, time below
                                                     return SizedBox(
                                                       width: stationColumnWidth,
                                                       height: rowHeight,
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 2.0,
-                                                              vertical: 1.0,
+                                                      child: InkWell(
+                                                        onTap: () async {
+                                                          await _showLevelTesterDialog(
+                                                            traineeName:
+                                                                row.name,
+                                                            stationName:
+                                                                station.name,
+                                                            currentHits:
+                                                                currentValue,
+                                                            maxHits: station
+                                                                .bulletsCount,
+                                                            currentTime:
+                                                                timeValue,
+                                                            onConfirm: (hits, time) {
+                                                              setState(() {
+                                                                row.setValue(
+                                                                  stationIndex,
+                                                                  hits,
+                                                                );
+                                                                row.setTimeValue(
+                                                                  stationIndex,
+                                                                  time,
+                                                                );
+                                                              });
+                                                              _scheduleAutoSave();
+                                                            },
+                                                          );
+                                                        },
+                                                        child: Container(
+                                                          margin:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 2.0,
+                                                                vertical: 1.0,
+                                                              ),
+                                                          alignment:
+                                                              Alignment.center,
+                                                          decoration: BoxDecoration(
+                                                            color: Colors
+                                                                .orange
+                                                                .shade50,
+                                                            border: Border.all(
+                                                              color: Colors
+                                                                  .orange
+                                                                  .shade300,
                                                             ),
-                                                        child: Column(
-                                                          mainAxisAlignment:
-                                                              MainAxisAlignment
-                                                                  .center,
-                                                          children: [
-                                                            // Hits input (פגיעות) - top
-                                                            SizedBox(
-                                                              height:
-                                                                  (rowHeight /
-                                                                      2) -
-                                                                  2,
-                                                              child: TextField(
-                                                                controller: _getController(
-                                                                  controllerKey,
-                                                                  row.values.containsKey(
-                                                                        stationIndex,
-                                                                      )
-                                                                      ? currentValue
-                                                                            .toString()
-                                                                      : '',
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  4,
                                                                 ),
-                                                                focusNode:
-                                                                    _getFocusNode(
-                                                                      focusKey,
-                                                                    ),
-                                                                decoration: const InputDecoration(
-                                                                  isDense: true,
-                                                                  border:
-                                                                      OutlineInputBorder(),
-                                                                  hintText:
-                                                                      'פג׳',
-                                                                  hintStyle:
-                                                                      TextStyle(
-                                                                        fontSize:
-                                                                            8,
-                                                                      ),
-                                                                  contentPadding:
-                                                                      EdgeInsets.symmetric(
-                                                                        horizontal:
-                                                                            4,
-                                                                        vertical:
-                                                                            2,
-                                                                      ),
+                                                          ),
+                                                          child: Column(
+                                                            mainAxisAlignment:
+                                                                MainAxisAlignment
+                                                                    .center,
+                                                            children: [
+                                                              Text(
+                                                                currentValue > 0
+                                                                    ? currentValue
+                                                                          .toString()
+                                                                    : '—',
+                                                                style: TextStyle(
+                                                                  fontSize: 13,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color:
+                                                                      currentValue >
+                                                                          0
+                                                                      ? Colors
+                                                                            .deepOrange
+                                                                      : Colors
+                                                                            .grey
+                                                                            .shade400,
                                                                 ),
-                                                                keyboardType:
-                                                                    TextInputType
-                                                                        .number,
-                                                                inputFormatters: [
-                                                                  FilteringTextInputFormatter
-                                                                      .digitsOnly,
-                                                                ],
                                                                 textAlign:
                                                                     TextAlign
                                                                         .center,
-                                                                style:
-                                                                    const TextStyle(
-                                                                      fontSize:
-                                                                          10,
-                                                                    ),
-                                                                maxLines: 1,
-                                                                onChanged: (v) {
-                                                                  final hits =
-                                                                      int.tryParse(
-                                                                        v,
-                                                                      ) ??
-                                                                      0;
-                                                                  // Long Range validation against stage maxPoints
-                                                                  if (_rangeType ==
-                                                                          'ארוכים' &&
-                                                                      stationIndex <
-                                                                          longRangeStagesList
-                                                                              .length) {
-                                                                    final stage =
-                                                                        longRangeStagesList[stationIndex];
-                                                                    if (hits >
-                                                                        stage
-                                                                            .maxPoints) {
-                                                                      ScaffoldMessenger.of(
-                                                                        context,
-                                                                      ).showSnackBar(
-                                                                        SnackBar(
-                                                                          content: Text(
-                                                                            'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
-                                                                          ),
-                                                                          duration: const Duration(
-                                                                            seconds:
-                                                                                1,
-                                                                          ),
-                                                                        ),
-                                                                      );
-                                                                      return;
-                                                                    }
-                                                                  } else if (hits >
-                                                                      station
-                                                                          .bulletsCount) {
-                                                                    // Short Range validation against station bulletsCount
-                                                                    ScaffoldMessenger.of(
-                                                                      context,
-                                                                    ).showSnackBar(
-                                                                      SnackBar(
-                                                                        content:
-                                                                            Text(
-                                                                              'פגיעות לא יכולות לעלות על ${station.bulletsCount}',
-                                                                            ),
-                                                                        duration: const Duration(
-                                                                          seconds:
-                                                                              1,
-                                                                        ),
-                                                                      ),
-                                                                    );
-                                                                    return;
-                                                                  }
-                                                                  row.setValue(
-                                                                    stationIndex,
-                                                                    hits,
-                                                                  );
-                                                                  setState(
-                                                                    () {},
-                                                                  ); // מאלץ רענון מיידי של הטבלה
-                                                                  _scheduleAutoSave();
-                                                                },
-                                                                onSubmitted: (v) {
-                                                                  final hits =
-                                                                      int.tryParse(
-                                                                        v,
-                                                                      ) ??
-                                                                      0;
-                                                                  row.setValue(
-                                                                    stationIndex,
-                                                                    hits,
-                                                                  );
-                                                                  setState(
-                                                                    () {},
-                                                                  ); // מאלץ רענון מיידי של הטבלה
-                                                                  _saveImmediately();
-                                                                },
                                                               ),
-                                                            ),
-                                                            const SizedBox(
-                                                              height: 2,
-                                                            ),
-                                                            // Time input (זמן) - bottom
-                                                            SizedBox(
-                                                              height:
-                                                                  (rowHeight /
-                                                                      2) -
-                                                                  2,
-                                                              child: TextField(
-                                                                controller: _getController(
-                                                                  timeControllerKey,
-                                                                  timeValue == 0
-                                                                      ? ''
-                                                                      : timeValue
-                                                                            .toString(),
-                                                                ),
-                                                                focusNode:
-                                                                    _getFocusNode(
-                                                                      timeFocusKey,
-                                                                    ),
-                                                                decoration: const InputDecoration(
-                                                                  isDense: true,
-                                                                  border:
-                                                                      OutlineInputBorder(),
-                                                                  hintText:
-                                                                      'זמן',
-                                                                  hintStyle:
-                                                                      TextStyle(
-                                                                        fontSize:
-                                                                            8,
-                                                                      ),
-                                                                  contentPadding:
-                                                                      EdgeInsets.symmetric(
-                                                                        horizontal:
-                                                                            4,
-                                                                        vertical:
-                                                                            2,
-                                                                      ),
-                                                                ),
-                                                                keyboardType:
-                                                                    const TextInputType.numberWithOptions(
-                                                                      decimal:
-                                                                          true,
-                                                                    ),
-                                                                inputFormatters: [
-                                                                  FilteringTextInputFormatter.allow(
-                                                                    RegExp(
-                                                                      r'^\d*\.?\d*$',
-                                                                    ),
+                                                              if (timeValue > 0)
+                                                                Text(
+                                                                  '${timeValue}s',
+                                                                  style: const TextStyle(
+                                                                    fontSize:
+                                                                        10,
+                                                                    color: Colors
+                                                                        .blue,
                                                                   ),
-                                                                ],
-                                                                textAlign:
-                                                                    TextAlign
-                                                                        .center,
-                                                                style:
-                                                                    const TextStyle(
-                                                                      fontSize:
-                                                                          10,
-                                                                    ),
-                                                                maxLines: 1,
-                                                                onChanged: (v) {
-                                                                  final time =
-                                                                      double.tryParse(
-                                                                        v,
-                                                                      ) ??
-                                                                      0.0;
-                                                                  row.setTimeValue(
-                                                                    stationIndex,
-                                                                    time,
-                                                                  );
-                                                                  setState(
-                                                                    () {},
-                                                                  ); // מאלץ רענון מיידי של הטבלה
-                                                                  _scheduleAutoSave();
-                                                                },
-                                                                onSubmitted: (v) {
-                                                                  final time =
-                                                                      double.tryParse(
-                                                                        v,
-                                                                      ) ??
-                                                                      0.0;
-                                                                  row.setTimeValue(
-                                                                    stationIndex,
-                                                                    time,
-                                                                  );
-                                                                  setState(
-                                                                    () {},
-                                                                  ); // מאלץ רענון מיידי של הטבלה
-                                                                  _saveImmediately();
-                                                                },
-                                                              ),
-                                                            ),
-                                                          ],
+                                                                  textAlign:
+                                                                      TextAlign
+                                                                          .center,
+                                                                ),
+                                                            ],
+                                                          ),
                                                         ),
                                                       ),
                                                     );
                                                   }
 
-                                                  // Standard single input for non-level-tester stations
-                                                  // ✅ LONG RANGE SCORE MODEL:
-                                                  // - TextField shows/stores EXACT POINTS entered by instructor (0-100)
-                                                  // - NO conversion, NO division, NO truncation
-                                                  // - Persists value AS-IS to trainee.values[stationIndex]
-                                                  // - Validation: clamps to stage.maxPoints (usually 100)
-
-                                                  // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
-                                                  if (_rangeType == 'ארוכים') {
-                                                    debugPrint(
-                                                      '\n🔍 LONG RANGE DEBUG: Building TextField',
-                                                    );
-                                                    debugPrint(
-                                                      '   traineeIdx=$traineeIdx, stationIndex=$stationIndex',
-                                                    );
-                                                    debugPrint(
-                                                      '   currentValue from row.getValue($stationIndex)=$currentValue',
-                                                    );
-                                                    debugPrint(
-                                                      '   row.values[$stationIndex]=${row.getValue(stationIndex)}',
-                                                    );
-                                                    debugPrint(
-                                                      '   controllerKey=$controllerKey',
-                                                    );
-                                                    debugPrint(
-                                                      '   Will pass to controller: initialValue="${currentValue == 0 ? '' : currentValue.toString()}"',
-                                                    );
+                                                  // Standard single input: tap to open dialog
+                                                  final String stationLabel =
+                                                      station.name.isNotEmpty
+                                                      ? station.name
+                                                      : '$_itemLabel ${stationIndex + 1}';
+                                                  final int maxVal;
+                                                  final String labelText;
+                                                  if (widget.mode ==
+                                                      'surprise') {
+                                                    maxVal = 10;
+                                                    labelText = 'ניקוד';
+                                                  } else if (_rangeType ==
+                                                      'ארוכים') {
+                                                    maxVal =
+                                                        stationIndex <
+                                                            longRangeStagesList
+                                                                .length
+                                                        ? longRangeStagesList[stationIndex]
+                                                              .maxPoints
+                                                        : 0;
+                                                    labelText = 'נקודות';
+                                                  } else {
+                                                    maxVal =
+                                                        station.bulletsCount;
+                                                    labelText = 'פגיעות';
                                                   }
 
                                                   return SizedBox(
                                                     width: stationColumnWidth,
-                                                    child: Align(
-                                                      alignment:
-                                                          Alignment.center,
-                                                      child: ConstrainedBox(
-                                                        constraints:
-                                                            const BoxConstraints(
-                                                              minWidth: 64,
-                                                              maxWidth: 90,
+                                                    height: rowHeight - 4,
+                                                    child: InkWell(
+                                                      onTap: () async {
+                                                        await _showCellInputDialog(
+                                                          traineeName: row.name,
+                                                          stationName:
+                                                              stationLabel,
+                                                          label: labelText,
+                                                          currentValue:
+                                                              currentValue,
+                                                          maxValue: maxVal,
+                                                          onConfirm: (val) {
+                                                            setState(
+                                                              () => row.setValue(
+                                                                stationIndex,
+                                                                val,
+                                                              ),
+                                                            );
+                                                            _scheduleAutoSave();
+                                                          },
+                                                        );
+                                                      },
+                                                      child: Container(
+                                                        margin:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 2.0,
+                                                              vertical: 1.0,
                                                             ),
-                                                        child: SizedBox(
-                                                          height: rowHeight - 4,
-                                                          child: Padding(
-                                                            padding:
-                                                                const EdgeInsets.symmetric(
-                                                                  horizontal:
-                                                                      2.0,
-                                                                ),
-                                                            child: Builder(
-                                                              builder: (context) {
-                                                                final controller = _getController(
-                                                                  controllerKey,
-                                                                  row.values.containsKey(
-                                                                        stationIndex,
-                                                                      )
-                                                                      ? currentValue
-                                                                            .toString()
-                                                                      : '',
-                                                                );
-
-                                                                return TextField(
-                                                                  controller:
-                                                                      controller,
-                                                                  focusNode:
-                                                                      _getFocusNode(
-                                                                        focusKey,
-                                                                      ),
-                                                                  decoration: const InputDecoration(
-                                                                    isDense:
-                                                                        true,
-                                                                    border:
-                                                                        OutlineInputBorder(),
-                                                                    hintText:
-                                                                        '0',
-                                                                    contentPadding:
-                                                                        EdgeInsets.symmetric(
-                                                                          horizontal:
-                                                                              8,
-                                                                          vertical:
-                                                                              10,
-                                                                        ),
-                                                                  ),
-                                                                  keyboardType:
-                                                                      TextInputType
-                                                                          .number,
-                                                                  inputFormatters: [
-                                                                    FilteringTextInputFormatter
-                                                                        .digitsOnly,
-                                                                    // ✅ LONG RANGE: Allow up to 3 digits (0-100)
-                                                                    LengthLimitingTextInputFormatter(
-                                                                      3,
-                                                                    ),
-                                                                  ],
-                                                                  textAlign:
-                                                                      TextAlign
-                                                                          .center,
-                                                                  style:
-                                                                      const TextStyle(
-                                                                        fontSize:
-                                                                            12,
-                                                                      ),
-                                                                  maxLines: 1,
-                                                                  onChanged: (v) {
-                                                                    // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
-                                                                    if (_rangeType ==
-                                                                        'ארוכים') {
-                                                                      if (kIsWeb) {
-                                                                        debugPrint(
-                                                                          '\n🌐 LR_WEB_INPUT="$v" trainee="${row.name}" station=$stationIndex',
-                                                                        );
-                                                                      } else {
-                                                                        debugPrint(
-                                                                          '\n📝 LONG RANGE onChanged: rawInput="$v" (MOBILE)',
-                                                                        );
-                                                                      }
-                                                                    }
-
-                                                                    // ✅ LONG RANGE SCORE INPUT:
-                                                                    // Parse raw score - NO conversion
-                                                                    final score =
-                                                                        int.tryParse(
-                                                                          v,
-                                                                        ) ??
-                                                                        0;
-
-                                                                    // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
-                                                                    if (_rangeType ==
-                                                                        'ארוכים') {
-                                                                      if (kIsWeb) {
-                                                                        debugPrint(
-                                                                          '🌐 LR_WEB_PARSED=$score (RAW points, no conversion)',
-                                                                        );
-                                                                      } else {
-                                                                        debugPrint(
-                                                                          '   parsedScore=$score [MOBILE]',
-                                                                        );
-                                                                      }
-                                                                    }
-
-                                                                    // Validation based on mode
-                                                                    if (widget
-                                                                            .mode ==
-                                                                        'surprise') {
-                                                                      // ✅ Surprise drill: 0-10 scale (integers only)
-                                                                      if (score <
-                                                                              0 ||
-                                                                          score >
-                                                                              10) {
-                                                                        ScaffoldMessenger.of(
-                                                                          context,
-                                                                        ).showSnackBar(
-                                                                          const SnackBar(
-                                                                            content: Text(
-                                                                              'ציון חייב להיות בין 0 ל-10',
-                                                                            ),
-                                                                            duration: Duration(
-                                                                              seconds: 1,
-                                                                            ),
-                                                                          ),
-                                                                        );
-                                                                        return;
-                                                                      }
-                                                                    } else if (_rangeType ==
-                                                                        'ארוכים') {
-                                                                      // ✅ LONG RANGE: Validate against stage maxPoints (POINTS-ONLY)
-                                                                      // CRITICAL: NEVER validate against bullets for long-range
-                                                                      if (stationIndex <
-                                                                          longRangeStagesList
-                                                                              .length) {
-                                                                        final stage =
-                                                                            longRangeStagesList[stationIndex];
-                                                                        if (score >
-                                                                            stage.maxPoints) {
-                                                                          ScaffoldMessenger.of(
-                                                                            context,
-                                                                          ).showSnackBar(
-                                                                            SnackBar(
-                                                                              content: Text(
-                                                                                'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
-                                                                              ),
-                                                                              duration: const Duration(
-                                                                                seconds: 1,
-                                                                              ),
-                                                                            ),
-                                                                          );
-                                                                          return;
-                                                                        }
-                                                                      }
-                                                                      // ✅ For long-range, accept ANY value if stage not found (defensive)
-                                                                    } else if (score >
-                                                                        station
-                                                                            .bulletsCount) {
-                                                                      // ✅ SHORT RANGE ONLY: Validate against bullets count
-                                                                      ScaffoldMessenger.of(
-                                                                        context,
-                                                                      ).showSnackBar(
-                                                                        SnackBar(
-                                                                          content: Text(
-                                                                            'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                                                          ),
-                                                                          duration: const Duration(
-                                                                            seconds:
-                                                                                1,
-                                                                          ),
-                                                                        ),
-                                                                      );
-                                                                      return;
-                                                                    }
-                                                                    // ✅ STORE RAW SCORE: No conversion, no division
-                                                                    // Long Range: stores exact points (0-100)
-                                                                    // Short Range: stores exact hits
-                                                                    row.setValue(
-                                                                      stationIndex,
-                                                                      score,
-                                                                    );
-
-                                                                    // 🐛 DEBUG LOGGING (LONG RANGE ONLY)
-                                                                    if (_rangeType ==
-                                                                        'ארוכים') {
-                                                                      if (kIsWeb) {
-                                                                        debugPrint(
-                                                                          '🌐 LR_WEB_MODEL_AFTER_SET=${row.getValue(stationIndex)} (verified RAW storage)',
-                                                                        );
-                                                                      } else {
-                                                                        debugPrint(
-                                                                          '   ✅ STORED: row.values[$stationIndex]=$score',
-                                                                        );
-                                                                        debugPrint(
-                                                                          '   Verification: row.getValue($stationIndex)=${row.getValue(stationIndex)}',
-                                                                        );
-                                                                      }
-                                                                    }
-
-                                                                    _scheduleAutoSave();
-                                                                  },
-                                                                  onSubmitted: (v) {
-                                                                    // ✅ IMMEDIATE SAVE: User pressed Enter
-                                                                    // Store exact parsed value
-                                                                    final score =
-                                                                        int.tryParse(
-                                                                          v,
-                                                                        ) ??
-                                                                        0;
-                                                                    row.setValue(
-                                                                      stationIndex,
-                                                                      score,
-                                                                    );
-                                                                    _saveImmediately();
-                                                                  },
-                                                                );
-                                                              },
-                                                            ),
+                                                        alignment:
+                                                            Alignment.center,
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              currentValue > 0
+                                                              ? Colors
+                                                                    .green
+                                                                    .shade50
+                                                              : null,
+                                                          border: Border.all(
+                                                            color: Colors
+                                                                .grey
+                                                                .shade300,
                                                           ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
+                                                              ),
+                                                        ),
+                                                        child: Text(
+                                                          currentValue > 0
+                                                              ? currentValue
+                                                                    .toString()
+                                                              : '—',
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                currentValue > 0
+                                                                ? Colors
+                                                                      .green
+                                                                      .shade800
+                                                                : Colors
+                                                                      .grey
+                                                                      .shade400,
+                                                          ),
+                                                          textAlign:
+                                                              TextAlign.center,
                                                         ),
                                                       ),
                                                     ),
@@ -7538,64 +7719,86 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               ...displayStations.asMap().entries.map((entry) {
                                 final index = entry.key;
                                 final station = entry.value;
-                                return SizedBox(
-                                  width: 80,
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        station.name.isEmpty
-                                            ? 'מקצה ${index + 1}'
-                                            : station.name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      // Surprise Drills: Show dynamic maxPoints
-                                      if (widget.mode == 'surprise')
-                                        Text(
-                                          '${_getMaxPointsForPrinciple(index)}',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade600,
-                                            fontWeight: FontWeight.w600,
+                                return GestureDetector(
+                                  onLongPress: () => _toggleSharedTarget(index),
+                                  child: SizedBox(
+                                    width: 80,
+                                    child: Column(
+                                      children: [
+                                        if (station.isSharedTarget)
+                                          Icon(
+                                            Icons.people,
+                                            size: 12,
+                                            color: Colors.purple.shade600,
                                           ),
-                                          textAlign: TextAlign.center,
-                                        )
-                                      else if (_rangeType == 'ארוכים' &&
-                                          index < longRangeStagesList.length &&
-                                          longRangeStagesList[index].maxPoints >
-                                              0)
                                         Text(
-                                          '${longRangeStagesList[index].maxPoints}',
+                                          station.name.isEmpty
+                                              ? 'מקצה ${index + 1}'
+                                              : station.name,
                                           style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        )
-                                      else if (_rangeType == 'קצרים' &&
-                                          station.bulletsCount > 0)
-                                        // Short Range: Show just the number
-                                        Text(
-                                          '${station.bulletsCount}',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        )
-                                      else if (station.bulletsCount > 0)
-                                        Text(
-                                          '(${station.bulletsCount})',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade600,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: station.isSharedTarget
+                                                ? Colors.purple.shade800
+                                                : null,
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
-                                    ],
+                                        if (station.isSharedTarget)
+                                          Text(
+                                            'משותף',
+                                            style: TextStyle(
+                                              fontSize: 8,
+                                              color: Colors.purple.shade600,
+                                            ),
+                                          )
+                                        // Surprise Drills: Show dynamic maxPoints
+                                        else if (widget.mode == 'surprise')
+                                          Text(
+                                            '${_getMaxPointsForPrinciple(index)}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          )
+                                        else if (_rangeType == 'ארוכים' &&
+                                            index <
+                                                longRangeStagesList.length &&
+                                            longRangeStagesList[index]
+                                                    .maxPoints >
+                                                0)
+                                          Text(
+                                            '${longRangeStagesList[index].maxPoints}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          )
+                                        else if (_rangeType == 'קצרים' &&
+                                            station.bulletsCount > 0)
+                                          // Short Range: Show just the number
+                                          Text(
+                                            '${station.bulletsCount}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          )
+                                        else if (station.bulletsCount > 0)
+                                          Text(
+                                            '(${station.bulletsCount})',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               }),
@@ -7779,6 +7982,38 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         'desktop_trainee_${traineeIndex}_station_$stationIndex';
                                     final focusKey =
                                         'desktop_trainee_${traineeIndex}_station_$stationIndex';
+
+                                    // מטרה משותפת: bullets count but no hits entry
+                                    if (station.isSharedTarget) {
+                                      return SizedBox(
+                                        width: 90,
+                                        child: Container(
+                                          margin: const EdgeInsets.symmetric(
+                                            horizontal: 2.0,
+                                            vertical: 2.0,
+                                          ),
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.shade50,
+                                            border: Border.all(
+                                              color: Colors.purple.shade200,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '~',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.purple.shade300,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      );
+                                    }
 
                                     // בוחן רמה: Compact dual input (hits + time) stacked vertically
                                     if (station.isLevelTester &&
@@ -8389,6 +8624,7 @@ class RangeStation {
   bool isManual; // האם מקצה ידני
   bool isLevelTester; // האם מקצה "בוחן רמה"
   List<String> selectedRubrics; // רובליקות נבחרות למקצה ידני
+  bool isSharedTarget; // מטרה משותפת - כדורים נספרים, פגיעות לא
 
   // ✅ Long Range only: Max score points (e.g., 50, 100, 150) - NEVER derived from bulletsCount
   int? maxPoints;
@@ -8406,6 +8642,7 @@ class RangeStation {
     List<String>? selectedRubrics,
     this.maxPoints,
     this.achievedPoints,
+    this.isSharedTarget = false,
   }) : selectedRubrics = selectedRubrics ?? ['זמן', 'פגיעות'];
 
   // בדיקה אם המקצה הוא "בוחן רמה"
@@ -8448,8 +8685,9 @@ extension RangeStationJson on RangeStation {
       'isManual': isManual,
       'isLevelTester': isLevelTester,
       'selectedRubrics': selectedRubrics,
-      'maxPoints': maxPoints, // Long Range: max score (e.g., 150)
-      'achievedPoints': achievedPoints, // Long Range: achieved score
+      'maxPoints': maxPoints,
+      'achievedPoints': achievedPoints,
+      'isSharedTarget': isSharedTarget,
     };
   }
 }
