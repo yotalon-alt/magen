@@ -3988,6 +3988,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           title: Text(rangeTitle),
           leading: StandardBackButton(onPressed: () => _handleBackPress()),
@@ -5881,6 +5882,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -5895,7 +5899,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: MainAxisSize.max,
               children: [
                 Text(
                   traineeName,
@@ -5915,7 +5919,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     style: const TextStyle(fontSize: 12, color: Colors.blue),
                   ),
                 ],
-                const SizedBox(height: 16),
+                const Spacer(),
                 TextField(
                   controller: controller,
                   autofocus: true,
@@ -5986,6 +5990,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -6000,7 +6007,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: MainAxisSize.max,
               children: [
                 Text(
                   traineeName,
@@ -6020,7 +6027,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     style: const TextStyle(fontSize: 12, color: Colors.blue),
                   ),
                 ],
-                const SizedBox(height: 16),
+                const Spacer(),
                 TextField(
                   controller: hitsController,
                   autofocus: true,
