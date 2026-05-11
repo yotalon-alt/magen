@@ -5975,15 +5975,40 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        Row(children: [numKey('7'), numKey('8'), numKey('9')]),
-                        Row(children: [numKey('4'), numKey('5'), numKey('6')]),
-                        Row(children: [numKey('1'), numKey('2'), numKey('3')]),
-                        Row(
-                          children: [
-                            const Expanded(child: SizedBox()),
-                            numKey('0'),
-                            numKey('⌫'),
-                          ],
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  numKey('1'),
+                                  numKey('2'),
+                                  numKey('3'),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  numKey('4'),
+                                  numKey('5'),
+                                  numKey('6'),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  numKey('7'),
+                                  numKey('8'),
+                                  numKey('9'),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  const Expanded(child: SizedBox()),
+                                  numKey('0'),
+                                  numKey('⌫'),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Row(
@@ -6178,15 +6203,40 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         const SizedBox(height: 8),
                         fieldDisplay('זמן (שניות)', timeValue, 1),
                         const SizedBox(height: 10),
-                        Row(children: [numKey('7'), numKey('8'), numKey('9')]),
-                        Row(children: [numKey('4'), numKey('5'), numKey('6')]),
-                        Row(children: [numKey('1'), numKey('2'), numKey('3')]),
-                        Row(
-                          children: [
-                            numKey('.', disabled: dotDisabled),
-                            numKey('0'),
-                            numKey('⌫'),
-                          ],
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  numKey('1'),
+                                  numKey('2'),
+                                  numKey('3'),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  numKey('4'),
+                                  numKey('5'),
+                                  numKey('6'),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  numKey('7'),
+                                  numKey('8'),
+                                  numKey('9'),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  numKey('.', disabled: dotDisabled),
+                                  numKey('0'),
+                                  numKey('⌫'),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Row(
