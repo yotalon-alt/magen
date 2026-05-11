@@ -11842,6 +11842,27 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
   DateTime? dateFrom;
   DateTime? dateTo;
   bool _isFiltersExpanded = false; // Collapsible filters state
+  bool _isRefreshing = false;
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('הנתונים עודכנו')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה ברענון: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
 
   List<FeedbackModel> getFiltered() {
     return feedbackStorage.where((f) {
@@ -12093,6 +12114,20 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
           title: const Text('סטטיסטיקת משובים'),
           leading: const StandardBackButton(),
           actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'רענן נתונים',
+              onPressed: _isRefreshing ? null : _refreshData,
+            ),
             IconButton(
               icon: const Icon(Icons.download),
               tooltip: 'ייצוא',
@@ -12829,6 +12864,29 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
   // Range-specific data
   Map<String, Map<String, dynamic>> rangeData = {};
+  bool _isRefreshing = false;
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      rangeData.clear();
+      await _loadRangeData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('הנתונים עודכנו')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה ברענון: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
 
   @override
   void initState() {
@@ -13049,6 +13107,20 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
           title: const Text('סטטיסטיקת מטווחים'),
           leading: const StandardBackButton(),
           actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'רענן נתונים',
+              onPressed: _isRefreshing ? null : _refreshData,
+            ),
             IconButton(
               icon: const Icon(Icons.download),
               tooltip: 'ייצוא',
@@ -15770,6 +15842,29 @@ class _SurpriseDrillsStatisticsPageState
 
   // Surprise drills data cache
   Map<String, Map<String, dynamic>> surpriseDrillsData = {};
+  bool _isRefreshing = false;
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      surpriseDrillsData.clear();
+      await _loadSurpriseDrillsData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('הנתונים עודכנו')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה ברענון: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
 
   @override
   void initState() {
@@ -15979,6 +16074,20 @@ class _SurpriseDrillsStatisticsPageState
           title: const Text('סטטיסטיקת תרגילי הפתעה'),
           leading: const StandardBackButton(),
           actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'רענן נתונים',
+              onPressed: _isRefreshing ? null : _refreshData,
+            ),
             IconButton(
               icon: const Icon(Icons.download),
               tooltip: 'ייצוא',
