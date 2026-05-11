@@ -11851,14 +11851,14 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       final isAdmin = currentUser?.role == 'Admin';
       await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('הנתונים עודכנו')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('הנתונים עודכנו')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('שגיאה ברענון: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה ברענון: $e')));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
@@ -12875,14 +12875,14 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       rangeData.clear();
       await _loadRangeData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('הנתונים עודכנו')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('הנתונים עודכנו')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('שגיאה ברענון: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה ברענון: $e')));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
@@ -15853,14 +15853,14 @@ class _SurpriseDrillsStatisticsPageState
       surpriseDrillsData.clear();
       await _loadSurpriseDrillsData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('הנתונים עודכנו')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('הנתונים עודכנו')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('שגיאה ברענון: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('שגיאה ברענון: $e')));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
