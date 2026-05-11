@@ -5866,7 +5866,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     );
   }
 
-  /// Opens a dialog for entering a numeric value — mobile-friendly large input
+  /// Opens a bottom sheet for entering a numeric value — keyboard-aware layout
   Future<void> _showCellInputDialog({
     required String traineeName,
     required String stationName,
@@ -5878,19 +5878,32 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final controller = TextEditingController(
       text: currentValue > 0 ? currentValue.toString() : '',
     );
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (ctx) {
         return Directionality(
           textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text(
-              traineeName,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
-            content: Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Text(
+                  traineeName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Text(
                   stationName,
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
@@ -5918,31 +5931,36 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('ביטול'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        final val = int.tryParse(controller.text) ?? 0;
+                        if (maxValue > 0 && val > maxValue) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text('הערך לא יכול לעלות על $maxValue'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                          return;
+                        }
+                        onConfirm(val);
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('אישור'),
+                    ),
+                  ],
+                ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('ביטול'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final val = int.tryParse(controller.text) ?? 0;
-                  if (maxValue > 0 && val > maxValue) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text('הערך לא יכול לעלות על $maxValue'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                    return;
-                  }
-                  onConfirm(val);
-                  Navigator.pop(ctx);
-                },
-                child: const Text('אישור'),
-              ),
-            ],
           ),
         );
       },
@@ -5950,7 +5968,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     controller.dispose();
   }
 
-  /// Opens a dialog for entering hits + time for בוחן רמה stations
+  /// Opens a bottom sheet for entering hits + time for בוחן רמה stations — keyboard-aware layout
   Future<void> _showLevelTesterDialog({
     required String traineeName,
     required String stationName,
@@ -5965,19 +5983,32 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final timeController = TextEditingController(
       text: currentTime > 0 ? currentTime.toString() : '',
     );
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (ctx) {
         return Directionality(
           textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text(
-              traineeName,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
-            content: Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Text(
+                  traineeName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Text(
                   stationName,
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
@@ -6024,32 +6055,40 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('ביטול'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        final hits = int.tryParse(hitsController.text) ?? 0;
+                        final time =
+                            double.tryParse(timeController.text) ?? 0.0;
+                        if (maxHits > 0 && hits > maxHits) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'פגיעות לא יכולות לעלות על $maxHits',
+                              ),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                          return;
+                        }
+                        onConfirm(hits, time);
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('אישור'),
+                    ),
+                  ],
+                ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('ביטול'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final hits = int.tryParse(hitsController.text) ?? 0;
-                  final time = double.tryParse(timeController.text) ?? 0.0;
-                  if (maxHits > 0 && hits > maxHits) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text('פגיעות לא יכולות לעלות על $maxHits'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                    return;
-                  }
-                  onConfirm(hits, time);
-                  Navigator.pop(ctx);
-                },
-                child: const Text('אישור'),
-              ),
-            ],
           ),
         );
       },
