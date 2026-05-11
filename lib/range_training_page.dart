@@ -5949,6 +5949,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: () {
+                              FocusScope.of(ctx).unfocus();
                               final val = int.tryParse(controller.text) ?? 0;
                               if (maxValue > 0 && val > maxValue) {
                                 ScaffoldMessenger.of(ctx).showSnackBar(
@@ -6086,6 +6087,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: () {
+                              FocusScope.of(ctx).unfocus();
                               final hits =
                                   int.tryParse(hitsController.text) ?? 0;
                               final time =
