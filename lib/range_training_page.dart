@@ -5879,91 +5879,99 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final controller = TextEditingController(
       text: currentValue > 0 ? currentValue.toString() : '',
     );
-    await showModalBottomSheet<void>(
+    await showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      barrierColor: Colors.black45,
       builder: (ctx) {
         return Directionality(
           textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                Text(
-                  traineeName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+          child: Align(
+            alignment: const Alignment(0, -0.5),
+            child: Material(
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: IntrinsicWidth(
+                  stepWidth: 280,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        traineeName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        stationName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (maxValue > 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'מקסימום: $maxValue',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: controller,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          labelText: label,
+                          border: const OutlineInputBorder(),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('ביטול'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () {
+                              final val = int.tryParse(controller.text) ?? 0;
+                              if (maxValue > 0 && val > maxValue) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'הערך לא יכול לעלות על $maxValue',
+                                    ),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                                return;
+                              }
+                              onConfirm(val);
+                              Navigator.pop(ctx);
+                            },
+                            child: const Text('אישור'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  stationName,
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                if (maxValue > 0) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'מקסימום: $maxValue',
-                    style: const TextStyle(fontSize: 12, color: Colors.blue),
-                  ),
-                ],
-                const Spacer(),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    labelText: label,
-                    border: const OutlineInputBorder(),
-                  ),
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('ביטול'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        final val = int.tryParse(controller.text) ?? 0;
-                        if (maxValue > 0 && val > maxValue) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text('הערך לא יכול לעלות על $maxValue'),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
-                          return;
-                        }
-                        onConfirm(val);
-                        Navigator.pop(ctx);
-                      },
-                      child: const Text('אישור'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         );
@@ -5987,114 +5995,123 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     final timeController = TextEditingController(
       text: currentTime > 0 ? currentTime.toString() : '',
     );
-    await showModalBottomSheet<void>(
+    await showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      barrierColor: Colors.black45,
       builder: (ctx) {
         return Directionality(
           textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                Text(
-                  traineeName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+          child: Align(
+            alignment: const Alignment(0, -0.5),
+            child: Material(
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: IntrinsicWidth(
+                  stepWidth: 280,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        traineeName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        stationName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (maxHits > 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'מקסימום פגיעות: $maxHits',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: hitsController,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        textAlign: TextAlign.center,
+                        decoration: const InputDecoration(
+                          labelText: 'פגיעות',
+                          border: OutlineInputBorder(),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: timeController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*$'),
+                          ),
+                        ],
+                        textAlign: TextAlign.center,
+                        decoration: const InputDecoration(
+                          labelText: 'זמן (שניות)',
+                          border: OutlineInputBorder(),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('ביטול'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () {
+                              final hits =
+                                  int.tryParse(hitsController.text) ?? 0;
+                              final time =
+                                  double.tryParse(timeController.text) ?? 0.0;
+                              if (maxHits > 0 && hits > maxHits) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'פגיעות לא יכולות לעלות על $maxHits',
+                                    ),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                                return;
+                              }
+                              onConfirm(hits, time);
+                              Navigator.pop(ctx);
+                            },
+                            child: const Text('אישור'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  stationName,
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                if (maxHits > 0) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'מקסימום פגיעות: $maxHits',
-                    style: const TextStyle(fontSize: 12, color: Colors.blue),
-                  ),
-                ],
-                const Spacer(),
-                TextField(
-                  controller: hitsController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  textAlign: TextAlign.center,
-                  decoration: const InputDecoration(
-                    labelText: 'פגיעות',
-                    border: OutlineInputBorder(),
-                  ),
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: timeController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
-                  ],
-                  textAlign: TextAlign.center,
-                  decoration: const InputDecoration(
-                    labelText: 'זמן (שניות)',
-                    border: OutlineInputBorder(),
-                  ),
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('ביטול'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        final hits = int.tryParse(hitsController.text) ?? 0;
-                        final time =
-                            double.tryParse(timeController.text) ?? 0.0;
-                        if (maxHits > 0 && hits > maxHits) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'פגיעות לא יכולות לעלות על $maxHits',
-                              ),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
-                          return;
-                        }
-                        onConfirm(hits, time);
-                        Navigator.pop(ctx);
-                      },
-                      child: const Text('אישור'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         );
