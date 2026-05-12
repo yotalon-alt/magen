@@ -23,6 +23,8 @@ import 'widgets/connectivity_banner.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
 import 'services/trainee_autocomplete_service.dart';
+import 'package:universal_html/html.dart' as html;
+import 'package:excel/excel.dart' hide Border;
 import 'pages/training_program_folder_selection_page.dart';
 import 'personal_feedback_entry_page.dart';
 
@@ -14169,6 +14171,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
               'trainees': <String>{},
               'traineeCount': 0,
               'feedbacks': <FeedbackModel>[],
+              'sessions': <Map<String, dynamic>>[],
             },
           );
 
@@ -14250,11 +14253,22 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
           final trainees =
               (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
+          final feedbackType = (data['feedbackType'] as String?) ?? '';
+          final rangeSubType =
+              (data['rangeSubType'] as String?) ?? f.rangeSubType;
+          final isLongRange =
+              feedbackType == 'range_long' ||
+              feedbackType == 'דווח רחוק' ||
+              rangeSubType == 'טווח רחוק';
+          final subTypeLabel = isLongRange ? 'טווח רחוק' : 'טווח קצר';
+
+          final sessionTrainees = <String>[];
           for (final t in trainees) {
             final name = t['name'] as String? ?? '';
             if (name.isNotEmpty) {
               uniqueTraineesSet.add(name);
               traineesPerType[typeKey]!.add(name);
+              sessionTrainees.add(name);
               if (f.settlement.isNotEmpty && !isDefensePlatoons) {
                 (settlementData[f.settlement]![typeKey]!['trainees']
                         as Set<String>)
@@ -14267,12 +14281,19 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
             }
           }
 
-          final feedbackType = (data['feedbackType'] as String?) ?? '';
-          final rangeSubType = (data['rangeSubType'] as String?) ?? '';
-          final isLongRange =
-              feedbackType == 'range_long' ||
-              feedbackType == 'דווח רחוק' ||
-              rangeSubType == 'טווח רחוק';
+          // Add session entry for attendance page
+          if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+            (settlementData[f.settlement]![typeKey]!['sessions']
+                    as List<Map<String, dynamic>>)
+                .add({
+                  'feedbackId': f.id ?? '',
+                  'date': f.createdAt,
+                  'typeGroup': 'מטווחים',
+                  'subType': subTypeLabel,
+                  'trainingType': '',
+                  'trainees': sessionTrainees,
+                });
+          }
 
           for (final station in stations) {
             final bullets = (station['bulletsCount'] as num?)?.toInt() ?? 0;
@@ -14294,11 +14315,15 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         // 2b. סיכום אימון - load attendees
         if (isTrainingSummary) {
           final attendees = (data['attendees'] as List?)?.cast<String>() ?? [];
+          final trainingTypeLabel =
+              (data['trainingType'] as String?) ?? f.trainingType;
 
+          final sessionTrainees = <String>[];
           for (final name in attendees) {
             if (name.isNotEmpty) {
               uniqueTraineesSet.add(name);
               traineesPerType[typeKey]!.add(name);
+              sessionTrainees.add(name);
               if (f.settlement.isNotEmpty && !isDefensePlatoons) {
                 (settlementData[f.settlement]![typeKey]!['trainees']
                         as Set<String>)
@@ -14310,6 +14335,20 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
               }
             }
           }
+
+          // Add session entry for attendance page
+          if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+            (settlementData[f.settlement]![typeKey]!['sessions']
+                    as List<Map<String, dynamic>>)
+                .add({
+                  'feedbackId': f.id ?? '',
+                  'date': f.createdAt,
+                  'typeGroup': 'סיכום אימון',
+                  'subType': trainingTypeLabel,
+                  'trainingType': trainingTypeLabel,
+                  'trainees': sessionTrainees,
+                });
+          }
         }
 
         // 2c. תרגילי הפתעה - load trainees
@@ -14317,11 +14356,13 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
           final trainees =
               (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
+          final sessionTrainees = <String>[];
           for (final t in trainees) {
             final name = t['name'] as String? ?? '';
             if (name.isNotEmpty) {
               uniqueTraineesSet.add(name);
               traineesPerType[typeKey]!.add(name);
+              sessionTrainees.add(name);
               if (f.settlement.isNotEmpty && !isDefensePlatoons) {
                 (settlementData[f.settlement]![typeKey]!['trainees']
                         as Set<String>)
@@ -14332,6 +14373,20 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                     1;
               }
             }
+          }
+
+          // Add session entry for attendance page
+          if (f.settlement.isNotEmpty && !isDefensePlatoons) {
+            (settlementData[f.settlement]![typeKey]!['sessions']
+                    as List<Map<String, dynamic>>)
+                .add({
+                  'feedbackId': f.id ?? '',
+                  'date': f.createdAt,
+                  'typeGroup': 'הפתעה',
+                  'subType': '',
+                  'trainingType': '',
+                  'trainees': sessionTrainees,
+                });
           }
         }
       }
@@ -15446,34 +15501,79 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
                                       ),
                                       const SizedBox(height: 8),
 
-                                      // Average trainees per training
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(
-                                            Icons.analytics,
-                                            color: Colors.lightBlueAccent,
-                                            size: 20,
+                                      // Average trainees per training – clickable for admin
+                                      InkWell(
+                                        borderRadius: BorderRadius.circular(8),
+                                        onTap: isAdmin
+                                            ? () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        SettlementAttendancePage(
+                                                          settlement:
+                                                              settlement,
+                                                          settlementData: data,
+                                                        ),
+                                                  ),
+                                                );
+                                              }
+                                            : null,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 6,
                                           ),
-                                          const SizedBox(width: 8),
-                                          const Text(
-                                            'ממוצע:',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.white,
-                                            ),
+                                          decoration: isAdmin
+                                              ? BoxDecoration(
+                                                  color: Colors.lightBlueAccent
+                                                      .withValues(alpha: 0.08),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: Colors
+                                                        .lightBlueAccent
+                                                        .withValues(alpha: 0.3),
+                                                  ),
+                                                )
+                                              : null,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(
+                                                Icons.analytics,
+                                                color: Colors.lightBlueAccent,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Text(
+                                                'ממוצע:',
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                '${average.toStringAsFixed(2)} חניכים באימון',
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.lightBlueAccent,
+                                                ),
+                                              ),
+                                              if (isAdmin) ...[
+                                                const SizedBox(width: 8),
+                                                const Icon(
+                                                  Icons.open_in_new,
+                                                  color: Colors.lightBlueAccent,
+                                                  size: 14,
+                                                ),
+                                              ],
+                                            ],
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${average.toStringAsFixed(2)} חניכים באימון',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.lightBlueAccent,
-                                            ),
-                                          ),
-                                        ],
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -15511,6 +15611,564 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
             color: valueColor,
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// דף נוכחות לוחמים לפי יישוב – מאורגן לפי אימונים (sessions)
+class SettlementAttendancePage extends StatefulWidget {
+  final String settlement;
+  // settlementData: typeKey -> { 'sessions': List<Map>, ... }
+  final Map<String, Map<String, dynamic>> settlementData;
+
+  const SettlementAttendancePage({
+    super.key,
+    required this.settlement,
+    required this.settlementData,
+  });
+
+  @override
+  State<SettlementAttendancePage> createState() =>
+      _SettlementAttendancePageState();
+}
+
+class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
+  bool _isLoading = true;
+  bool _isExporting = false;
+  List<String> _allTrainees = []; // כל חניכי היישוב מ-Firestore
+  List<Map<String, dynamic>> _sessions = []; // כל האימונים ממוינים לפי תאריך
+  // שם חניך -> Set<sessionIndex> (באיזה אימונים נוכח)
+  Map<String, Set<int>> _attendanceMap = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _buildData();
+  }
+
+  Future<void> _buildData() async {
+    // 1. אסוף את כל ה-sessions מכל הסוגים
+    final allSessions = <Map<String, dynamic>>[];
+    for (final typeData in widget.settlementData.values) {
+      final sessions =
+          (typeData['sessions'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      allSessions.addAll(sessions);
+    }
+    // מיין לפי תאריך
+    allSessions.sort((a, b) {
+      final da = (a['date'] as DateTime?) ?? DateTime(2000);
+      final db = (b['date'] as DateTime?) ?? DateTime(2000);
+      return da.compareTo(db);
+    });
+
+    // 2. בנה attendance map
+    final attendanceMap = <String, Set<int>>{};
+    for (int i = 0; i < allSessions.length; i++) {
+      final trainees =
+          (allSessions[i]['trainees'] as List?)?.cast<String>() ?? [];
+      for (final name in trainees) {
+        attendanceMap.putIfAbsent(name, () => {});
+        attendanceMap[name]!.add(i);
+      }
+    }
+
+    // 3. טען את כל חניכי היישוב מ-Firestore (עוקף cache לקבלת ספירה מדויקת)
+    List<String> allTrainees = [];
+    try {
+      // נקה cache ליישוב זה כדי לקבל נתון עדכני מ-Firestore
+      TraineeAutocompleteService.clearCacheForSettlement(widget.settlement);
+      allTrainees = await TraineeAutocompleteService.getTraineesForSettlement(
+        widget.settlement,
+      );
+    } catch (e) {
+      debugPrint('Error loading trainees: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _sessions = allSessions;
+        _attendanceMap = attendanceMap;
+        _allTrainees = allTrainees;
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+  }
+
+  String _formatDateFull(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year}';
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _isLoading = true);
+    await _buildData();
+  }
+
+  Future<void> _exportToXlsx() async {
+    if (_isExporting || _sessions.isEmpty) return;
+    setState(() => _isExporting = true);
+    try {
+      // חניכים לטבלה (אותו סדר כמו על המסך)
+      final activeTrainees = _allTrainees
+          .where((name) => _attendanceMap.containsKey(name))
+          .toList();
+      final extraTrainees =
+          _attendanceMap.keys
+              .where((name) => !_allTrainees.contains(name))
+              .toList()
+            ..sort();
+      final tableTrainees = [...activeTrainees, ...extraTrainees];
+
+      final excel = Excel.createExcel();
+      final sheet = excel[widget.settlement];
+
+      // שורת כותרות: "שם חניך" + עמודה לכל session
+      final headerRow = <CellValue>[TextCellValue('שם חניך')];
+      for (final session in _sessions) {
+        final date = session['date'] as DateTime?;
+        final typeGroup = (session['typeGroup'] as String?) ?? '';
+        final subType = (session['subType'] as String?) ?? '';
+        final label = [
+          if (date != null) _formatDateFull(date),
+          typeGroup,
+          if (subType.isNotEmpty) subType,
+        ].join('\n');
+        headerRow.add(TextCellValue(label));
+      }
+      // עמודת סיכום
+      headerRow.add(TextCellValue('נוכחות'));
+      sheet.appendRow(headerRow);
+
+      // שורות נתונים
+      for (final name in tableTrainees) {
+        final attended = _attendanceMap[name] ?? {};
+        final row = <CellValue>[TextCellValue(name)];
+        for (int i = 0; i < _sessions.length; i++) {
+          row.add(TextCellValue(attended.contains(i) ? '✓' : '-'));
+        }
+        final total = attended.length;
+        row.add(TextCellValue('$total/${_sessions.length}'));
+        sheet.appendRow(row);
+      }
+
+      // שורת סיכום תחתית
+      final summaryRow = <CellValue>[TextCellValue('סה"כ נוכחים')];
+      for (int i = 0; i < _sessions.length; i++) {
+        final count = tableTrainees
+            .where((name) => (_attendanceMap[name] ?? {}).contains(i))
+            .length;
+        summaryRow.add(TextCellValue('$count'));
+      }
+      summaryRow.add(TextCellValue(''));
+      sheet.appendRow(summaryRow);
+
+      excel.delete('Sheet1');
+      final fileBytes = excel.encode();
+      if (fileBytes == null) throw Exception('שגיאה ביצירת XLSX');
+
+      final now = DateTime.now();
+      final fileName =
+          'נוכחות_${widget.settlement}_${_formatDateFull(now)}.xlsx';
+
+      final blob = html.Blob([
+        fileBytes,
+      ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.AnchorElement(href: url)
+        ..setAttribute('download', fileName)
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    } catch (e) {
+      debugPrint('Export error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בייצוא: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // חניכים שנוכחו לפחות פעם אחת
+    final activeTrainees = _allTrainees
+        .where((name) => _attendanceMap.containsKey(name))
+        .toList();
+    // גם חניכים שנוכחו אבל לא ברשימה הרשמית
+    final extraTrainees =
+        _attendanceMap.keys
+            .where((name) => !_allTrainees.contains(name))
+            .toList()
+          ..sort();
+    final tableTrainees = [...activeTrainees, ...extraTrainees];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 1,
+          title: Text(
+            widget.settlement,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          iconTheme: const IconThemeData(color: Colors.black87),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'רענן נתונים',
+              onPressed: _isLoading ? null : _refresh,
+            ),
+            if (_isExporting)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.download),
+                tooltip: 'ייצוא ל-Excel',
+                onPressed: _isLoading ? null : _exportToXlsx,
+              ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  // כותרת מידע כללי
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildStat(
+                          'סה"כ חניכים',
+                          '${_allTrainees.length}',
+                          Colors.blue[700]!,
+                        ),
+                        _buildStat(
+                          'סה"כ מתאמנים',
+                          '${tableTrainees.length}',
+                          Colors.green[700]!,
+                        ),
+                        _buildStat(
+                          'אימונים',
+                          '${_sessions.length}',
+                          Colors.orange[700]!,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // טבלה
+                  Expanded(
+                    child: _sessions.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'אין נתוני אימונים ליישוב זה',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                          )
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              const double nameColWidth = 130;
+                              const double sessionColWidth = 90;
+                              final double tableWidth =
+                                  nameColWidth +
+                                  _sessions.length * sessionColWidth;
+                              return SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Center(
+                                  child: SizedBox(
+                                    width: tableWidth > constraints.maxWidth
+                                        ? tableWidth
+                                        : tableWidth,
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.vertical,
+                                      child: _buildTable(tableTrainees),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildStat(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTable(List<String> tableTrainees) {
+    const double nameColWidth = 130;
+    const double sessionColWidth = 90;
+    final Color headerBg = Colors.grey[200]!;
+    final Color rowEven = Colors.white;
+    final Color rowOdd = Colors.grey[50]!;
+    final Color dividerColor = Colors.grey[300]!;
+
+    // בנה header rows (3 שורות: קבוצה, תת-סוג, תאריך)
+    final List<Widget> headerCells = [
+      // תא שם חניך בפינה
+      Container(
+        width: nameColWidth,
+        height: 72,
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: headerBg,
+          border: Border(
+            bottom: BorderSide(color: dividerColor),
+            left: BorderSide(color: dividerColor),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: const Text(
+          'שם חניך',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    ];
+
+    for (int i = 0; i < _sessions.length; i++) {
+      final s = _sessions[i];
+      final typeGroup = s['typeGroup'] as String;
+      final subType = (s['subType'] as String?) ?? '';
+      final date = (s['date'] as DateTime?) ?? DateTime(2000);
+
+      Color groupColor = Colors.orange[800]!;
+      if (typeGroup == 'מטווחים') groupColor = Colors.orange[800]!;
+      if (typeGroup == 'סיכום אימון') groupColor = Colors.blue[700]!;
+      if (typeGroup == 'הפתעה') groupColor = Colors.green[700]!;
+
+      headerCells.add(
+        Container(
+          width: sessionColWidth,
+          height: 72,
+          decoration: BoxDecoration(
+            color: headerBg,
+            border: Border(
+              bottom: BorderSide(color: dividerColor),
+              left: i < _sessions.length - 1
+                  ? BorderSide(color: dividerColor)
+                  : BorderSide.none,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                typeGroup,
+                style: TextStyle(
+                  color: groupColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (subType.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subType,
+                  style: const TextStyle(color: Colors.black54, fontSize: 10),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(height: 2),
+              Text(
+                _formatDate(date),
+                style: const TextStyle(color: Colors.black45, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // שורות חניכים
+    final List<Widget> dataRows = [];
+    for (int ri = 0; ri < tableTrainees.length; ri++) {
+      final name = tableTrainees[ri];
+      final attended = _attendanceMap[name] ?? {};
+      final bg = ri.isEven ? rowEven : rowOdd;
+
+      final List<Widget> cells = [
+        Container(
+          width: nameColWidth,
+          height: 40,
+          alignment: Alignment.centerRight,
+          decoration: BoxDecoration(
+            color: bg,
+            border: Border(
+              bottom: BorderSide(color: dividerColor),
+              left: BorderSide(color: dividerColor),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            children: [
+              Text(
+                '${ri + 1}.',
+                style: const TextStyle(color: Colors.black38, fontSize: 10),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(color: Colors.black87, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+
+      for (int ci = 0; ci < _sessions.length; ci++) {
+        final present = attended.contains(ci);
+        cells.add(
+          Container(
+            width: sessionColWidth,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: bg,
+              border: Border(
+                bottom: BorderSide(color: dividerColor),
+                left: ci < _sessions.length - 1
+                    ? BorderSide(color: dividerColor)
+                    : BorderSide.none,
+              ),
+            ),
+            child: Text(
+              present ? '✅' : '❌',
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+        );
+      }
+
+      dataRows.add(Row(children: cells));
+    }
+
+    // שורת סיכום
+    final List<Widget> summaryCells = [
+      Container(
+        width: nameColWidth,
+        height: 40,
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: headerBg,
+          border: Border(top: BorderSide(color: dividerColor)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: const Text(
+          'סה"כ',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    ];
+
+    for (int ci = 0; ci < _sessions.length; ci++) {
+      int count = 0;
+      for (final attended in _attendanceMap.values) {
+        if (attended.contains(ci)) count++;
+      }
+      summaryCells.add(
+        Container(
+          width: sessionColWidth,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: headerBg,
+            border: Border(
+              top: BorderSide(color: dividerColor),
+              left: ci < _sessions.length - 1
+                  ? BorderSide(color: dividerColor)
+                  : BorderSide.none,
+            ),
+          ),
+          child: Text(
+            '$count/${tableTrainees.length}',
+            style: TextStyle(
+              color: Colors.blue[700],
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: headerCells),
+        ...dataRows,
+        Row(children: summaryCells),
       ],
     );
   }
