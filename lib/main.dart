@@ -10153,6 +10153,35 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             }
                           }
 
+                          // ✅ SHORT RANGE: Total bullets fired including shared targets
+                          int totalBulletsFiredShortRange = 0;
+                          if (!isLongRange) {
+                            for (int si = 0; si < stations.length; si++) {
+                              final isSharedSt =
+                                  (stations[si]['isSharedTarget'] as bool?) ??
+                                  false;
+                              int performers = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null &&
+                                    hits.containsKey('station_$si')) {
+                                  performers++;
+                                }
+                              }
+                              // מקצה משותף — כולם ירו, גם אם לא הוכנס ערך
+                              final effectivePerformers = isSharedSt
+                                  ? trainees.length
+                                  : performers;
+                              final b =
+                                  (stations[si]['bulletsCount'] as num?)
+                                      ?.toInt() ??
+                                  0;
+                              totalBulletsFiredShortRange +=
+                                  effectivePerformers * b;
+                            }
+                          }
+
                           debugPrint(
                             '🔍 ===== END 474 RANGES FEEDBACK DETAILS =====\n',
                           );
@@ -10227,51 +10256,69 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                 ),
                                               ],
                                             )
-                                          : Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.spaceAround,
+                                          : Column(
                                               children: [
-                                                Column(
+                                                Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceAround,
                                                   children: [
-                                                    const Text(
-                                                      'סך פגיעות/כדורים',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                      ),
+                                                    Column(
+                                                      children: [
+                                                        const Text(
+                                                          'סך פגיעות/כדורים',
+                                                          style: TextStyle(
+                                                            color: Colors.white,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          height: 4,
+                                                        ),
+                                                        Text(
+                                                          '$totalValue/$totalMax',
+                                                          style: const TextStyle(
+                                                            fontSize: 24,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors
+                                                                .orangeAccent,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      '$totalValue/$totalMax',
-                                                      style: const TextStyle(
-                                                        fontSize: 24,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color:
-                                                            Colors.orangeAccent,
-                                                      ),
+                                                    Column(
+                                                      children: [
+                                                        const Text(
+                                                          'אחוז פגיעה כללי',
+                                                          style: TextStyle(
+                                                            color: Colors.white,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          height: 4,
+                                                        ),
+                                                        Text(
+                                                          '$percentage%',
+                                                          style: const TextStyle(
+                                                            fontSize: 32,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors
+                                                                .greenAccent,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ],
                                                 ),
-                                                Column(
-                                                  children: [
-                                                    const Text(
-                                                      'אחוז פגיעה כללי',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      '$percentage%',
-                                                      style: const TextStyle(
-                                                        fontSize: 32,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color:
-                                                            Colors.greenAccent,
-                                                      ),
-                                                    ),
-                                                  ],
+                                                const SizedBox(height: 12),
+                                                Text(
+                                                  'סה"כ כדורים שנורו: $totalBulletsFiredShortRange',
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.white70,
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -10343,6 +10390,15 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                           traineesWhoPerformed
                                     : 0;
 
+                                final isSharedTarget =
+                                    (station['isSharedTarget'] as bool?) ??
+                                    false;
+                                final sharedBulletsCount =
+                                    ((station['bulletsCount'] as num?)
+                                            ?.toInt() ??
+                                        0) *
+                                    trainees.length;
+
                                 return InkWell(
                                   onTap: () {
                                     // For long range: pass maxPoints instead of bullets
@@ -10366,111 +10422,162 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          // שורה 1: שם המקצה
-                                          Text(
-                                            stationName,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          // מדדים מרוכזים בשורה אחת
+                                          // שורה 1: שם המקצה + תגית מקצה משותף
                                           Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceEvenly,
                                             children: [
-                                              // סך כל כדורים/נקודות מקסימליות
-                                              Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    '$totalStationMax',
-                                                    style: const TextStyle(
+                                              Expanded(
+                                                child: Text(
+                                                  stationName,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (isSharedTarget &&
+                                                  !isLongRange)
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.amber
+                                                        .withValues(
+                                                          alpha: 0.25,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: Colors.amber,
+                                                    ),
+                                                  ),
+                                                  child: const Text(
+                                                    'מקצה משותף',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.amber,
                                                       fontWeight:
                                                           FontWeight.bold,
-                                                      color: Colors.white70,
-                                                      fontSize: 16,
                                                     ),
                                                   ),
-                                                  Text(
-                                                    isLongRange
-                                                        ? 'סך נקודות מקס'
-                                                        : 'סך כל כדורים',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.white60,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              // סך כל פגיעות/נקודות
-                                              Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    '$stationValue',
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color:
-                                                          Colors.orangeAccent,
-                                                      fontSize: 16,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    isLongRange
-                                                        ? 'סך נקודות'
-                                                        : 'סך כל פגיעות',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.white60,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              // אחוז - SHOW FOR BOTH (from points for long, from hits for short)
-                                              Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    '$stationPercentage%',
-                                                    style: const TextStyle(
-                                                      fontSize: 18,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.greenAccent,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    isLongRange
-                                                        ? 'אחוז הצלחה'
-                                                        : 'אחוז פגיעות',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.white60,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                                ),
                                             ],
                                           ),
-                                          // ✅ LONG RANGE: Show bullets fired for this stage
-                                          if (isLongRange &&
-                                              stageBulletsFired > 0) ...[
-                                            const SizedBox(height: 8),
+                                          const SizedBox(height: 8),
+                                          if (isSharedTarget &&
+                                              !isLongRange) ...[
+                                            // מקצה משותף: הצג רק כדורים שנורו
                                             Text(
-                                              'כדורים שנורו במקצה: $stageBulletsFired',
+                                              'כדורים שנורו: $sharedBulletsCount',
                                               style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.white60,
-                                                fontStyle: FontStyle.italic,
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white70,
                                               ),
                                             ),
+                                          ] else ...[
+                                            // מדדים מרוכזים בשורה אחת
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.spaceEvenly,
+                                              children: [
+                                                // סך כל כדורים/נקודות מקסימליות
+                                                Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      '$totalStationMax',
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: Colors.white70,
+                                                        fontSize: 16,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      isLongRange
+                                                          ? 'סך נקודות מקס'
+                                                          : 'סך כל כדורים',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.white60,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                // סך כל פגיעות/נקודות
+                                                Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      '$stationValue',
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.orangeAccent,
+                                                        fontSize: 16,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      isLongRange
+                                                          ? 'סך נקודות'
+                                                          : 'סך כל פגיעות',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.white60,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                // אחוז
+                                                Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      '$stationPercentage%',
+                                                      style: const TextStyle(
+                                                        fontSize: 18,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Colors.greenAccent,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      isLongRange
+                                                          ? 'אחוז הצלחה'
+                                                          : 'אחוז פגיעות',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.white60,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            // ✅ LONG RANGE: Show bullets fired for this stage
+                                            if (isLongRange &&
+                                                stageBulletsFired > 0) ...[
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'כדורים שנורו במקצה: $stageBulletsFired',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.white60,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                           const SizedBox(height: 6),
                                           const Text(

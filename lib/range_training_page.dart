@@ -1268,7 +1268,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     if (_rangeType == 'קצרים' && shortRangeStagesList.isNotEmpty) {
       int total = 0;
       for (var stage in shortRangeStagesList) {
-        total += stage.bulletsCount;
+        if (!stage.isSharedTarget) total += stage.bulletsCount;
       }
       return total;
     }
@@ -1279,7 +1279,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // For Surprise, use stations list
     int total = 0;
     for (var station in stations) {
-      total += station.bulletsCount;
+      if (!station.isSharedTarget) total += station.bulletsCount;
     }
     return total;
   }

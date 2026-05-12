@@ -1428,6 +1428,7 @@ class _InstructorCourseFeedbackPageState
                                     _selectedPikud = newValue;
                                     _markFormDirty();
                                   });
+                                  _scheduleAutosave();
                                 },
                         ),
                         const SizedBox(height: 12),
@@ -1459,6 +1460,7 @@ class _InstructorCourseFeedbackPageState
                                       _selectedHativa = newValue;
                                       _markFormDirty();
                                     });
+                                    _scheduleAutosave();
                                   },
                           ),
                           const SizedBox(height: 12),
