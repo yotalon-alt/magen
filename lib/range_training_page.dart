@@ -1165,6 +1165,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // Long Range: Remove a stage from the list
   void _removeLongRangeStage(int index) {
     // Allow removing all stages (no minimum requirement)
+
+    // ✅ FIX: Clear all text controllers so that after the stage index shift,
+    // Flutter rebuilds them with the correct (shifted) values instead of
+    // reusing stale controllers that still hold values from the deleted stage.
+    for (final controller in _textControllers.values) {
+      controller.dispose();
+    }
+    _textControllers.clear();
+
     setState(() {
       longRangeStagesList.removeAt(index);
 
