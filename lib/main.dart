@@ -3176,7 +3176,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   }
 
                   // Settlement behavior per folder
-                  // Note: 'תרגילים גזרתיים' uses free-text settlement (like משובים – כללי)
+                  // Note: 'תרגילים גזרתיים' uses Golan settlements dropdown (like מחלקות ההגנה – חטיבה 474)
 
                   return DropdownButtonFormField<String>(
                     initialValue: selectedFolder,
@@ -3307,6 +3307,32 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                     }).toList(),
                   ),
                 ],
+                const SizedBox(height: 12),
+              ] else if (selectedFolder == 'תרגילים גזרתיים') ...[
+                // תרגילים גזרתיים: Dropdown from Golan settlements (same as 474)
+                const Text(
+                  'יישוב',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      settlement.isNotEmpty &&
+                          golanSettlements.contains(settlement)
+                      ? settlement
+                      : null,
+                  hint: const Text('בחר יישוב'),
+                  decoration: const InputDecoration(
+                    labelText: 'בחר יישוב',
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(color: Colors.black87, fontSize: 16),
+                  dropdownColor: Colors.white,
+                  items: golanSettlements
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) => setState(() => settlement = v ?? ''),
+                ),
                 const SizedBox(height: 12),
               ],
 
@@ -15813,17 +15839,10 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 1,
           title: Text(
             widget.settlement,
-            style: const TextStyle(
-              color: Colors.black87,
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
           ),
-          iconTheme: const IconThemeData(color: Colors.black87),
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
@@ -16067,7 +16086,7 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
             children: [
               Text(
                 '${ri + 1}.',
-                style: const TextStyle(color: Colors.black38, fontSize: 10),
+                style: const TextStyle(color: Colors.black87, fontSize: 10),
               ),
               const SizedBox(width: 4),
               Expanded(
