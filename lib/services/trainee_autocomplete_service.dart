@@ -72,6 +72,7 @@ class TraineeAutocompleteService {
 
       final data = doc.data()!;
       final trainees = (data['trainees'] as List?)?.cast<String>() ?? [];
+      trainees.sort(); // מיון לפי א"ב
 
       // שמירה ב-cache
       _cache[normalizedSettlement] = trainees;

@@ -1614,6 +1614,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const Brigade474StatisticsPage(),
                 settings: settings,
               );
+            case '/trainee_attendance_statistics':
+              return MaterialPageRoute(
+                builder: (_) => const TraineeAttendanceStatisticsPage(),
+                settings: settings,
+              );
             default:
               return MaterialPageRoute(
                 builder: (_) => StatisticsPage(key: _statisticsKey),
@@ -2463,6 +2468,9 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   String? _currentDraftId;
   Timer? _autosaveTimer;
 
+  // ✨ Autocomplete trainees for 474 / גזרתיים folders
+  List<String> _autocompleteTrainees = [];
+
   // ✨ Date selection for Yotam only
   DateTime _selectedDateTime = DateTime.now();
   bool _dateManuallySet = false;
@@ -2591,6 +2599,23 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
   // Normalize settlement name for deduplication
   String _normalizeSettlement(String input) {
     return input.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  }
+
+  /// טען רשימת חניכים לאוטוקומפליט של "שם הנבדק"
+  Future<void> _loadTraineesForPersonalFeedback(String settlement) async {
+    if (settlement.isEmpty ||
+        (selectedFolder != 'מחלקות ההגנה – חטיבה 474' &&
+            selectedFolder != 'תרגילים גזרתיים')) {
+      if (mounted) setState(() => _autocompleteTrainees = []);
+      return;
+    }
+    try {
+      final trainees =
+          await TraineeAutocompleteService.getTraineesForSettlement(settlement);
+      if (mounted) setState(() => _autocompleteTrainees = trainees);
+    } catch (e) {
+      if (mounted) setState(() => _autocompleteTrainees = []);
+    }
   }
 
   /// טען טיוטה קיימת מ-Firestore
@@ -3198,6 +3223,7 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                       // Clear settlement when folder changes
                       settlement = '';
                       settlementController.clear();
+                      _autocompleteTrainees = [];
                     }),
                   );
                 },
@@ -3228,7 +3254,12 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   items: golanSettlements
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (v) => setState(() => settlement = v ?? ''),
+                  onChanged: (v) {
+                    setState(() => settlement = v ?? '');
+                    if (v != null && v.isNotEmpty) {
+                      _loadTraineesForPersonalFeedback(v);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
               ] else if (selectedFolder == 'משובים – כללי') ...[
@@ -3331,7 +3362,12 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
                   items: golanSettlements
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (v) => setState(() => settlement = v ?? ''),
+                  onChanged: (v) {
+                    setState(() => settlement = v ?? '');
+                    if (v != null && v.isNotEmpty) {
+                      _loadTraineesForPersonalFeedback(v);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
               ],
@@ -3384,16 +3420,44 @@ class _FeedbackFormPageState extends State<FeedbackFormPage> {
               const SizedBox(height: 12),
 
               // 4. שם הנבדק
-              TextField(
-                controller: evaluatedNameController,
-                decoration: const InputDecoration(
-                  labelText: 'שם הנבדק',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (v) {
-                  evaluatedName = v;
+              Autocomplete<String>(
+                initialValue: TextEditingValue(text: evaluatedName),
+                optionsBuilder: (TextEditingValue textEditingValue) {
+                  if (_autocompleteTrainees.isEmpty) {
+                    return const Iterable<String>.empty();
+                  }
+                  final query = textEditingValue.text.trim();
+                  if (query.isEmpty) return _autocompleteTrainees;
+                  return _autocompleteTrainees.where(
+                    (name) => name.contains(query),
+                  );
+                },
+                onSelected: (String selection) {
+                  setState(() {
+                    evaluatedName = selection;
+                    evaluatedNameController.text = selection;
+                  });
                   _triggerAutosave();
                 },
+                fieldViewBuilder:
+                    (context, controller, focusNode, onFieldSubmitted) {
+                      if (controller.text.isEmpty && evaluatedName.isNotEmpty) {
+                        controller.text = evaluatedName;
+                      }
+                      return TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'שם הנבדק',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (v) {
+                          evaluatedName = v;
+                          evaluatedNameController.text = v;
+                          _triggerAutosave();
+                        },
+                      );
+                    },
               ),
               const SizedBox(height: 12),
 
@@ -11844,7 +11908,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
               // Button for General Statistics
               SizedBox(
                 width: double.infinity,
-                height: 80,
+                height: 64,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pushNamed('/general_statistics');
@@ -11852,9 +11916,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueGrey.shade700,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     textStyle: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                     shape: RoundedRectangleBorder(
@@ -11865,11 +11929,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   child: const Text('סטטיסטיקת משובים'),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
               // Button for Range Statistics
               SizedBox(
                 width: double.infinity,
-                height: 80,
+                height: 64,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pushNamed('/range_statistics');
@@ -11877,9 +11941,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueGrey.shade700,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     textStyle: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                     shape: RoundedRectangleBorder(
@@ -11890,11 +11954,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   child: const Text('סטטיסטיקת מטווחים'),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
               // Button for Surprise Drills Statistics
               SizedBox(
                 width: double.infinity,
-                height: 80,
+                height: 64,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.of(
@@ -11904,9 +11968,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueGrey.shade700,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     textStyle: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                     shape: RoundedRectangleBorder(
@@ -11917,11 +11981,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   child: const Text('סטטיסטיקת תרגילי הפתעה'),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
               // Button for Brigade 474 Final Statistics
               SizedBox(
                 width: double.infinity,
-                height: 80,
+                height: 64,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pushNamed('/brigade_474_statistics');
@@ -11929,9 +11993,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepOrange.shade700,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     textStyle: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                     shape: RoundedRectangleBorder(
@@ -11942,6 +12006,35 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   child: const Text('סטטיסטיקת הגמר חטיבה 474'),
                 ),
               ),
+              // Button for Trainee Attendance Statistics (Admin only)
+              if (currentUser?.role == 'Admin') ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(
+                        context,
+                      ).pushNamed('/trainee_attendance_statistics');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      textStyle: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 8,
+                    ),
+                    child: const Text('סטטיסטיקת נוכחים'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -12779,8 +12872,14 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              ...maagalPatuachCriteria
-                  .where((c) => (maagalPatuachValues[c] ?? []).isNotEmpty)
+              ...(maagalPatuachCriteria
+                      .where((c) => (maagalPatuachValues[c] ?? []).isNotEmpty)
+                      .toList()
+                    ..sort(
+                      (a, b) => avgOf(
+                        maagalPatuachValues[b]!,
+                      ).compareTo(avgOf(maagalPatuachValues[a]!)),
+                    ))
                   .map((c) => buildCriterionBar(c, maagalPatuachValues[c]!)),
               if (maagalPatuachCriteria.every(
                 (c) => (maagalPatuachValues[c] ?? []).isEmpty,
@@ -12800,8 +12899,14 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              ...maagalPoruzCriteria
-                  .where((c) => (maagalPoruzValues[c] ?? []).isNotEmpty)
+              ...(maagalPoruzCriteria
+                      .where((c) => (maagalPoruzValues[c] ?? []).isNotEmpty)
+                      .toList()
+                    ..sort(
+                      (a, b) => avgOf(
+                        maagalPoruzValues[b]!,
+                      ).compareTo(avgOf(maagalPoruzValues[a]!)),
+                    ))
                   .map((c) => buildCriterionBar(c, maagalPoruzValues[c]!)),
               if (maagalPoruzCriteria.every(
                 (c) => (maagalPoruzValues[c] ?? []).isEmpty,
@@ -12821,8 +12926,14 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              ...sarikotRekhovCriteria
-                  .where((c) => (sarikotRekhovValues[c] ?? []).isNotEmpty)
+              ...(sarikotRekhovCriteria
+                      .where((c) => (sarikotRekhovValues[c] ?? []).isNotEmpty)
+                      .toList()
+                    ..sort(
+                      (a, b) => avgOf(
+                        sarikotRekhovValues[b]!,
+                      ).compareTo(avgOf(sarikotRekhovValues[a]!)),
+                    ))
                   .map((c) => buildCriterionBar(c, sarikotRekhovValues[c]!)),
               if (sarikotRekhovCriteria.every(
                 (c) => (sarikotRekhovValues[c] ?? []).isEmpty,
@@ -12842,60 +12953,62 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              ...roleValues.entries.map((e) {
-                final label = e.key;
-                final a = avgOf(e.value);
-                final pct = (a / 5.0).clamp(0.0, 1.0);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // שם התפקיד מעל הפס
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
+              ...(roleValues.entries.toList()
+                    ..sort((a, b) => avgOf(b.value).compareTo(avgOf(a.value))))
+                  .map((e) {
+                    final label = e.key;
+                    final a = avgOf(e.value);
+                    final pct = (a / 5.0).clamp(0.0, 1.0);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Container(
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: FractionallySizedBox(
-                                widthFactor: pct,
-                                alignment: Alignment.centerRight,
+                          // שם התפקיד מעל הפס
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
                                 child: Container(
+                                  height: 12,
                                   decoration: BoxDecoration(
-                                    color: Colors.lightBlueAccent,
+                                    color: Colors.white24,
                                     borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: FractionallySizedBox(
+                                    widthFactor: pct,
+                                    alignment: Alignment.centerRight,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.lightBlueAccent,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            e.value.isEmpty ? '-' : a.toStringAsFixed(1),
-                            style: const TextStyle(
-                              color: Colors.lightBlueAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
+                              const SizedBox(width: 12),
+                              Text(
+                                e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  color: Colors.lightBlueAccent,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                );
-              }),
+                    );
+                  }),
 
               const Divider(),
               const SizedBox(height: 8),
@@ -12907,58 +13020,63 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               if (settlementValues.isEmpty)
                 const ListTile(title: Text('-'))
               else
-                ...settlementValues.entries.map((e) {
-                  final a = avgOf(e.value);
-                  final pct = (a / 5.0).clamp(0.0, 1.0);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          e.key,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
+                ...(settlementValues.entries.toList()..sort(
+                      (a, b) => avgOf(b.value).compareTo(avgOf(a.value)),
+                    ))
+                    .map((e) {
+                      final a = avgOf(e.value);
+                      final pct = (a / 5.0).clamp(0.0, 1.0);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Container(
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  color: Colors.white24,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: FractionallySizedBox(
-                                  widthFactor: pct,
-                                  alignment: Alignment.centerRight,
+                            Text(
+                              e.key,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Expanded(
                                   child: Container(
+                                    height: 12,
                                     decoration: BoxDecoration(
-                                      color: Colors.teal,
+                                      color: Colors.white24,
                                       borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      widthFactor: pct,
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.teal,
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              a.toStringAsFixed(1),
-                              style: const TextStyle(
-                                color: Colors.teal,
-                                fontWeight: FontWeight.bold,
-                              ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  a.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                    color: Colors.teal,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  );
-                }),
+                      );
+                    }),
             ],
           ),
         ),
@@ -13815,69 +13933,77 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              ...totalHitsPerSettlement.entries.map((e) {
-                final label = e.key;
-                final totalHits = e.value;
-                final totalBullets = totalBulletsPerSettlement[e.key] ?? 0;
-                final percentage = totalBullets > 0
-                    ? ((totalHits / totalBullets) * 100).toStringAsFixed(1)
-                    : '0.0';
-                final pct = totalBullets > 0
-                    ? (totalHits / totalBullets).clamp(0.0, 1.0)
-                    : 0.0;
-                // ✅ Check if this settlement is LONG RANGE
-                final isLongRange = isLongRangePerSettlement[label] ?? false;
-                final unitLabel = isLongRange ? 'נקודות' : 'כדורים';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // שם היישוב מעל הפס
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
+              ...(totalHitsPerSettlement.entries.toList()..sort((a, b) {
+                    final bulletsA = totalBulletsPerSettlement[a.key] ?? 0;
+                    final bulletsB = totalBulletsPerSettlement[b.key] ?? 0;
+                    final pctA = bulletsA > 0 ? a.value / bulletsA : 0.0;
+                    final pctB = bulletsB > 0 ? b.value / bulletsB : 0.0;
+                    return pctB.compareTo(pctA);
+                  }))
+                  .map((e) {
+                    final label = e.key;
+                    final totalHits = e.value;
+                    final totalBullets = totalBulletsPerSettlement[e.key] ?? 0;
+                    final percentage = totalBullets > 0
+                        ? ((totalHits / totalBullets) * 100).toStringAsFixed(1)
+                        : '0.0';
+                    final pct = totalBullets > 0
+                        ? (totalHits / totalBullets).clamp(0.0, 1.0)
+                        : 0.0;
+                    // ✅ Check if this settlement is LONG RANGE
+                    final isLongRange =
+                        isLongRangePerSettlement[label] ?? false;
+                    final unitLabel = isLongRange ? 'נקודות' : 'כדורים';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Container(
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: FractionallySizedBox(
-                                widthFactor: pct,
-                                alignment: Alignment.centerRight,
+                          // שם היישוב מעל הפס
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
                                 child: Container(
+                                  height: 12,
                                   decoration: BoxDecoration(
-                                    color: Colors.purpleAccent,
+                                    color: Colors.white24,
                                     borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: FractionallySizedBox(
+                                    widthFactor: pct,
+                                    alignment: Alignment.centerRight,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.purpleAccent,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
-                            style: const TextStyle(
-                              color: Colors.purpleAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
+                              const SizedBox(width: 12),
+                              Text(
+                                '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
+                                style: const TextStyle(
+                                  color: Colors.purpleAccent,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                );
-              }),
+                    );
+                  }),
 
               const SizedBox(height: 16),
               const Divider(),
@@ -13955,7 +14081,14 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                       }
                     }
                   }
-                  final entries = totalHitsPerStation.entries.toList();
+                  final entries = totalHitsPerStation.entries.toList()
+                    ..sort((a, b) {
+                      final bulletsA = totalBulletsPerStation[a.key] ?? 0;
+                      final bulletsB = totalBulletsPerStation[b.key] ?? 0;
+                      final pctA = bulletsA > 0 ? a.value / bulletsA : 0.0;
+                      final pctB = bulletsB > 0 ? b.value / bulletsB : 0.0;
+                      return pctB.compareTo(pctA);
+                    });
                   if (entries.isEmpty) return const Text('-');
                   return Column(
                     children: entries.map((en) {
@@ -21683,6 +21816,673 @@ class _AboutPageState extends State<AboutPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// סטטיסטיקת נוכחים  Admin only
+// ─────────────────────────────────────────────────────────────────────────────
+class TraineeAttendanceStatisticsPage extends StatefulWidget {
+  const TraineeAttendanceStatisticsPage({super.key});
+
+  @override
+  State<TraineeAttendanceStatisticsPage> createState() =>
+      _TraineeAttendanceStatisticsPageState();
+}
+
+class _TraineeAttendanceStatisticsPageState
+    extends State<TraineeAttendanceStatisticsPage> {
+  bool _isLoading = true;
+  bool _isRefreshing = false;
+  bool _isExporting = false;
+  bool _isFiltersExpanded = false;
+
+  String _settlementFilter = '';
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+  final TextEditingController _searchController = TextEditingController();
+
+  // settlement -> typeKey -> { count, trainees: Set<String>, sessions: List<Map> }
+  Map<String, Map<String, Map<String, dynamic>>> _settlementData = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _typeKey(FeedbackModel f) {
+    if (f.folderKey == 'ranges_474' || f.folder == '474 Ranges') {
+      return 'מטווחים 474';
+    }
+    if (f.module == 'training_summary' || f.folder == 'משוב סיכום אימון 474') {
+      return 'משוב סיכום אימון 474';
+    }
+    return f.folder;
+  }
+
+  Future<void> _loadData() async {
+    if (mounted) setState(() => _isLoading = true);
+    final newData = <String, Map<String, Map<String, dynamic>>>{};
+    try {
+      final feeds = feedbackStorage.where((f) {
+        if (f.isTemporary == true) return false;
+        if (f.folder == 'מחלקות ההגנה  חטיבה 474') return false;
+        if (f.settlement.isEmpty) return false;
+        if (_dateFrom != null && f.createdAt.isBefore(_dateFrom!)) return false;
+        if (_dateTo != null) {
+          final endOfDay = DateTime(
+            _dateTo!.year,
+            _dateTo!.month,
+            _dateTo!.day,
+            23,
+            59,
+            59,
+          );
+          if (f.createdAt.isAfter(endOfDay)) return false;
+        }
+        return f.folder == 'מטווחים 474' ||
+            f.folder == '474 Ranges' ||
+            f.folder == 'משוב תרגילי הפתעה' ||
+            f.folder == 'משוב סיכום אימון 474' ||
+            f.folderKey == 'ranges_474' ||
+            f.folderKey == 'training_summary_474' ||
+            f.folder == 'תרגילים גזרתיים' ||
+            f.folderKey == 'training_summary_sectoral';
+      }).toList();
+
+      for (final f in feeds) {
+        final tk = _typeKey(f);
+        newData.putIfAbsent(f.settlement, () => {});
+        newData[f.settlement]!.putIfAbsent(
+          tk,
+          () => {
+            'count': 0,
+            'trainees': <String>{},
+            'sessions': <Map<String, dynamic>>[],
+          },
+        );
+        newData[f.settlement]![tk]!['count'] =
+            (newData[f.settlement]![tk]!['count'] as int) + 1;
+      }
+
+      final docs = await Future.wait(
+        feeds.map((f) async {
+          if (f.id == null || f.id!.isEmpty) return null;
+          try {
+            return await FirebaseFirestore.instance
+                .collection('feedbacks')
+                .doc(f.id!)
+                .get()
+                .timeout(const Duration(seconds: 15));
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+
+      for (int i = 0; i < feeds.length; i++) {
+        final f = feeds[i];
+        final docSnap = docs[i];
+        if (docSnap == null || !docSnap.exists) continue;
+        final data = docSnap.data()!;
+        final tk = _typeKey(f);
+
+        final isRanges = tk == 'מטווחים 474';
+        final isTrainingSummary = tk == 'משוב סיכום אימון 474';
+        final isSurprise = f.folder == 'משוב תרגילי הפתעה';
+
+        List<String> sessionTrainees = [];
+
+        if (isRanges) {
+          final trainees =
+              (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+          final feedbackType = (data['feedbackType'] as String?) ?? '';
+          final rangeSubType =
+              (data['rangeSubType'] as String?) ?? f.rangeSubType;
+          final isLong =
+              feedbackType == 'range_long' ||
+              feedbackType == 'דווח רחוק' ||
+              rangeSubType == 'טווח רחוק';
+          sessionTrainees = trainees
+              .map((t) => (t['name'] as String?) ?? '')
+              .where((n) => n.isNotEmpty)
+              .toList();
+          (newData[f.settlement]![tk]!['sessions'] as List).add({
+            'feedbackId': f.id ?? '',
+            'date': f.createdAt,
+            'typeGroup': 'מטווחים',
+            'subType': isLong ? 'טווח רחוק' : 'טווח קצר',
+            'trainees': sessionTrainees,
+          });
+        } else if (isTrainingSummary) {
+          sessionTrainees = ((data['attendees'] as List?)?.cast<String>() ?? [])
+              .where((n) => n.isNotEmpty)
+              .toList();
+          (newData[f.settlement]![tk]!['sessions'] as List).add({
+            'feedbackId': f.id ?? '',
+            'date': f.createdAt,
+            'typeGroup': 'סיכום אימון',
+            'subType': (data['trainingType'] as String?) ?? f.trainingType,
+            'trainees': sessionTrainees,
+          });
+        } else if (isSurprise) {
+          final trainees =
+              (data['trainees'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+          sessionTrainees = trainees
+              .map((t) => (t['name'] as String?) ?? '')
+              .where((n) => n.isNotEmpty)
+              .toList();
+          (newData[f.settlement]![tk]!['sessions'] as List).add({
+            'feedbackId': f.id ?? '',
+            'date': f.createdAt,
+            'typeGroup': 'הפתעה',
+            'subType': '',
+            'trainees': sessionTrainees,
+          });
+        } else {
+          // sectoral
+          sessionTrainees = ((data['attendees'] as List?)?.cast<String>() ?? [])
+              .where((n) => n.isNotEmpty)
+              .toList();
+          (newData[f.settlement]![tk]!['sessions'] as List).add({
+            'feedbackId': f.id ?? '',
+            'date': f.createdAt,
+            'typeGroup': 'גזרתי',
+            'subType': (data['trainingType'] as String?) ?? '',
+            'trainees': sessionTrainees,
+          });
+        }
+
+        for (final name in sessionTrainees) {
+          (newData[f.settlement]![tk]!['trainees'] as Set<String>).add(name);
+        }
+      }
+    } catch (e) {
+      debugPrint('TraineeAttendanceStatisticsPage load error: $e');
+    }
+    if (mounted) {
+      setState(() {
+        _settlementData = newData;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await loadFeedbacksForCurrentUser(isAdmin: currentUser?.role == 'Admin');
+    await _loadData();
+    if (mounted) {
+      setState(() => _isRefreshing = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('הנתונים עודכנו')));
+    }
+  }
+
+  Future<void> _export() async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final rows = <Map<String, dynamic>>[];
+      for (final settlement in (_settlementData.keys.toList()..sort())) {
+        final typeData = _settlementData[settlement]!;
+        int total = 0;
+        final Set<String> unique = {};
+        final typeCounts = <String, int>{};
+        for (final e in typeData.entries) {
+          final s = (e.value['sessions'] as List?)?.length ?? 0;
+          total += s;
+          unique.addAll((e.value['trainees'] as Set<String>?) ?? {});
+          if (s > 0) typeCounts[e.key] = s;
+        }
+        rows.add({
+          'יישוב': settlement,
+          'סה"כ אימונים': total,
+          'חניכים ייחודיים': unique.length,
+          'פירוט': typeCounts.entries
+              .map((e) => '${_shortLabel(e.key)}: ${e.value}')
+              .join(', '),
+        });
+      }
+      await FeedbackExportService.exportStatisticsToGoogleSheets(
+        tabName: 'נוכחות חניכים',
+        sections: {'סיכום נוכחות לפי יישוב': rows},
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('הקובץ יוצא בהצלחה!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בייצוא: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  String _shortLabel(String k) {
+    if (k == 'מטווחים 474') return 'מטווחים';
+    if (k == 'משוב סיכום אימון 474') return 'סיכום אימון';
+    if (k == 'משוב תרגילי הפתעה') return 'הפתעה';
+    if (k == 'תרגילים גזרתיים') return 'גזרתי';
+    return k;
+  }
+
+  Future<void> _pickDateFrom() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateFrom ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() => _dateFrom = picked);
+      _loadData();
+    }
+  }
+
+  Future<void> _pickDateTo() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateTo ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() => _dateTo = picked);
+      _loadData();
+    }
+  }
+
+  String _fmt(DateTime dt) =>
+      '${dt.day.toString().padLeft(2, '0')}/'
+      '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+
+  Widget _chip(IconData icon, String label, Color color) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 16, color: color),
+      const SizedBox(width: 4),
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedSettlements = (_settlementData.keys.toList()..sort())
+        .where(
+          (s) => _settlementFilter.isEmpty || s.contains(_settlementFilter),
+        )
+        .toList();
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('סטטיסטיקת נוכחים'),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'רענן נתונים',
+              onPressed: _isRefreshing ? null : _refresh,
+            ),
+            IconButton(
+              icon: _isExporting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.download),
+              tooltip: 'ייצוא',
+              onPressed: _isExporting ? null : _export,
+            ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // ── Filters ──────────────────────────────────────────
+                    Card(
+                      color: Colors.blueGrey.shade800,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            InkWell(
+                              onTap: () => setState(
+                                () => _isFiltersExpanded = !_isFiltersExpanded,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.filter_list,
+                                    color: Colors.white70,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'סינון',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  if (_dateFrom != null || _dateTo != null) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orangeAccent,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Text(
+                                        'פעיל',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  const Spacer(),
+                                  Icon(
+                                    _isFiltersExpanded
+                                        ? Icons.keyboard_arrow_up
+                                        : Icons.keyboard_arrow_down,
+                                    color: Colors.white70,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_isFiltersExpanded) ...[
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _searchController,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  hintText: 'חיפוש יישוב...',
+                                  hintStyle: const TextStyle(
+                                    color: Colors.white54,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.search,
+                                    color: Colors.white70,
+                                  ),
+                                  border: const OutlineInputBorder(),
+                                  isDense: true,
+                                  suffixIcon: _settlementFilter.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(
+                                            Icons.clear,
+                                            color: Colors.white70,
+                                          ),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            setState(
+                                              () => _settlementFilter = '',
+                                            );
+                                          },
+                                        )
+                                      : null,
+                                ),
+                                onChanged: (v) => setState(
+                                  () => _settlementFilter = v.trim(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _pickDateFrom,
+                                    icon: const Icon(
+                                      Icons.calendar_today,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      _dateFrom == null
+                                          ? 'מתאריך'
+                                          : _fmt(_dateFrom!),
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: _pickDateTo,
+                                    icon: const Icon(
+                                      Icons.calendar_today,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      _dateTo == null
+                                          ? 'עד תאריך'
+                                          : _fmt(_dateTo!),
+                                    ),
+                                  ),
+                                  if (_dateFrom != null || _dateTo != null)
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        setState(() {
+                                          _dateFrom = null;
+                                          _dateTo = null;
+                                        });
+                                        _loadData();
+                                      },
+                                      icon: const Icon(
+                                        Icons.clear_all,
+                                        size: 16,
+                                      ),
+                                      label: const Text('נקה תאריכים'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.orangeAccent,
+                                        foregroundColor: Colors.black,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${sortedSettlements.length} יישובים',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // ── Settlement list ───────────────────────────────────
+                    Expanded(
+                      child: sortedSettlements.isEmpty
+                          ? const Center(child: Text('אין נתונים'))
+                          : ListView.builder(
+                              itemCount: sortedSettlements.length,
+                              itemBuilder: (ctx, idx) {
+                                final settlement = sortedSettlements[idx];
+                                final typeData = _settlementData[settlement]!;
+                                int totalSessions = 0;
+                                final Set<String> unique = {};
+                                final typeCounts = <String, int>{};
+                                for (final e in typeData.entries) {
+                                  final s =
+                                      (e.value['sessions'] as List?)?.length ??
+                                      0;
+                                  totalSessions += s;
+                                  unique.addAll(
+                                    (e.value['trainees'] as Set<String>?) ?? {},
+                                  );
+                                  if (s > 0) typeCounts[e.key] = s;
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12.0),
+                                  child: Card(
+                                    color: Colors.blueGrey.shade700,
+                                    elevation: 4,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () {
+                                        final pageData =
+                                            <String, Map<String, dynamic>>{};
+                                        for (final e in typeData.entries) {
+                                          pageData[e.key] =
+                                              Map<String, dynamic>.from(
+                                                e.value,
+                                              );
+                                        }
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                SettlementAttendancePage(
+                                                  settlement: settlement,
+                                                  settlementData: pageData,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.location_on,
+                                                  color: Colors.orangeAccent,
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    settlement,
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const Icon(
+                                                  Icons.arrow_back,
+                                                  color: Colors.white54,
+                                                  size: 18,
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              children: [
+                                                _chip(
+                                                  Icons.fitness_center,
+                                                  '$totalSessions אימונים',
+                                                  Colors.cyanAccent,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                _chip(
+                                                  Icons.people,
+                                                  '${unique.length} חניכים',
+                                                  Colors.greenAccent,
+                                                ),
+                                              ],
+                                            ),
+                                            if (typeCounts.isNotEmpty) ...[
+                                              const SizedBox(height: 8),
+                                              Wrap(
+                                                spacing: 6,
+                                                runSpacing: 4,
+                                                children: typeCounts.entries
+                                                    .map(
+                                                      (e) => Chip(
+                                                        label: Text(
+                                                          '${_shortLabel(e.key)}: ${e.value}',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 12,
+                                                                color: Colors
+                                                                    .white,
+                                                              ),
+                                                        ),
+                                                        backgroundColor: Colors
+                                                            .blueGrey
+                                                            .shade600,
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              2,
+                                                            ),
+                                                      ),
+                                                    )
+                                                    .toList(),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }
