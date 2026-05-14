@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -27,6 +26,7 @@ import 'package:universal_html/html.dart' as html;
 import 'package:excel/excel.dart' hide Border;
 import 'pages/training_program_folder_selection_page.dart';
 import 'personal_feedback_entry_page.dart';
+import 'app_version.dart';
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -21714,20 +21714,7 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   Future<void> _loadVersion() async {
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      if (mounted) {
-        setState(() {
-          version = 'גרסה ${packageInfo.version}+${packageInfo.buildNumber}';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          version = 'גרסה לא זמינה';
-        });
-      }
-    }
+    if (mounted) setState(() => version = 'גרסה $kAppVersion');
   }
 
   @override
