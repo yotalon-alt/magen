@@ -22244,6 +22244,8 @@ class _TraineeAttendanceStatisticsPageState
                                     Icons.search,
                                     color: Colors.white70,
                                   ),
+                                  filled: true,
+                                  fillColor: Colors.blueGrey.shade700,
                                   border: const OutlineInputBorder(),
                                   isDense: true,
                                   suffixIcon: _settlementFilter.isNotEmpty
