@@ -14345,30 +14345,45 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
         }
       }
 
-      // ── Pass 2: fetch all Firestore documents IN PARALLEL ─────────────────
-      final docFutures = brigadeFeeds.map((f) async {
-        if (f.id == null || f.id!.isEmpty) return null;
-        try {
-          return await FirebaseFirestore.instance
-              .collection('feedbacks')
-              .doc(f.id)
-              .get()
-              .timeout(const Duration(seconds: 15));
-        } catch (e) {
-          debugPrint('Error loading feedback data for ${f.id}: $e');
-          return null;
-        }
-      }).toList();
+      // ── Pass 2: fetch all Firestore documents in batches (whereIn, max 30 per batch) ─
+      final allIds = brigadeFeeds
+          .where((f) => f.id != null && f.id!.isNotEmpty)
+          .map((f) => f.id!)
+          .toList();
 
-      final docs = await Future.wait(docFutures);
+      final Map<String, Map<String, dynamic>> docsMap = {};
+      if (allIds.isNotEmpty) {
+        const int batchSize = 30;
+        final batchFutures = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
+        for (int i = 0; i < allIds.length; i += batchSize) {
+          final chunk = allIds.sublist(
+            i,
+            (i + batchSize).clamp(0, allIds.length),
+          );
+          batchFutures.add(
+            FirebaseFirestore.instance
+                .collection('feedbacks')
+                .where(FieldPath.documentId, whereIn: chunk)
+                .get()
+                .timeout(const Duration(seconds: 15)),
+          );
+        }
+        try {
+          final batchResults = await Future.wait(batchFutures);
+          for (final snap in batchResults) {
+            for (final doc in snap.docs) {
+              docsMap[doc.id] = doc.data();
+            }
+          }
+        } catch (e) {
+          debugPrint('Error loading brigade feedback batch: $e');
+        }
+      }
 
       // ── Pass 3: process each document's detailed data ─────────────────────
-      for (int i = 0; i < brigadeFeeds.length; i++) {
-        final f = brigadeFeeds[i];
-        final docSnap = docs[i];
-        if (docSnap == null || !docSnap.exists) continue;
-
-        final data = docSnap.data()!;
+      for (final f in brigadeFeeds) {
+        final data = docsMap[f.id];
+        if (data == null) continue;
         final instructorName = f.instructorName;
         final isDefensePlatoons = f.folder == 'מחלקות ההגנה – חטיבה 474';
 
@@ -16039,6 +16054,16 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                           '${_sessions.length}',
                           Colors.orange[700]!,
                         ),
+                        _buildStat('ממוצע לאימון', () {
+                          final total = _sessions.fold<int>(
+                            0,
+                            (acc, s) =>
+                                acc + ((s['trainees'] as List?)?.length ?? 0),
+                          );
+                          return _sessions.isEmpty
+                              ? '-'
+                              : (total / _sessions.length).round().toString();
+                        }(), Colors.lightBlue[700]!),
                       ],
                     ),
                   ),
@@ -22356,6 +22381,22 @@ class _TraineeAttendanceStatisticsPageState
                                   );
                                   if (s > 0) typeCounts[e.key] = s;
                                 }
+                                int totalTraineeAppearances = 0;
+                                for (final e in typeData.entries) {
+                                  final sessions =
+                                      (e.value['sessions'] as List?)
+                                          ?.cast<Map<String, dynamic>>() ??
+                                      [];
+                                  for (final session in sessions) {
+                                    totalTraineeAppearances +=
+                                        (session['trainees'] as List?)
+                                            ?.length ??
+                                        0;
+                                  }
+                                }
+                                final avgPerTraining = totalSessions > 0
+                                    ? totalTraineeAppearances / totalSessions
+                                    : 0.0;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12.0),
                                   child: Card(
@@ -22458,6 +22499,30 @@ class _TraineeAttendanceStatisticsPageState
                                                       ),
                                                     )
                                                     .toList(),
+                                              ),
+                                            ],
+                                            if (totalSessions > 0) ...[
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.analytics,
+                                                    color:
+                                                        Colors.lightBlueAccent,
+                                                    size: 16,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    'ממוצע: ${avgPerTraining.round()} חניכים לאימון',
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors
+                                                          .lightBlueAccent,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ],
