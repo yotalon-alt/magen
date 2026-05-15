@@ -22,8 +22,9 @@ void _setRTLForAllSheets(Excel excel) {
             final isNumeric =
                 cell.value is IntCellValue || cell.value is DoubleCellValue;
             cell.cellStyle = CellStyle(
-              horizontalAlign:
-                  isNumeric ? HorizontalAlign.Center : HorizontalAlign.Right,
+              horizontalAlign: isNumeric
+                  ? HorizontalAlign.Center
+                  : HorizontalAlign.Right,
             );
           }
         }
