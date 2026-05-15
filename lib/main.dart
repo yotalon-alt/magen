@@ -771,6 +771,10 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'מערכת משובים',
+      builder: (context, child) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: child!,
+      ),
       theme: ThemeData(
         brightness: Brightness.light,
         primaryColor: Colors.blueGrey[900],

@@ -15,6 +15,19 @@ void _setRTLForAllSheets(Excel excel) {
     final sheet = excel.tables[sheetName];
     if (sheet != null) {
       sheet.isRTL = true;
+      // Set right alignment on all populated cells
+      for (final row in sheet.rows) {
+        for (final cell in row) {
+          if (cell != null && cell.value != null) {
+            final isNumeric =
+                cell.value is IntCellValue || cell.value is DoubleCellValue;
+            cell.cellStyle = CellStyle(
+              horizontalAlign:
+                  isNumeric ? HorizontalAlign.Center : HorizontalAlign.Right,
+            );
+          }
+        }
+      }
     }
   }
 }
