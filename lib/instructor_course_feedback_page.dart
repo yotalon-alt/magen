@@ -280,9 +280,6 @@ class _InstructorCourseFeedbackPageState
           .collection('instructor_course_evaluations')
           .doc(_stableDraftId);
 
-      final existingDoc = await docRef.get();
-      final isNewDocument = !existingDoc.exists;
-
       final draftData = {
         'status': 'draft',
         'courseType': 'miunim',
@@ -310,7 +307,7 @@ class _InstructorCourseFeedbackPageState
       };
 
       // ✅ Add creator fields ONLY for new documents (preserve original creator)
-      if (isNewDocument) {
+      if (_isNewDocument) {
         draftData['createdAt'] = FieldValue.serverTimestamp();
         draftData['createdBy'] = uid;
         draftData['createdByUid'] = uid;
@@ -328,23 +325,11 @@ class _InstructorCourseFeedbackPageState
       debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: docPath=$draftDocPath');
       debugPrint('🔵 MIUNIM_AUTOSAVE_WRITE: evalId=$_stableDraftId');
       debugPrint(
-        '🔵 MIUNIM_AUTOSAVE_WRITE: status=draft, isNewDocument=$isNewDocument',
+        '🔵 MIUNIM_AUTOSAVE_WRITE: status=draft, isNewDocument=$_isNewDocument',
       );
       await docRef.set(draftData, SetOptions(merge: true));
+      _isNewDocument = false; // Document exists after first successful write
       debugPrint('✅ AUTOSAVE: Save complete');
-
-      // Verify save
-      final verifySnap = await docRef.get();
-      if (!verifySnap.exists) {
-        debugPrint('❌ AUTOSAVE: Document not found after save!');
-        throw Exception('Draft not persisted');
-      }
-
-      final verifyData = verifySnap.data();
-      final verifyChecksum =
-          'fields=${verifyData?['fields']?.length ?? 0}, candidate=${verifyData?['candidateName']}';
-      debugPrint('✅ AUTOSAVE: Verification PASSED');
-      debugPrint('AUTOSAVE: Checksum=$verifyChecksum');
       debugPrint('========== ✅ AUTOSAVE END ==========\n');
 
       // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins/instructors
@@ -573,6 +558,7 @@ class _InstructorCourseFeedbackPageState
   Timer? _autosaveTimer;
   bool _isAutosaving = false;
   String? _stableDraftId; // Stable draft document ID for this session
+  bool _isNewDocument = true; // True until first successful autosave
 
   // ✅ REAL-TIME SYNC: Listen to concurrent edits by other admins/instructors
   StreamSubscription<DocumentSnapshot>? _draftListener;
@@ -680,6 +666,8 @@ class _InstructorCourseFeedbackPageState
     });
     _existingScreeningId = widget.screeningId;
     if (_existingScreeningId != null && _existingScreeningId!.isNotEmpty) {
+      _isNewDocument =
+          false; // Editing existing doc – createdAt/createdBy already set
       _loadExistingScreening(_existingScreeningId!);
     } else {
       // ✅ New feedback: set creator name and UID to current user

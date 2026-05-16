@@ -23,6 +23,9 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
   int _refreshKey = 0;
   bool _isRefreshing = false;
 
+  /// Cache for instructor names to avoid repeated Firestore reads on stream rebuilds
+  final Map<String, String> _nameCache = {};
+
   /// Fetch instructor Hebrew name from users collection (backward compatible)
   Future<String> _getInstructorName(
     String? createdByName,
@@ -38,10 +41,17 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
       return 'לא ידוע';
     }
 
+    final uid = createdByUid.toString();
+
+    // Return cached result if available (prevents repeated reads on stream rebuilds)
+    if (_nameCache.containsKey(uid)) {
+      return _nameCache[uid]!;
+    }
+
     try {
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(createdByUid.toString())
+          .doc(uid)
           .get()
           .timeout(const Duration(seconds: 3));
 
@@ -52,26 +62,31 @@ class _ScreeningsInProgressPageState extends State<ScreeningsInProgressPage> {
         final fullName = userData?['fullName'] as String?;
         final name = userData?['name'] as String?;
 
+        String? resolved;
         if (displayName != null &&
             displayName.isNotEmpty &&
             !displayName.contains('@')) {
-          return displayName;
+          resolved = displayName;
         } else if (fullName != null &&
             fullName.isNotEmpty &&
             !fullName.contains('@')) {
-          return fullName;
+          resolved = fullName;
         } else if (name != null && name.isNotEmpty && !name.contains('@')) {
-          return name;
+          resolved = name;
+        }
+        if (resolved != null) {
+          _nameCache[uid] = resolved;
+          return resolved;
         }
       }
     } catch (e) {
-      debugPrint(
-        '⚠️ Failed to fetch instructor name for UID $createdByUid: $e',
-      );
+      debugPrint('⚠️ Failed to fetch instructor name for UID $uid: $e');
     }
 
     // Fallback: show truncated UID
-    return 'מדריך ${createdByUid.toString().substring(0, min(8, createdByUid.toString().length))}...';
+    final fallback = 'מדריך ${uid.substring(0, min(8, uid.length))}...';
+    _nameCache[uid] = fallback;
+    return fallback;
   }
 
   Future<void> _refresh() async {

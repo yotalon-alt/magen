@@ -22,11 +22,43 @@ import 'widgets/connectivity_banner.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
 import 'services/trainee_autocomplete_service.dart';
+import 'package:archive/archive.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:excel/excel.dart' hide Border;
 import 'pages/training_program_folder_selection_page.dart';
 import 'personal_feedback_entry_page.dart';
 import 'app_version.dart';
+
+// Injects rightToLeft="1" into XLSX XML — workaround for excel 4.x isRTL bug
+List<int>? _injectRtlIntoXlsx(List<int>? bytes) {
+  if (bytes == null) return null;
+  try {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final newArchive = Archive();
+    for (final file in archive) {
+      if (!file.isFile) continue;
+      final rawContent = file.content as List<int>;
+      if (file.name.startsWith('xl/worksheets/sheet') &&
+          file.name.endsWith('.xml')) {
+        var xml = utf8.decode(rawContent);
+        xml = xml.replaceAllMapped(
+          RegExp(r'<sheetView\b(?![^>]*rightToLeft)'),
+          (m) => '<sheetView rightToLeft="1"',
+        );
+        final modified = utf8.encode(xml);
+        newArchive.addFile(ArchiveFile(file.name, modified.length, modified));
+      } else {
+        newArchive.addFile(
+          ArchiveFile(file.name, rawContent.length, rawContent),
+        );
+      }
+    }
+    return ZipEncoder().encode(newArchive);
+  } catch (e) {
+    debugPrint('RTL injection failed: $e');
+    return bytes;
+  }
+}
 
 // ===== Minimal stubs and models (null-safe) =====
 // Initialize default in-memory users (no-op stub to avoid undefined symbol)
@@ -13193,6 +13225,9 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       const allowedFolders = ['מטווחי ירי', 'מטווחים 474'];
       if (!allowedFolders.contains(f.folder)) return false;
 
+      // Exclude temporary/draft feedbacks – statistics show only final feedbacks
+      if (f.isTemporary == true) return false;
+
       // Apply specific folder filter if not 'הכל'
       if (selectedFolder != 'הכל' && f.folder != selectedFolder) {
         return false;
@@ -13430,6 +13465,12 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                               final station = stations[i];
                               final stationName =
                                   station['name'] ?? 'מקצה ${i + 1}';
+
+                              // Skip shared-target stations – no individual accuracy data
+                              final isSharedTarget =
+                                  (station['isSharedTarget'] as bool?) ?? false;
+                              if (isSharedTarget) continue;
+
                               final bulletsPerTrainee =
                                   (station['bulletsCount'] as num?)?.toInt() ??
                                   0;
@@ -14051,6 +14092,12 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                       for (var i = 0; i < stations.length; i++) {
                         final station = stations[i];
                         final stationName = station['name'] ?? 'מקצה ${i + 1}';
+
+                        // Skip shared-target stations – no individual accuracy data
+                        final isSharedTarget =
+                            (station['isSharedTarget'] as bool?) ?? false;
+                        if (isSharedTarget) continue;
+
                         isLongRangePerStation[stationName] =
                             isLongRange; // ✅ Store type
 
@@ -15901,6 +15948,30 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
 
       final excel = Excel.createExcel();
       final sheet = excel[widget.settlement];
+      sheet.isRTL = true;
+
+      // חישוב ממוצע לאימון
+      final totalPresences = _sessions.fold<int>(
+        0,
+        (acc, s) => acc + ((s['trainees'] as List?)?.length ?? 0),
+      );
+      final avgPerSession = _sessions.isEmpty
+          ? '-'
+          : (totalPresences / _sessions.length).round().toString();
+
+      // שורת נתוני סיכום (מה שמוצג בבר העליון)
+      sheet.appendRow(<CellValue>[
+        TextCellValue('סה"כ חניכים'),
+        TextCellValue('${_allTrainees.length}'),
+        TextCellValue('סה"כ מתאמנים'),
+        TextCellValue('${tableTrainees.length}'),
+        TextCellValue('מס\' אימונים'),
+        TextCellValue('${_sessions.length}'),
+        TextCellValue('ממוצע לאימון'),
+        TextCellValue(avgPerSession),
+      ]);
+      // שורה ריקה מפרידה
+      sheet.appendRow(<CellValue>[TextCellValue('')]);
 
       // שורת כותרות: "שם חניך" + עמודה לכל session
       final headerRow = <CellValue>[TextCellValue('שם חניך')];
@@ -15943,8 +16014,9 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       sheet.appendRow(summaryRow);
 
       excel.delete('Sheet1');
-      final fileBytes = excel.encode();
-      if (fileBytes == null) throw Exception('שגיאה ביצירת XLSX');
+      final rawBytes = excel.encode();
+      if (rawBytes == null) throw Exception('שגיאה ביצירת XLSX');
+      final fileBytes = _injectRtlIntoXlsx(rawBytes) ?? rawBytes;
 
       final now = DateTime.now();
       final fileName =
@@ -22054,16 +22126,25 @@ class _TraineeAttendanceStatisticsPageState
         int total = 0;
         final Set<String> unique = {};
         final typeCounts = <String, int>{};
+        int totalPresences = 0;
         for (final e in typeData.entries) {
-          final s = (e.value['sessions'] as List?)?.length ?? 0;
+          final sessions =
+              (e.value['sessions'] as List?)?.cast<Map<String, dynamic>>() ??
+              [];
+          final s = sessions.length;
           total += s;
           unique.addAll((e.value['trainees'] as Set<String>?) ?? {});
           if (s > 0) typeCounts[e.key] = s;
+          for (final sess in sessions) {
+            totalPresences += (sess['trainees'] as List?)?.length ?? 0;
+          }
         }
+        final avg = total > 0 ? (totalPresences / total).round() : 0;
         rows.add({
           'יישוב': settlement,
           'סה"כ אימונים': total,
           'חניכים ייחודיים': unique.length,
+          'ממוצע לאימון': avg,
           'פירוט': typeCounts.entries
               .map((e) => '${_shortLabel(e.key)}: ${e.value}')
               .join(', '),
@@ -22099,6 +22180,330 @@ class _TraineeAttendanceStatisticsPageState
     if (k == 'משוב תרגילי הפתעה') return 'הפתעה';
     if (k == 'תרגילים גזרתיים') return 'גזרתי';
     return k;
+  }
+
+  void _showExportOptions() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'ייצוא נתוני נוכחות',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.table_chart),
+                title: const Text('ייצוא כל הכרטיסים'),
+                subtitle: const Text('טבלת סיכום של כל היישובים'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _export();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.check_box),
+                title: const Text('ייצוא טבלאות נבחרות'),
+                subtitle: const Text('בחר יישובים לייצוא טבלת נוכחות מפורטת'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showSettlementSelectionDialog();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSettlementSelectionDialog() async {
+    final settlements = (_settlementData.keys.toList()..sort())
+        .where(
+          (s) => _settlementFilter.isEmpty || s.contains(_settlementFilter),
+        )
+        .toList();
+    if (settlements.isEmpty) return;
+
+    final selected = <String>{};
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('בחר יישובים לייצוא'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => setDlg(() {
+                          if (selected.length == settlements.length) {
+                            selected.clear();
+                          } else {
+                            selected
+                              ..clear()
+                              ..addAll(settlements);
+                          }
+                        }),
+                        child: Text(
+                          selected.length == settlements.length
+                              ? 'בטל הכל'
+                              : 'בחר הכל',
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${selected.length}/${settlements.length} נבחרו',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: settlements.length,
+                      itemBuilder: (_, i) {
+                        final s = settlements[i];
+                        return CheckboxListTile(
+                          title: Text(s),
+                          value: selected.contains(s),
+                          onChanged: (v) => setDlg(() {
+                            if (v == true) {
+                              selected.add(s);
+                            } else {
+                              selected.remove(s);
+                            }
+                          }),
+                          dense: true,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('ביטול'),
+              ),
+              ElevatedButton(
+                onPressed: selected.isEmpty
+                    ? null
+                    : () {
+                        Navigator.pop(ctx);
+                        _exportDetailed(selected.toList()..sort());
+                      },
+                child: Text('ייצא (${selected.length})'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportDetailed(List<String> settlements) async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      String fmtDate(DateTime dt) =>
+          '${dt.day.toString().padLeft(2, '0')}-'
+          '${dt.month.toString().padLeft(2, '0')}-${dt.year}';
+
+      final excel = Excel.createExcel();
+
+      // Summary sheet
+      final summarySheet = excel['סיכום'];
+      summarySheet.isRTL = true;
+      summarySheet.appendRow(<CellValue>[
+        TextCellValue('יישוב'),
+        TextCellValue('סה"כ אימונים'),
+        TextCellValue('חניכים ייחודיים'),
+        TextCellValue('ממוצע לאימון'),
+        TextCellValue('פירוט'),
+      ]);
+      for (final settlement in settlements) {
+        final typeData = _settlementData[settlement]!;
+        int totalSessions = 0;
+        final Set<String> unique = {};
+        final typeCounts = <String, int>{};
+        int totalPresences = 0;
+        for (final e in typeData.entries) {
+          final sessions =
+              (e.value['sessions'] as List?)?.cast<Map<String, dynamic>>() ??
+              [];
+          totalSessions += sessions.length;
+          unique.addAll((e.value['trainees'] as Set<String>?) ?? {});
+          if (sessions.isNotEmpty) typeCounts[e.key] = sessions.length;
+          for (final s in sessions) {
+            totalPresences += (s['trainees'] as List?)?.length ?? 0;
+          }
+        }
+        final avg = totalSessions > 0
+            ? (totalPresences / totalSessions).round()
+            : 0;
+        summarySheet.appendRow(<CellValue>[
+          TextCellValue(settlement),
+          TextCellValue('$totalSessions'),
+          TextCellValue('${unique.length}'),
+          TextCellValue('$avg'),
+          TextCellValue(
+            typeCounts.entries
+                .map((e) => '${_shortLabel(e.key)}: ${e.value}')
+                .join(', '),
+          ),
+        ]);
+      }
+
+      // One detailed sheet per settlement
+      for (final settlement in settlements) {
+        final typeData = _settlementData[settlement]!;
+        final allSessions = <Map<String, dynamic>>[];
+        for (final td in typeData.values) {
+          allSessions.addAll(
+            (td['sessions'] as List?)?.cast<Map<String, dynamic>>() ?? [],
+          );
+        }
+        allSessions.sort((a, b) {
+          final da = (a['date'] as DateTime?) ?? DateTime(2000);
+          final db = (b['date'] as DateTime?) ?? DateTime(2000);
+          return da.compareTo(db);
+        });
+        if (allSessions.isEmpty) continue;
+
+        final attendanceMap = <String, Set<int>>{};
+        for (int i = 0; i < allSessions.length; i++) {
+          final trainees =
+              (allSessions[i]['trainees'] as List?)?.cast<String>() ?? [];
+          for (final name in trainees) {
+            attendanceMap.putIfAbsent(name, () => {});
+            attendanceMap[name]!.add(i);
+          }
+        }
+        final tableTrainees = attendanceMap.keys.toList()..sort();
+
+        final sheetName = settlement.length > 31
+            ? settlement.substring(0, 31)
+            : settlement;
+        final sheet = excel[sheetName];
+        sheet.isRTL = true;
+
+        final totalPres = allSessions.fold<int>(
+          0,
+          (acc, s) => acc + ((s['trainees'] as List?)?.length ?? 0),
+        );
+        final avgStr = allSessions.isEmpty
+            ? '-'
+            : (totalPres / allSessions.length).round().toString();
+        int allTraineesCount = 0;
+        try {
+          final all = await TraineeAutocompleteService.getTraineesForSettlement(
+            settlement,
+          );
+          allTraineesCount = all.length;
+        } catch (_) {}
+        sheet.appendRow(<CellValue>[
+          TextCellValue('סה"כ חניכים'),
+          TextCellValue('$allTraineesCount'),
+          TextCellValue('סה"כ מתאמנים'),
+          TextCellValue('${tableTrainees.length}'),
+          TextCellValue('מס\' אימונים'),
+          TextCellValue('${allSessions.length}'),
+          TextCellValue('ממוצע לאימון'),
+          TextCellValue(avgStr),
+        ]);
+        sheet.appendRow(<CellValue>[TextCellValue('')]);
+
+        final headerRow = <CellValue>[TextCellValue('שם חניך')];
+        for (final session in allSessions) {
+          final date = session['date'] as DateTime?;
+          final typeGroup = (session['typeGroup'] as String?) ?? '';
+          final subType = (session['subType'] as String?) ?? '';
+          final label = [
+            if (date != null) fmtDate(date),
+            typeGroup,
+            if (subType.isNotEmpty) subType,
+          ].join('\n');
+          headerRow.add(TextCellValue(label));
+        }
+        headerRow.add(TextCellValue('נוכחות'));
+        sheet.appendRow(headerRow);
+
+        for (final name in tableTrainees) {
+          final attended = attendanceMap[name] ?? {};
+          final row = <CellValue>[TextCellValue(name)];
+          for (int i = 0; i < allSessions.length; i++) {
+            row.add(TextCellValue(attended.contains(i) ? '✓' : '-'));
+          }
+          row.add(TextCellValue('${attended.length}/${allSessions.length}'));
+          sheet.appendRow(row);
+        }
+
+        final summaryRow = <CellValue>[TextCellValue('סה"כ נוכחים')];
+        for (int i = 0; i < allSessions.length; i++) {
+          final count = tableTrainees
+              .where((n) => (attendanceMap[n] ?? {}).contains(i))
+              .length;
+          summaryRow.add(TextCellValue('$count'));
+        }
+        summaryRow.add(TextCellValue(''));
+        sheet.appendRow(summaryRow);
+      }
+
+      excel.delete('Sheet1');
+      final rawBytes = excel.encode();
+      if (rawBytes == null) throw Exception('שגיאה ביצירת XLSX');
+      final fileBytes = _injectRtlIntoXlsx(rawBytes) ?? rawBytes;
+
+      final now = DateTime.now();
+      final fileName =
+          'נוכחות_נבחרים_${now.day.toString().padLeft(2, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-${now.year}.xlsx';
+      final blob = html.Blob([
+        fileBytes,
+      ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.AnchorElement(href: url)
+        ..setAttribute('download', fileName)
+        ..click();
+      html.Url.revokeObjectUrl(url);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('הקובץ יוצא בהצלחה!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאה בייצוא: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   Future<void> _pickDateFrom() async {
@@ -22188,7 +22593,7 @@ class _TraineeAttendanceStatisticsPageState
                     )
                   : const Icon(Icons.download),
               tooltip: 'ייצוא',
-              onPressed: _isExporting ? null : _export,
+              onPressed: _isExporting ? null : _showExportOptions,
             ),
           ],
         ),
