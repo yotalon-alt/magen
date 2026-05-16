@@ -13227,6 +13227,52 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     'תפקוד באירוע': 'תפקוד באירוע',
   };
 
+  // Station name normalization dictionary - consolidate variants to canonical names
+  static const Map<String, String> stationNameNormalization = {
+    // מחסות ימין
+    'מחסה ימין': 'מחסות ימין',
+    'מחסה ימין 4+6': 'מחסות ימין',
+    'מחסות ימין': 'מחסות ימין',
+    // מחסות שמאל
+    'מחסה שמאל': 'מחסות שמאל',
+    'מחסות שמאל': 'מחסות שמאל',
+    'שמאל': 'מחסות שמאל',
+    'מחסות שמאל כריעה 1+9': 'מחסות שמאל',
+    'מחסה שמאל כריעה 1+9': 'מחסות שמאל',
+    'מחסה שמאל 4+6': 'מחסות שמאל',
+    'כריעה 1+9': 'מחסות שמאל',
+    // מניפה
+    'מניפה': 'מניפה',
+    'מניפה ימין': 'מניפה',
+    'מניפה מאוחרי מחסה ימין': 'מניפה',
+    'מניפה מאחורי מחסה ימין': 'מניפה',
+    'מניפה מחסות ימין': 'מניפה',
+    // מחסות דילוגים
+    'דילוגים': 'מחסות דילוגים',
+    'מחסות דילוגים': 'מחסות דילוגים',
+    'דילוגים ומחסות': 'מחסות דילוגים',
+    'דילוג': 'מחסות דילוגים',
+    'דילוג + מצבים': 'מחסות דילוגים',
+    // מעצור גמר (כולל כל ווריאציות גמר וחלפת מחסניות)
+    'גמר כריעה מחסה 1+9': 'מעצור גמר',
+    'גמר מאחורי מחסה ימין': 'מעצור גמר',
+    'גמר מאוחרי מחסה ימין': 'מעצור גמר',
+    'גמר מאחורי מחסה שמאל': 'מעצור גמר',
+    'גמר מאוחרי מחסה שמאל': 'מעצור גמר',
+    'גמר': 'מעצור גמר',
+    'החלפת מחסניות': 'מעצור גמר',
+    'החלפת מחסנית': 'מעצור גמר',
+    'החלפת מחסנית מאחורי מחסה ימין': 'מעצור גמר',
+    'החלפת מחסנית מאחורי מחסה שמאל': 'מעצור גמר',
+    'החלפת מחסניות מאחורי מחסה ימין': 'מעצור גמר',
+    'החלפת מחסניות מאחורי מחסה שמאל': 'מעצור גמר',
+    'מעצור גמר': 'מעצור גמר',
+  };
+
+  String _normalizeStationName(String name) {
+    return stationNameNormalization[name] ?? name;
+  }
+
   String selectedInstructor = 'כל המדריכים';
   String selectedSettlement = 'כל היישובים';
   String selectedStation = 'כל המקצים';
@@ -13550,8 +13596,9 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 [];
                             for (var i = 0; i < stations.length; i++) {
                               final station = stations[i];
-                              final stationName =
+                              var stationName =
                                   station['name'] ?? 'מקצה ${i + 1}';
+                              stationName = _normalizeStationName(stationName);
 
                               // Skip shared-target stations – no individual accuracy data
                               final isSharedTarget =
@@ -13953,9 +14000,12 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                                   >() ??
                                               [];
                                           for (final station in stations) {
-                                            final stationName =
+                                            var stationName =
                                                 station['name'] as String? ??
                                                 '';
+                                            stationName = _normalizeStationName(
+                                              stationName,
+                                            );
                                             if (stationName.isNotEmpty &&
                                                 !stationNames.contains(
                                                   stationName,
@@ -14178,7 +14228,8 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
                       for (var i = 0; i < stations.length; i++) {
                         final station = stations[i];
-                        final stationName = station['name'] ?? 'מקצה ${i + 1}';
+                        var stationName = station['name'] ?? 'מקצה ${i + 1}';
+                        stationName = _normalizeStationName(stationName);
 
                         // Skip shared-target stations – no individual accuracy data
                         final isSharedTarget =
