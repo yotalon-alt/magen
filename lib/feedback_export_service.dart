@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:universal_html/html.dart' as html;
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:excel/excel.dart';
+import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -30,6 +31,42 @@ void _setRTLForAllSheets(Excel excel) {
         }
       }
     }
+  }
+}
+
+/// Injects rightToLeft="1" into all sheet XML files inside the XLSX archive.
+/// This is needed because the excel package's isRTL flag does not write the
+/// attribute to the output file (confirmed bug in excel 4.0.6).
+List<int>? _injectRtlIntoXlsx(List<int>? bytes) {
+  if (bytes == null) return null;
+  try {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final newArchive = Archive();
+    for (final file in archive) {
+      if (!file.isFile) continue;
+      // Force-decompress content for every file before re-encoding.
+      // Passing the original ArchiveFile directly causes double-compression
+      // because ZipEncoder tries to compress already-compressed data.
+      final rawContent = file.content as List<int>;
+      if (file.name.startsWith('xl/worksheets/sheet') &&
+          file.name.endsWith('.xml')) {
+        var xml = utf8.decode(rawContent);
+        xml = xml.replaceAllMapped(
+          RegExp(r'<sheetView\b(?![^>]*rightToLeft)'),
+          (m) => '<sheetView rightToLeft="1"',
+        );
+        final modified = utf8.encode(xml);
+        newArchive.addFile(ArchiveFile(file.name, modified.length, modified));
+      } else {
+        newArchive.addFile(
+          ArchiveFile(file.name, rawContent.length, rawContent),
+        );
+      }
+    }
+    return ZipEncoder().encode(newArchive);
+  } catch (e) {
+    debugPrint('RTL injection failed: $e');
+    return bytes;
   }
 }
 
@@ -89,7 +126,7 @@ class FeedbackExportService {
       // שמירה וייצוא - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -164,7 +201,7 @@ class FeedbackExportService {
       // שמירה וייצוא - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -596,7 +633,7 @@ class FeedbackExportService {
       // Encode to bytes - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -828,7 +865,7 @@ class FeedbackExportService {
       // Save and export - RTL MUST be set AFTER all data and BEFORE encode()
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -1236,7 +1273,7 @@ class FeedbackExportService {
 
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) throw Exception('שגיאה ביצירת קובץ XLSX');
 
       final now = DateTime.now();
@@ -1310,7 +1347,7 @@ class FeedbackExportService {
       // Save and export
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -1874,7 +1911,7 @@ class FeedbackExportService {
       // Encode and export
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -2087,7 +2124,7 @@ class FeedbackExportService {
       // Encode and export
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -2417,7 +2454,7 @@ class FeedbackExportService {
 
       // Save/download file
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('Failed to encode Excel file');
       }
@@ -2642,7 +2679,7 @@ class FeedbackExportService {
       // Encode and export
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -3112,7 +3149,7 @@ class FeedbackExportService {
 
       // Encode and export
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -3543,7 +3580,7 @@ class FeedbackExportService {
       // Save and export
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -3856,7 +3893,7 @@ class FeedbackExportService {
       // ========== SAVE AND EXPORT ==========
       excel.delete('Sheet1'); // Remove default LTR sheet
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
@@ -3952,7 +3989,7 @@ class FeedbackExportService {
 
       // Export file
       _setRTLForAllSheets(excel); // ✅ RTL must be set last, right before encode
-      final fileBytes = excel.encode();
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
       if (fileBytes == null) {
         throw Exception('שגיאה ביצירת קובץ XLSX');
       }
