@@ -13034,7 +13034,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     final label = e.key;
                     final a = avgOf(e.value);
                     final pct = (a / 5.0).clamp(0.0, 1.0);
+                    final percentValue = pct * 100;
                     final pctText = (pct * 100).toStringAsFixed(0);
+                    final percentColor = percentValue >= 80
+                        ? Colors.green
+                        : percentValue >= 60
+                        ? Colors.orange
+                        : Colors.red;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16.0),
                       child: Column(
@@ -13072,15 +13078,33 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                e.value.isEmpty
-                                    ? '-'
-                                    : '${a.toStringAsFixed(1)} / 5 ($pctText%)',
-                                style: const TextStyle(
-                                  color: Colors.lightBlueAccent,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              e.value.isEmpty
+                                  ? const Text(
+                                      '-',
+                                      style: TextStyle(
+                                        color: Colors.lightBlueAccent,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '${a.toStringAsFixed(1)} / 5 ',
+                                          style: const TextStyle(
+                                            color: Colors.lightBlueAccent,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          '($pctText%)',
+                                          style: TextStyle(
+                                            color: percentColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                             ],
                           ),
                         ],
@@ -13104,7 +13128,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     .map((e) {
                       final a = avgOf(e.value);
                       final pct = (a / 5.0).clamp(0.0, 1.0);
+                      final percentValue = pct * 100;
                       final pctText = (pct * 100).toStringAsFixed(0);
+                      final percentColor = percentValue >= 80
+                          ? Colors.green
+                          : percentValue >= 60
+                          ? Colors.orange
+                          : Colors.red;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Column(
@@ -13143,12 +13173,24 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
-                                  '${a.toStringAsFixed(1)} / 5 ($pctText%)',
-                                  style: const TextStyle(
-                                    color: Colors.teal,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${a.toStringAsFixed(1)} / 5 ',
+                                      style: const TextStyle(
+                                        color: Colors.teal,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      '($pctText%)',
+                                      style: TextStyle(
+                                        color: percentColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
