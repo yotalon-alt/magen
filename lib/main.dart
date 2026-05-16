@@ -12307,6 +12307,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
     Widget buildCriterionBar(String label, List<int> vals, Color accentColor) {
       final a = avgOf(vals);
       final pct = (a / 5.0).clamp(0.0, 1.0);
+      final pctText = (pct * 100).toStringAsFixed(0);
+      final percentValue = pct * 100;
+      final percentColor = percentValue >= 80
+          ? Colors.green
+          : percentValue >= 60
+          ? Colors.orange
+          : Colors.red;
       return Padding(
         padding: const EdgeInsets.only(bottom: 16.0),
         child: Column(
@@ -12343,12 +12350,24 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  '${a.toStringAsFixed(1)} / 5',
-                  style: TextStyle(
-                    color: accentColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${a.toStringAsFixed(1)} / 5 ',
+                      style: TextStyle(
+                        color: accentColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '($pctText%)',
+                      style: TextStyle(
+                        color: percentColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -12417,9 +12436,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                           final data = <Map<String, dynamic>>[];
                           for (final entry in valuesMap.entries) {
                             if (entry.value.isNotEmpty) {
+                              final avg = avgOf(entry.value);
+                              final percent = ((avg / 5.0) * 100)
+                                  .toStringAsFixed(0);
                               data.add({
                                 'קריטריון': entry.key,
-                                'ממוצע': avgOf(entry.value).toStringAsFixed(1),
+                                'ממוצע': avg.toStringAsFixed(1),
+                                'אחוז': '$percent%',
                                 'מספר הערכות': entry.value.length,
                               });
                             }
@@ -12951,7 +12974,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     (c) => buildCriterionBar(
                       c,
                       maagalPoruzValues[c]!,
-                      const Color(0xFFB71C1C),
+                      const Color(0xFF6A1B9A),
                     ),
                   ),
               if (maagalPoruzCriteria.every(
@@ -12984,7 +13007,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     (c) => buildCriterionBar(
                       c,
                       sarikotRekhovValues[c]!,
-                      const Color(0xFF2E7D32),
+                      const Color(0xFF00695C),
                     ),
                   ),
               if (sarikotRekhovCriteria.every(
@@ -13011,6 +13034,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     final label = e.key;
                     final a = avgOf(e.value);
                     final pct = (a / 5.0).clamp(0.0, 1.0);
+                    final pctText = (pct * 100).toStringAsFixed(0);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16.0),
                       child: Column(
@@ -13051,7 +13075,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                               Text(
                                 e.value.isEmpty
                                     ? '-'
-                                    : '${a.toStringAsFixed(1)} / 5',
+                                    : '${a.toStringAsFixed(1)} / 5 ($pctText%)',
                                 style: const TextStyle(
                                   color: Colors.lightBlueAccent,
                                   fontWeight: FontWeight.bold,
@@ -13080,6 +13104,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                     .map((e) {
                       final a = avgOf(e.value);
                       final pct = (a / 5.0).clamp(0.0, 1.0);
+                      final pctText = (pct * 100).toStringAsFixed(0);
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Column(
@@ -13119,7 +13144,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  '${a.toStringAsFixed(1)} / 5',
+                                  '${a.toStringAsFixed(1)} / 5 ($pctText%)',
                                   style: const TextStyle(
                                     color: Colors.teal,
                                     fontWeight: FontWeight.bold,
