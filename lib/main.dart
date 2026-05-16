@@ -12304,7 +12304,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
     }
 
     // Helper to build criterion progress bar
-    Widget buildCriterionBar(String label, List<int> vals) {
+    Widget buildCriterionBar(String label, List<int> vals, Color accentColor) {
       final a = avgOf(vals);
       final pct = (a / 5.0).clamp(0.0, 1.0);
       return Padding(
@@ -12335,7 +12335,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                       alignment: Alignment.centerRight,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.orangeAccent,
+                          color: accentColor,
                           borderRadius: BorderRadius.circular(6),
                         ),
                       ),
@@ -12344,9 +12344,9 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  a.toStringAsFixed(1),
-                  style: const TextStyle(
-                    color: Colors.orangeAccent,
+                  '${a.toStringAsFixed(1)} / 5',
+                  style: TextStyle(
+                    color: accentColor,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -12914,7 +12914,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                         maagalPatuachValues[b]!,
                       ).compareTo(avgOf(maagalPatuachValues[a]!)),
                     ))
-                  .map((c) => buildCriterionBar(c, maagalPatuachValues[c]!)),
+                  .map(
+                    (c) => buildCriterionBar(
+                      c,
+                      maagalPatuachValues[c]!,
+                      const Color(0xFF1565C0),
+                    ),
+                  ),
               if (maagalPatuachCriteria.every(
                 (c) => (maagalPatuachValues[c] ?? []).isEmpty,
               ))
@@ -12941,7 +12947,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                         maagalPoruzValues[b]!,
                       ).compareTo(avgOf(maagalPoruzValues[a]!)),
                     ))
-                  .map((c) => buildCriterionBar(c, maagalPoruzValues[c]!)),
+                  .map(
+                    (c) => buildCriterionBar(
+                      c,
+                      maagalPoruzValues[c]!,
+                      const Color(0xFFB71C1C),
+                    ),
+                  ),
               if (maagalPoruzCriteria.every(
                 (c) => (maagalPoruzValues[c] ?? []).isEmpty,
               ))
@@ -12968,7 +12980,13 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                         sarikotRekhovValues[b]!,
                       ).compareTo(avgOf(sarikotRekhovValues[a]!)),
                     ))
-                  .map((c) => buildCriterionBar(c, sarikotRekhovValues[c]!)),
+                  .map(
+                    (c) => buildCriterionBar(
+                      c,
+                      sarikotRekhovValues[c]!,
+                      const Color(0xFF2E7D32),
+                    ),
+                  ),
               if (sarikotRekhovCriteria.every(
                 (c) => (sarikotRekhovValues[c] ?? []).isEmpty,
               ))
@@ -13031,7 +13049,9 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                e.value.isEmpty ? '-' : a.toStringAsFixed(1),
+                                e.value.isEmpty
+                                    ? '-'
+                                    : '${a.toStringAsFixed(1)} / 5',
                                 style: const TextStyle(
                                   color: Colors.lightBlueAccent,
                                   fontWeight: FontWeight.bold,
@@ -13099,7 +13119,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  a.toStringAsFixed(1),
+                                  '${a.toStringAsFixed(1)} / 5',
                                   style: const TextStyle(
                                     color: Colors.teal,
                                     fontWeight: FontWeight.bold,
