@@ -10401,7 +10401,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                           height: 4,
                                                         ),
                                                         Text(
-                                                          '$totalValue/$totalMax',
+                                                          '$totalMax/$totalValue',
                                                           style: const TextStyle(
                                                             fontSize: 24,
                                                             fontWeight:
@@ -10944,7 +10944,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
-                                                      '$totalValue/$totalMax',
+                                                      '$totalMax/$totalValue',
                                                       style: const TextStyle(
                                                         fontSize: 24,
                                                         fontWeight:
