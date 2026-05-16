@@ -12065,7 +12065,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                       ),
                       elevation: 8,
                     ),
-                    child: const Text('סטטיסטיקת נוכחים'),
+                    child: const Text('סטטיסטיקת נוכחים הגמר חטיבה 474'),
                   ),
                 ),
               ],
@@ -22651,7 +22651,7 @@ class _TraineeAttendanceStatisticsPageState
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('סטטיסטיקת נוכחים'),
+          title: const Text('סטטיסטיקת נוכחים הגמר חטיבה 474'),
           leading: const StandardBackButton(),
           actions: [
             IconButton(
