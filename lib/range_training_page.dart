@@ -1102,37 +1102,36 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     setState(() {
       shortRangeStagesList.removeAt(index);
 
-      // Update stations list to match
+      // Shift trainee values/timeValues indices — always, regardless of stations list
+      for (var row in traineeRows) {
+        row.values.remove(index);
+        row.timeValues.remove(index);
+
+        final updatedValues = <int, int>{};
+        row.values.forEach((stationIdx, value) {
+          if (stationIdx > index) {
+            updatedValues[stationIdx - 1] = value;
+          } else {
+            updatedValues[stationIdx] = value;
+          }
+        });
+        row.values.clear();
+        row.values.addAll(updatedValues);
+
+        final updatedTimeValues = <int, double>{};
+        row.timeValues.forEach((stationIdx, value) {
+          if (stationIdx > index) {
+            updatedTimeValues[stationIdx - 1] = value;
+          } else {
+            updatedTimeValues[stationIdx] = value;
+          }
+        });
+        row.timeValues.clear();
+        row.timeValues.addAll(updatedTimeValues);
+      }
+
+      // Also remove from legacy stations list if in sync
       if (index < stations.length) {
-        // Remove station data from all trainee rows and shift indices
-        for (var row in traineeRows) {
-          row.values.remove(index);
-          row.timeValues.remove(index); // Also remove time values for בוחן רמה
-          // Shift indices down for stations after removed one
-          final updatedValues = <int, int>{};
-          row.values.forEach((stationIdx, value) {
-            if (stationIdx > index) {
-              updatedValues[stationIdx - 1] = value;
-            } else {
-              updatedValues[stationIdx] = value;
-            }
-          });
-          row.values.clear();
-          row.values.addAll(updatedValues);
-
-          // Also shift timeValues indices
-          final updatedTimeValues = <int, double>{};
-          row.timeValues.forEach((stationIdx, value) {
-            if (stationIdx > index) {
-              updatedTimeValues[stationIdx - 1] = value;
-            } else {
-              updatedTimeValues[stationIdx] = value;
-            }
-          });
-          row.timeValues.clear();
-          row.timeValues.addAll(updatedTimeValues);
-        }
-
         stations.removeAt(index);
       }
     });
