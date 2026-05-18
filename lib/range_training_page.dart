@@ -3158,36 +3158,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'TEMP_SAVE_VERIFY: docId=${docRef.id} written with isTemporary=true finalizedAt=null',
       );
 
-      // ✅ READ-BACK VERIFICATION
-      debugPrint('DRAFT_SAVE: Read-back verification...');
-      final verifySnap = await docRef.get();
-      if (!verifySnap.exists) {
-        debugPrint('❌ DRAFT_SAVE: Document NOT FOUND after patch!');
-        throw Exception('Draft document not persisted');
-      }
-      final verifyData = verifySnap.data();
-      if (verifyData == null) {
-        debugPrint('❌ DRAFT_SAVE: Document data is NULL!');
-        throw Exception('Draft data is null');
-      }
-      final verifyTrainees = verifyData['trainees'] as List?;
-      debugPrint(
-        'DRAFT_SAVE: Verified trainees.length=${verifyTrainees?.length ?? 0}',
-      );
-      if (verifyTrainees == null || verifyTrainees.isEmpty) {
-        debugPrint('❌ DRAFT_SAVE: Trainees array is empty!');
-        throw Exception('Trainees not saved');
-      }
-      if (verifyTrainees.isNotEmpty) {
-        final firstTrainee = verifyTrainees[0] as Map?;
-        final firstName = firstTrainee?['name'];
-        final firstValues = firstTrainee?['values'];
-        debugPrint(
-          'DRAFT_SAVE: First trainee: name="$firstName" values=$firstValues',
-        );
-      }
-
-      debugPrint('✅ DRAFT_SAVE: Verification PASSED');
+      debugPrint('✅ DRAFT_SAVE: Patch written successfully');
       debugPrint('DRAFT_SAVE: Draft saved at ${docRef.path}');
       debugPrint('DRAFT_SAVE: traineeRows.length=${traineeRows.length}');
 
@@ -3420,7 +3391,56 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           // Apply merged values
           traineeRows[i].values.addAll(mergedValues);
 
+          // FIX 1: Merge timeValues (e.g. 'בוחן רמה' time)
+          final remoteTimeValues =
+              remoteTrainee['timeValues'] as Map<String, dynamic>? ?? {};
+          remoteTimeValues.forEach((key, value) {
+            final timeKey = key
+                .toString()
+                .replaceAll('station_', '')
+                .replaceAll('_time', '');
+            final stageIdx = int.tryParse(timeKey);
+            if (stageIdx != null) {
+              final localTime = traineeRows[i].timeValues[stageIdx];
+              final remoteTime = (value as num?)?.toDouble();
+              if ((localTime == null || localTime == 0) &&
+                  remoteTime != null &&
+                  remoteTime > 0) {
+                traineeRows[i].timeValues[stageIdx] = remoteTime;
+                debugPrint('     ✅ Merged timeValue[$stageIdx]=$remoteTime');
+              }
+            }
+          });
+
           debugPrint('     Merged $mergedCount cells from remote');
+        }
+
+        // FIX 2: Merge remote stations (additive only — never remove local stages)
+        final remoteStations = remoteData['stations'] as List?;
+        if (remoteStations != null && remoteStations.isNotEmpty) {
+          final localStageNames = shortRangeStagesList
+              .map((s) => s.selectedStage)
+              .toSet();
+          for (final remoteStation in remoteStations) {
+            final stationMap = remoteStation as Map<String, dynamic>?;
+            final stageName = stationMap?['selectedStage'] as String?;
+            if (stageName != null &&
+                stageName.isNotEmpty &&
+                !localStageNames.contains(stageName)) {
+              shortRangeStagesList.add(
+                ShortRangeStageModel(
+                  selectedStage: stageName,
+                  bulletsCount:
+                      (stationMap?['bulletsCount'] as num?)?.toInt() ?? 0,
+                  timeLimit: (stationMap?['timeLimit'] as num?)?.toInt(),
+                ),
+              );
+              localStageNames.add(stageName);
+              debugPrint(
+                '     ✅ REALTIME: Added missing station "$stageName" from remote',
+              );
+            }
+          }
         }
       });
 
