@@ -12128,6 +12128,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
   List<FeedbackModel> getFiltered() {
     return feedbackStorage.where((f) {
+      if (f.isTemporary == true) return false;
       if (selectedRoleFilter != 'כל התפקידים' && f.role != selectedRoleFilter) {
         return false;
       }
@@ -12277,14 +12278,23 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
           if (val != null && val != 0) sarikotRekhovValues[c]!.add(val);
         }
       }
-      roleValues.putIfAbsent(f.role, () => []);
-      for (final v in f.scores.values) {
-        if (v != 0) {
-          final list = roleValues[f.role];
-          if (list == null) {
-            roleValues[f.role] = [v];
-          } else {
-            list.add(v);
+      const predefinedRoles = [
+        'רבש"ץ',
+        'סגן רבש"ץ',
+        'מפקד מחלקה',
+        'סגן מפקד מחלקה',
+        'לוחם',
+      ];
+      if (predefinedRoles.contains(f.role)) {
+        roleValues.putIfAbsent(f.role, () => []);
+        for (final v in f.scores.values) {
+          if (v != 0) {
+            final list = roleValues[f.role];
+            if (list == null) {
+              roleValues[f.role] = [v];
+            } else {
+              list.add(v);
+            }
           }
         }
       }
@@ -13024,6 +13034,93 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               const Divider(),
               const SizedBox(height: 8),
               const Text(
+                'ממוצע לפי יישוב',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (settlementValues.isEmpty)
+                const ListTile(title: Text('-'))
+              else
+                ...(settlementValues.entries.toList()..sort(
+                      (a, b) => avgOf(b.value).compareTo(avgOf(a.value)),
+                    ))
+                    .map((e) {
+                      final a = avgOf(e.value);
+                      final pct = (a / 5.0).clamp(0.0, 1.0);
+                      final percentValue = pct * 100;
+                      final pctText = (pct * 100).toStringAsFixed(0);
+                      final percentColor = percentValue >= 80
+                          ? Colors.green
+                          : percentValue >= 60
+                          ? Colors.orange
+                          : Colors.red;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e.key,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white24,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      widthFactor: pct,
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.teal,
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${a.toStringAsFixed(1)} / 5 ',
+                                      style: const TextStyle(
+                                        color: Colors.teal,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      '($pctText%)',
+                                      style: TextStyle(
+                                        color: percentColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
                 'ממוצע לפי תפקיד',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
@@ -13111,93 +13208,6 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                       ),
                     );
                   }),
-
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                'ממוצע לפי יישוב',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              if (settlementValues.isEmpty)
-                const ListTile(title: Text('-'))
-              else
-                ...(settlementValues.entries.toList()..sort(
-                      (a, b) => avgOf(b.value).compareTo(avgOf(a.value)),
-                    ))
-                    .map((e) {
-                      final a = avgOf(e.value);
-                      final pct = (a / 5.0).clamp(0.0, 1.0);
-                      final percentValue = pct * 100;
-                      final pctText = (pct * 100).toStringAsFixed(0);
-                      final percentColor = percentValue >= 80
-                          ? Colors.green
-                          : percentValue >= 60
-                          ? Colors.orange
-                          : Colors.red;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              e.key,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white24,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: FractionallySizedBox(
-                                      widthFactor: pct,
-                                      alignment: Alignment.centerRight,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.teal,
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '${a.toStringAsFixed(1)} / 5 ',
-                                      style: const TextStyle(
-                                        color: Colors.teal,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      '($pctText%)',
-                                      style: TextStyle(
-                                        color: percentColor,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
             ],
           ),
         ),
