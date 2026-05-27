@@ -196,7 +196,9 @@ const List<String> golanSettlements = <String>[
 // רשימת מדריכים חטיבה 474
 const List<String> brigade474Instructors = <String>[
   'אורי כי טוב',
+  'אליעזר שושני',
   'איתן לוי',
+  'באסל דאבוס',
   'בועז בן חורין',
   'גל זביאגין',
   'דוד בן צבי',
@@ -217,6 +219,8 @@ const List<String> brigade474Instructors = <String>[
   'ניר בר',
   'נתנאל אינדיג',
   'נתנאל עמיחי',
+  'ספא זהר אלדין',
+  'קובי מנשרוב',
   'תיירי לסקרט',
 ];
 
