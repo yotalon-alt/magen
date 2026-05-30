@@ -8898,6 +8898,187 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
           );
         }
 
+        // Horizontal scroll controllers — synced so header and data rows scroll together
+        final headerHorizCtrl = ScrollController();
+        final dataHorizCtrl = ScrollController();
+        dataHorizCtrl.addListener(() {
+          if (headerHorizCtrl.hasClients &&
+              headerHorizCtrl.offset != dataHorizCtrl.offset) {
+            headerHorizCtrl.jumpTo(dataHorizCtrl.offset);
+          }
+        });
+        headerHorizCtrl.addListener(() {
+          if (dataHorizCtrl.hasClients &&
+              dataHorizCtrl.offset != headerHorizCtrl.offset) {
+            dataHorizCtrl.jumpTo(headerHorizCtrl.offset);
+          }
+        });
+
+        // Fixed name column header
+        final Widget nameHeader = headerCell(
+          'שם חניך',
+          nameColumnWidth,
+          Colors.blueGrey.shade50,
+          Colors.black87,
+        );
+
+        // Scrollable station/summary header cells (no name)
+        final List<Widget> scrollableHeaderCells = [
+          ...stations.asMap().entries.map((e) {
+            final si = e.key;
+            final s = e.value;
+            final stName = (s['name'] ?? 'מקצה ${si + 1}').toString();
+            final maxVal = isLongRange
+                ? ((s['maxScorePoints'] as num?)?.toInt() ??
+                      (s['maxPoints'] as num?)?.toInt() ??
+                      0)
+                : ((s['bulletsCount'] as num?)?.toInt() ?? 0);
+            return headerCell(
+              stName,
+              stationColumnWidth,
+              Colors.blueGrey.shade50,
+              Colors.black87,
+              subtitle: maxVal > 0 ? '$maxVal' : null,
+            );
+          }),
+          if (isLongRange) ...[
+            headerCell(
+              'סהכ נקודות',
+              summaryColWidth1,
+              Colors.blue.shade50,
+              Colors.blue,
+            ),
+            headerCell(
+              'ממוצע',
+              summaryColWidth2,
+              Colors.green.shade50,
+              Colors.green,
+            ),
+            headerCell(
+              'סהכ כדורים',
+              summaryColWidth2,
+              Colors.orange.shade50,
+              Colors.orange,
+            ),
+          ] else ...[
+            headerCell(
+              'פגיעות/כדורים',
+              summaryColWidth1,
+              Colors.blue.shade50,
+              Colors.blue,
+            ),
+            headerCell(
+              'אחוז',
+              summaryColWidth2,
+              Colors.green.shade50,
+              Colors.green,
+            ),
+          ],
+        ];
+
+        // Build per-trainee data: name cell + scrollable row
+        final List<Widget> nameCells = [];
+        final List<Widget> scrollableDataRows = [];
+
+        for (final trainee in trainees) {
+          final name = (trainee['name'] ?? '').toString();
+          final hitsMap =
+              (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
+          int traineeHitsTotal = 0;
+          int traineeMaxTotal = 0;
+          int traineeBulletsTotal = 0;
+          int filledStations = 0;
+
+          final List<Widget> stationCells = [];
+          for (int si = 0; si < stations.length; si++) {
+            final station = stations[si];
+            if (!hitsMap.containsKey('station_$si')) {
+              stationCells.add(
+                dataCell('—', stationColumnWidth, textColor: Colors.black38),
+              );
+              continue;
+            }
+            final val = (hitsMap['station_$si'] as num?)?.toInt() ?? 0;
+            final maxPerStation = isLongRange
+                ? ((station['maxScorePoints'] as num?)?.toInt() ??
+                      (station['maxPoints'] as num?)?.toInt() ??
+                      0)
+                : ((station['bulletsCount'] as num?)?.toInt() ?? 0);
+            final bulletsPerStation =
+                (station['bulletsCount'] as num?)?.toInt() ?? 0;
+            traineeHitsTotal += val;
+            traineeMaxTotal += maxPerStation;
+            traineeBulletsTotal += bulletsPerStation;
+            filledStations++;
+            stationCells.add(
+              dataCell('$val/$maxPerStation', stationColumnWidth),
+            );
+          }
+
+          final List<Widget> summaryCells;
+          if (isLongRange) {
+            final avg = filledStations > 0
+                ? traineeHitsTotal / filledStations
+                : 0.0;
+            summaryCells = [
+              dataCell(
+                '$traineeHitsTotal',
+                summaryColWidth1,
+                bg: Colors.blue.shade50,
+                textColor: Colors.blue,
+                fontWeight: FontWeight.bold,
+              ),
+              dataCell(
+                avg.toStringAsFixed(1),
+                summaryColWidth2,
+                bg: Colors.green.shade50,
+                textColor: Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
+              dataCell(
+                '$traineeBulletsTotal',
+                summaryColWidth2,
+                bg: Colors.orange.shade50,
+                textColor: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ];
+          } else {
+            final pct = traineeMaxTotal > 0
+                ? (traineeHitsTotal / traineeMaxTotal * 100)
+                : 0.0;
+            final pctColor = pct >= 70
+                ? Colors.green
+                : pct >= 50
+                ? Colors.orange
+                : Colors.red;
+            summaryCells = [
+              dataCell(
+                '$traineeHitsTotal/$traineeMaxTotal',
+                summaryColWidth1,
+                bg: Colors.blue.shade50,
+                textColor: Colors.blue,
+                fontWeight: FontWeight.bold,
+              ),
+              dataCell(
+                '${pct.toStringAsFixed(1)}%',
+                summaryColWidth2,
+                bg: Colors.green.shade50,
+                textColor: pctColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ];
+          }
+
+          nameCells.add(dataCell(name, nameColumnWidth));
+          scrollableDataRows.add(
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [...stationCells, ...summaryCells],
+            ),
+          );
+        }
+
         return Directionality(
           textDirection: TextDirection.rtl,
           child: DraggableScrollableSheet(
@@ -8906,175 +9087,6 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
             maxChildSize: 0.95,
             expand: false,
             builder: (ctx2, scrollController) {
-              // Fixed name column header
-              final Widget nameHeader = headerCell(
-                'שם חניך',
-                nameColumnWidth,
-                Colors.blueGrey.shade50,
-                Colors.black87,
-              );
-
-              // Scrollable station/summary header cells (no name)
-              final List<Widget> scrollableHeaderCells = [
-                ...stations.asMap().entries.map((e) {
-                  final si = e.key;
-                  final s = e.value;
-                  final stName = (s['name'] ?? 'מקצה ${si + 1}').toString();
-                  final maxVal = isLongRange
-                      ? ((s['maxScorePoints'] as num?)?.toInt() ??
-                            (s['maxPoints'] as num?)?.toInt() ??
-                            0)
-                      : ((s['bulletsCount'] as num?)?.toInt() ?? 0);
-                  return headerCell(
-                    stName,
-                    stationColumnWidth,
-                    Colors.blueGrey.shade50,
-                    Colors.black87,
-                    subtitle: maxVal > 0 ? '$maxVal' : null,
-                  );
-                }),
-                if (isLongRange) ...[
-                  headerCell(
-                    'סהכ נקודות',
-                    summaryColWidth1,
-                    Colors.blue.shade50,
-                    Colors.blue,
-                  ),
-                  headerCell(
-                    'ממוצע',
-                    summaryColWidth2,
-                    Colors.green.shade50,
-                    Colors.green,
-                  ),
-                  headerCell(
-                    'סהכ כדורים',
-                    summaryColWidth2,
-                    Colors.orange.shade50,
-                    Colors.orange,
-                  ),
-                ] else ...[
-                  headerCell(
-                    'פגיעות/כדורים',
-                    summaryColWidth1,
-                    Colors.blue.shade50,
-                    Colors.blue,
-                  ),
-                  headerCell(
-                    'אחוז',
-                    summaryColWidth2,
-                    Colors.green.shade50,
-                    Colors.green,
-                  ),
-                ],
-              ];
-
-              // Build per-trainee data: name cell + scrollable row
-              final List<Widget> nameCells = [];
-              final List<Widget> scrollableDataRows = [];
-
-              for (final trainee in trainees) {
-                final name = (trainee['name'] ?? '').toString();
-                final hitsMap =
-                    (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
-                int traineeHitsTotal = 0;
-                int traineeMaxTotal = 0;
-                int traineeBulletsTotal = 0;
-                int filledStations = 0;
-
-                final List<Widget> stationCells = [];
-                for (int si = 0; si < stations.length; si++) {
-                  final station = stations[si];
-                  if (!hitsMap.containsKey('station_$si')) {
-                    stationCells.add(
-                      dataCell(
-                        '—',
-                        stationColumnWidth,
-                        textColor: Colors.black38,
-                      ),
-                    );
-                    continue;
-                  }
-                  final val = (hitsMap['station_$si'] as num?)?.toInt() ?? 0;
-                  final maxPerStation = isLongRange
-                      ? ((station['maxScorePoints'] as num?)?.toInt() ??
-                            (station['maxPoints'] as num?)?.toInt() ??
-                            0)
-                      : ((station['bulletsCount'] as num?)?.toInt() ?? 0);
-                  final bulletsPerStation =
-                      (station['bulletsCount'] as num?)?.toInt() ?? 0;
-                  traineeHitsTotal += val;
-                  traineeMaxTotal += maxPerStation;
-                  traineeBulletsTotal += bulletsPerStation;
-                  filledStations++;
-                  stationCells.add(
-                    dataCell('$val/$maxPerStation', stationColumnWidth),
-                  );
-                }
-
-                final List<Widget> summaryCells;
-                if (isLongRange) {
-                  final avg = filledStations > 0
-                      ? traineeHitsTotal / filledStations
-                      : 0.0;
-                  summaryCells = [
-                    dataCell(
-                      '$traineeHitsTotal',
-                      summaryColWidth1,
-                      bg: Colors.blue.shade50,
-                      textColor: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    dataCell(
-                      avg.toStringAsFixed(1),
-                      summaryColWidth2,
-                      bg: Colors.green.shade50,
-                      textColor: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    dataCell(
-                      '$traineeBulletsTotal',
-                      summaryColWidth2,
-                      bg: Colors.orange.shade50,
-                      textColor: Colors.orange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ];
-                } else {
-                  final pct = traineeMaxTotal > 0
-                      ? (traineeHitsTotal / traineeMaxTotal * 100)
-                      : 0.0;
-                  final pctColor = pct >= 70
-                      ? Colors.green
-                      : pct >= 50
-                      ? Colors.orange
-                      : Colors.red;
-                  summaryCells = [
-                    dataCell(
-                      '$traineeHitsTotal/$traineeMaxTotal',
-                      summaryColWidth1,
-                      bg: Colors.blue.shade50,
-                      textColor: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    dataCell(
-                      '${pct.toStringAsFixed(1)}%',
-                      summaryColWidth2,
-                      bg: Colors.green.shade50,
-                      textColor: pctColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ];
-                }
-
-                nameCells.add(dataCell(name, nameColumnWidth));
-                scrollableDataRows.add(
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [...stationCells, ...summaryCells],
-                  ),
-                );
-              }
-
               return Container(
                 color: Colors.white,
                 child: Column(
@@ -9120,10 +9132,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                       ),
                     ),
                     const Divider(height: 1),
-                    // Table with sticky name column
+                    // Table: sticky header + scrollable data rows
                     Expanded(
-                      child: SingleChildScrollView(
-                        controller: scrollController,
+                      child: Padding(
                         padding: const EdgeInsets.all(8),
                         child: Container(
                           decoration: BoxDecoration(
@@ -9134,38 +9145,72 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           clipBehavior: Clip.antiAlias,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Column(
                             children: [
-                              // FIXED name column — does not scroll horizontally
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [nameHeader, ...nameCells],
-                              ),
-                              // SCROLLABLE stations + summary
-                              Expanded(
-                                child: ScrollConfiguration(
-                                  behavior: ScrollConfiguration.of(ctx2)
-                                      .copyWith(
-                                        dragDevices: {
-                                          PointerDeviceKind.touch,
-                                          PointerDeviceKind.mouse,
-                                        },
-                                      ),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
+                              // STICKY HEADER ROW (does not scroll vertically)
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  nameHeader,
+                                  Expanded(
+                                    child: ScrollConfiguration(
+                                      behavior: ScrollConfiguration.of(ctx2)
+                                          .copyWith(
+                                            dragDevices: {
+                                              PointerDeviceKind.touch,
+                                              PointerDeviceKind.mouse,
+                                            },
+                                          ),
+                                      child: SingleChildScrollView(
+                                        controller: headerHorizCtrl,
+                                        scrollDirection: Axis.horizontal,
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
+                                        child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: scrollableHeaderCells,
                                         ),
-                                        ...scrollableDataRows,
-                                      ],
+                                      ),
                                     ),
+                                  ),
+                                ],
+                              ),
+                              // SCROLLABLE DATA ROWS (vertical + horizontal)
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  controller: scrollController,
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // FIXED name column — does not scroll horizontally
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: nameCells,
+                                      ),
+                                      // SCROLLABLE stations + summary
+                                      Expanded(
+                                        child: ScrollConfiguration(
+                                          behavior: ScrollConfiguration.of(ctx2)
+                                              .copyWith(
+                                                dragDevices: {
+                                                  PointerDeviceKind.touch,
+                                                  PointerDeviceKind.mouse,
+                                                },
+                                              ),
+                                          child: SingleChildScrollView(
+                                            controller: dataHorizCtrl,
+                                            scrollDirection: Axis.horizontal,
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: scrollableDataRows,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -9265,7 +9310,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                 Text(
                   'יישוב: ${feedback.settlement}',
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 22,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
