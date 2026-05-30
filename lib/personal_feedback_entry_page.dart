@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'main.dart'; // For FeedbackFormPage
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'main.dart'; // For FeedbackFormPage, currentUser
 import 'personal_feedback_temp_list_page.dart';
 import 'widgets/standard_back_button.dart';
 
@@ -8,10 +9,39 @@ import 'widgets/standard_back_button.dart';
 /// מציג שני כפתורים:
 /// 1. משוב חדש - פותח את הטופס
 /// 2. משובים זמניים - פותח רשימת טיוטות
-class PersonalFeedbackEntryPage extends StatelessWidget {
+class PersonalFeedbackEntryPage extends StatefulWidget {
   final String exercise;
 
   const PersonalFeedbackEntryPage({super.key, required this.exercise});
+
+  @override
+  State<PersonalFeedbackEntryPage> createState() => _PersonalFeedbackEntryPageState();
+}
+
+class _PersonalFeedbackEntryPageState extends State<PersonalFeedbackEntryPage> {
+  int _draftCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraftCount();
+  }
+
+  Future<void> _loadDraftCount() async {
+    try {
+      final uid = currentUser?.uid;
+      if (uid == null) return;
+      final isAdmin = currentUser?.role == 'Admin';
+      Query q = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('module', isEqualTo: 'personal_feedback')
+          .where('isTemporary', isEqualTo: true)
+          .where('exercise', isEqualTo: widget.exercise);
+      if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
+      final snap = await q.count().get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.count ?? 0);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +49,7 @@ class PersonalFeedbackEntryPage extends StatelessWidget {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(exercise),
+          title: Text(widget.exercise),
           leading: const StandardBackButton(),
         ),
         body: Center(
@@ -34,7 +64,7 @@ class PersonalFeedbackEntryPage extends StatelessWidget {
 
                 // Title
                 Text(
-                  exercise,
+                  widget.exercise,
                   style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -51,7 +81,7 @@ class PersonalFeedbackEntryPage extends StatelessWidget {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => FeedbackFormPage(exercise: exercise),
+                          builder: (_) => FeedbackFormPage(exercise: widget.exercise),
                         ),
                       );
                     },
@@ -85,13 +115,14 @@ class PersonalFeedbackEntryPage extends StatelessWidget {
                   width: double.infinity,
                   height: 80,
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) =>
-                              PersonalFeedbackTempListPage(exercise: exercise),
+                              PersonalFeedbackTempListPage(exercise: widget.exercise),
                         ),
                       );
+                      _loadDraftCount();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueGrey.shade700,
@@ -106,12 +137,30 @@ class PersonalFeedbackEntryPage extends StatelessWidget {
                       ),
                       elevation: 8,
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.edit_note, size: 28),
-                        SizedBox(width: 12),
-                        Text('משובים זמניים'),
+                        const Icon(Icons.edit_note, size: 28),
+                        const SizedBox(width: 12),
+                        const Text('משובים זמניים'),
+                        if (_draftCount > 0) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$_draftCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

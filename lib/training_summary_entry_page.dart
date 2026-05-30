@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'main.dart'; // For TrainingSummaryFormPage
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'main.dart'; // For TrainingSummaryFormPage, currentUser
 import 'training_summary_temp_list_page.dart';
 import 'widgets/standard_back_button.dart';
 
@@ -8,8 +9,36 @@ import 'widgets/standard_back_button.dart';
 /// This screen provides TWO options:
 /// 1. Add New Training Summary - Opens the form
 /// 2. Temporary Summaries - Opens list of drafts
-class TrainingSummaryEntryPage extends StatelessWidget {
+class TrainingSummaryEntryPage extends StatefulWidget {
   const TrainingSummaryEntryPage({super.key});
+
+  @override
+  State<TrainingSummaryEntryPage> createState() => _TrainingSummaryEntryPageState();
+}
+
+class _TrainingSummaryEntryPageState extends State<TrainingSummaryEntryPage> {
+  int _draftCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraftCount();
+  }
+
+  Future<void> _loadDraftCount() async {
+    try {
+      final uid = currentUser?.uid;
+      if (uid == null) return;
+      final isAdmin = currentUser?.role == 'Admin';
+      Query q = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('module', isEqualTo: 'training_summary')
+          .where('isTemporary', isEqualTo: true);
+      if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
+      final snap = await q.count().get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.count ?? 0);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,12 +109,13 @@ class TrainingSummaryEntryPage extends StatelessWidget {
                   width: double.infinity,
                   height: 80,
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const TrainingSummaryTempListPage(),
                         ),
                       );
+                      _loadDraftCount();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueGrey.shade700,
@@ -106,6 +136,24 @@ class TrainingSummaryEntryPage extends StatelessWidget {
                         const Icon(Icons.edit_note, size: 28),
                         const SizedBox(width: 12),
                         const Text('משובים זמניים'),
+                        if (_draftCount > 0) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$_draftCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

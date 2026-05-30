@@ -1,11 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'range_training_page.dart';
 import 'range_temp_feedbacks_page.dart';
 import 'widgets/standard_back_button.dart';
+import 'main.dart' show currentUser;
 
 /// מסך בחירת סוג מטווח
-class RangeSelectionPage extends StatelessWidget {
+class RangeSelectionPage extends StatefulWidget {
   const RangeSelectionPage({super.key});
+
+  @override
+  State<RangeSelectionPage> createState() => _RangeSelectionPageState();
+}
+
+class _RangeSelectionPageState extends State<RangeSelectionPage> {
+  int _draftCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraftCount();
+  }
+
+  Future<void> _loadDraftCount() async {
+    try {
+      final uid = currentUser?.uid;
+      if (uid == null) return;
+      final isAdmin = currentUser?.role == 'Admin';
+      Query q = FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('module', isEqualTo: 'shooting_ranges')
+          .where('isTemporary', isEqualTo: true);
+      if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
+      final snap = await q.count().get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.count ?? 0);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,11 +153,12 @@ class RangeSelectionPage extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const RangeTempFeedbacksPage()),
           );
+          _loadDraftCount();
         },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -154,6 +185,24 @@ class RangeSelectionPage extends StatelessWidget {
                       color: Colors.white,
                     ),
                   ),
+                  if (_draftCount > 0) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$_draftCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const Icon(Icons.arrow_back_ios, color: Colors.white),
