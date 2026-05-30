@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8789,6 +8790,400 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     );
   }
 
+  void _showAllTraineesModal(
+    BuildContext context,
+    List<Map<String, dynamic>> stations,
+    List<Map<String, dynamic>> trainees,
+    bool isLongRange,
+    String title,
+  ) {
+    const double nameColumnWidth = 120.0;
+    const double stationColumnWidth = 95.0;
+    const double summaryColWidth1 = 90.0;
+    const double summaryColWidth2 = 70.0;
+    const double headerHeight = 56.0;
+    const double rowHeight = 44.0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        // Header cell builder — same style as range_training_page header row
+        Widget headerCell(
+          String text,
+          double width,
+          Color bg,
+          Color textColor, {
+          String? subtitle,
+        }) {
+          return Container(
+            width: width,
+            height: headerHeight,
+            padding: const EdgeInsets.all(5.0),
+            decoration: BoxDecoration(
+              color: bg,
+              border: BorderDirectional(
+                end: BorderSide(color: Colors.grey.shade300),
+                bottom: BorderSide(color: Colors.grey.shade300),
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  text,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: textColor,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+                if (subtitle != null && subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+
+        // Data cell builder
+        Widget dataCell(
+          String text,
+          double width, {
+          Color? bg,
+          Color textColor = Colors.black87,
+          FontWeight fontWeight = FontWeight.normal,
+        }) {
+          return Container(
+            width: width,
+            height: rowHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+            decoration: BoxDecoration(
+              color: bg,
+              border: BorderDirectional(
+                end: BorderSide(color: Colors.grey.shade200),
+                bottom: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: textColor,
+                  fontWeight: fontWeight,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          );
+        }
+
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.4,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (ctx2, scrollController) {
+              // Fixed name column header
+              final Widget nameHeader = headerCell(
+                'שם חניך',
+                nameColumnWidth,
+                Colors.blueGrey.shade50,
+                Colors.black87,
+              );
+
+              // Scrollable station/summary header cells (no name)
+              final List<Widget> scrollableHeaderCells = [
+                ...stations.asMap().entries.map((e) {
+                  final si = e.key;
+                  final s = e.value;
+                  final stName = (s['name'] ?? 'מקצה ${si + 1}').toString();
+                  final maxVal = isLongRange
+                      ? ((s['maxScorePoints'] as num?)?.toInt() ??
+                            (s['maxPoints'] as num?)?.toInt() ??
+                            0)
+                      : ((s['bulletsCount'] as num?)?.toInt() ?? 0);
+                  return headerCell(
+                    stName,
+                    stationColumnWidth,
+                    Colors.blueGrey.shade50,
+                    Colors.black87,
+                    subtitle: maxVal > 0 ? '$maxVal' : null,
+                  );
+                }),
+                if (isLongRange) ...[
+                  headerCell(
+                    'סהכ נקודות',
+                    summaryColWidth1,
+                    Colors.blue.shade50,
+                    Colors.blue,
+                  ),
+                  headerCell(
+                    'ממוצע',
+                    summaryColWidth2,
+                    Colors.green.shade50,
+                    Colors.green,
+                  ),
+                  headerCell(
+                    'סהכ כדורים',
+                    summaryColWidth2,
+                    Colors.orange.shade50,
+                    Colors.orange,
+                  ),
+                ] else ...[
+                  headerCell(
+                    'פגיעות/כדורים',
+                    summaryColWidth1,
+                    Colors.blue.shade50,
+                    Colors.blue,
+                  ),
+                  headerCell(
+                    'אחוז',
+                    summaryColWidth2,
+                    Colors.green.shade50,
+                    Colors.green,
+                  ),
+                ],
+              ];
+
+              // Build per-trainee data: name cell + scrollable row
+              final List<Widget> nameCells = [];
+              final List<Widget> scrollableDataRows = [];
+
+              for (final trainee in trainees) {
+                final name = (trainee['name'] ?? '').toString();
+                final hitsMap =
+                    (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
+                int traineeHitsTotal = 0;
+                int traineeMaxTotal = 0;
+                int traineeBulletsTotal = 0;
+                int filledStations = 0;
+
+                final List<Widget> stationCells = [];
+                for (int si = 0; si < stations.length; si++) {
+                  final station = stations[si];
+                  if (!hitsMap.containsKey('station_$si')) {
+                    stationCells.add(
+                      dataCell(
+                        '—',
+                        stationColumnWidth,
+                        textColor: Colors.black38,
+                      ),
+                    );
+                    continue;
+                  }
+                  final val = (hitsMap['station_$si'] as num?)?.toInt() ?? 0;
+                  final maxPerStation = isLongRange
+                      ? ((station['maxScorePoints'] as num?)?.toInt() ??
+                            (station['maxPoints'] as num?)?.toInt() ??
+                            0)
+                      : ((station['bulletsCount'] as num?)?.toInt() ?? 0);
+                  final bulletsPerStation =
+                      (station['bulletsCount'] as num?)?.toInt() ?? 0;
+                  traineeHitsTotal += val;
+                  traineeMaxTotal += maxPerStation;
+                  traineeBulletsTotal += bulletsPerStation;
+                  filledStations++;
+                  stationCells.add(
+                    dataCell('$val/$maxPerStation', stationColumnWidth),
+                  );
+                }
+
+                final List<Widget> summaryCells;
+                if (isLongRange) {
+                  final avg = filledStations > 0
+                      ? traineeHitsTotal / filledStations
+                      : 0.0;
+                  summaryCells = [
+                    dataCell(
+                      '$traineeHitsTotal',
+                      summaryColWidth1,
+                      bg: Colors.blue.shade50,
+                      textColor: Colors.blue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    dataCell(
+                      avg.toStringAsFixed(1),
+                      summaryColWidth2,
+                      bg: Colors.green.shade50,
+                      textColor: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    dataCell(
+                      '$traineeBulletsTotal',
+                      summaryColWidth2,
+                      bg: Colors.orange.shade50,
+                      textColor: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ];
+                } else {
+                  final pct = traineeMaxTotal > 0
+                      ? (traineeHitsTotal / traineeMaxTotal * 100)
+                      : 0.0;
+                  final pctColor = pct >= 70
+                      ? Colors.green
+                      : pct >= 50
+                      ? Colors.orange
+                      : Colors.red;
+                  summaryCells = [
+                    dataCell(
+                      '$traineeHitsTotal/$traineeMaxTotal',
+                      summaryColWidth1,
+                      bg: Colors.blue.shade50,
+                      textColor: Colors.blue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    dataCell(
+                      '${pct.toStringAsFixed(1)}%',
+                      summaryColWidth2,
+                      bg: Colors.green.shade50,
+                      textColor: pctColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ];
+                }
+
+                nameCells.add(dataCell(name, nameColumnWidth));
+                scrollableDataRows.add(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [...stationCells, ...summaryCells],
+                  ),
+                );
+              }
+
+              return Container(
+                color: Colors.white,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 8, bottom: 4),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // Title
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+                      child: Row(
+                        children: [
+                          Icon(Icons.table_chart, color: Colors.grey.shade600),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.close,
+                              color: Colors.grey.shade600,
+                            ),
+                            onPressed: () => Navigator.pop(ctx2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // Table with sticky name column
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.grey.shade400,
+                              width: 1,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // FIXED name column — does not scroll horizontally
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [nameHeader, ...nameCells],
+                              ),
+                              // SCROLLABLE stations + summary
+                              Expanded(
+                                child: ScrollConfiguration(
+                                  behavior: ScrollConfiguration.of(ctx2)
+                                      .copyWith(
+                                        dragDevices: {
+                                          PointerDeviceKind.touch,
+                                          PointerDeviceKind.mouse,
+                                        },
+                                      ),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: scrollableHeaderCells,
+                                        ),
+                                        ...scrollableDataRows,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final date = feedback.createdAt.toLocal().toString().split('.').first;
@@ -8825,186 +9220,72 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
           padding: const EdgeInsets.all(12.0),
           child: ListView(
             children: [
-              // Show resolved instructor name (or loading indicator)
-              isResolvingName
-                  ? const Row(
-                      children: [
-                        Text('מדריך: '),
-                        SizedBox(width: 8),
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+              if (isRangeFeedback || isTrainingSummary) ...[
+                // ORDER: תאריך → יישוב → נוכחים → מדריך → מדריכים נוספים → [טווח]
+                // 1. תאריך
+                (() {
+                  final canEditDate =
+                      currentUser?.name == 'יותם אלון' &&
+                      currentUser?.role == 'Admin';
+                  if (canEditDate) {
+                    return InkWell(
+                      onTap: _editFeedbackDate,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 4.0,
+                          horizontal: 8.0,
                         ),
-                      ],
-                    )
-                  : (() {
-                      final canEdit =
-                          currentUser?.name == 'יותם אלון' &&
-                          currentUser?.role == 'Admin';
-                      if (canEdit) {
-                        return InkWell(
-                          onTap: _editInstructorName,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 4.0,
-                              horizontal: 8.0,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
-                                  style: const TextStyle(
-                                    color: Colors.blue,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.edit,
-                                  size: 16,
-                                  color: Colors.blue,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      return Text(
-                        'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
-                      );
-                    })(),
-              const SizedBox(height: 8),
-              // Additional instructors for range/training feedbacks
-              if ((feedback.module == 'training_summary' ||
-                      feedback.module == 'surprise_drill' ||
-                      feedback.module == 'shooting_ranges' ||
-                      feedback.folderKey == 'ranges_474' ||
-                      feedback.folderKey == 'shooting_ranges') &&
-                  feedback.id != null &&
-                  feedback.id!.isNotEmpty)
-                FutureBuilder<DocumentSnapshot>(
-                  future: _feedbackDocFuture,
-                  builder: (context, snapshot) {
-                    // If override is set (after an edit), use it immediately
-                    // regardless of snapshot loading state
-                    final List<String> additionalInstructors;
-                    if (_additionalInstructorsOverride != null) {
-                      additionalInstructors = _additionalInstructorsOverride!;
-                    } else if (!snapshot.hasData || !snapshot.data!.exists) {
-                      return const SizedBox.shrink();
-                    } else {
-                      final data =
-                          snapshot.data!.data() as Map<String, dynamic>?;
-                      if (data == null) return const SizedBox.shrink();
-                      additionalInstructors =
-                          (data['instructors'] as List?)?.cast<String>() ?? [];
-                    }
-
-                    // Filter out empty strings and the main instructor (avoid duplicates)
-                    final mainInstructorName = feedback.instructorName;
-                    final filteredInstructors = additionalInstructors
-                        .where(
-                          (name) =>
-                              name.isNotEmpty && name != mainInstructorName,
-                        )
-                        .toList();
-
-                    final canEdit =
-                        currentUser?.name == 'יותם אלון' &&
-                        currentUser?.role == 'Admin';
-
-                    if (filteredInstructors.isEmpty && !canEdit) {
-                      return const SizedBox.shrink();
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              'מדריכים נוספים:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                                color: Colors.black87,
+                            Text(
+                              'תאריך: $date',
+                              style: const TextStyle(
+                                color: Colors.blue,
+                                decoration: TextDecoration.underline,
                               ),
                             ),
-                            if (canEdit) ...[
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: () => _editAdditionalInstructors(
-                                  additionalInstructors,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(4.0),
-                                  child: Icon(
-                                    Icons.edit,
-                                    size: 16,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.edit,
+                              size: 16,
+                              color: Colors.blue,
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        if (filteredInstructors.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 12.0),
-                            child: Text(
-                              'אין מדריכים נוספים',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          )
-                        else
-                          ...filteredInstructors.map(
-                            (name) => Padding(
-                              padding: const EdgeInsets.only(
-                                right: 12.0,
-                                bottom: 2.0,
-                              ),
-                              child: Row(
-                                children: [
-                                  const Text(
-                                    '• ',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        const SizedBox(height: 8),
-                      ],
+                      ),
                     );
-                  },
+                  } else {
+                    return Text('תאריך: $date');
+                  }
+                })(),
+                const SizedBox(height: 8),
+                // 2. יישוב
+                Text(
+                  'יישוב: ${feedback.settlement}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              // Date display with edit capability for Yotam Alon
-              (() {
-                final canEditDate =
-                    currentUser?.name == 'יותם אלון' &&
-                    currentUser?.role == 'Admin';
-
-                if (canEditDate) {
-                  return InkWell(
-                    onTap: _editFeedbackDate,
+                const SizedBox(height: 8),
+                // 3. נוכחים
+                Text(
+                  'נוכחים: ${feedback.attendeesCount}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // 4. Edit trainees button (Yotam only)
+                if ((currentUser?.name == 'יותם אלון' &&
+                        currentUser?.role == 'Admin') &&
+                    feedback.id != null &&
+                    feedback.id!.isNotEmpty) ...[
+                  InkWell(
+                    onTap: _editTrainees,
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -9015,7 +9296,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'תאריך: $date',
+                            'עריכת חניכים (${feedback.attendeesCount})',
                             style: const TextStyle(
                               color: Colors.blue,
                               decoration: TextDecoration.underline,
@@ -9026,113 +9307,446 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                         ],
                       ),
                     ),
-                  );
-                } else {
-                  return Text('תאריך: $date');
-                }
-              })(),
-              const SizedBox(height: 8),
-              Text('תרגיל: ${feedback.exercise}'),
-              const SizedBox(height: 8),
-              if (feedback.folder.isNotEmpty) ...[
-                Text('תיקייה: ${feedback.folder}'),
-                const SizedBox(height: 8),
-              ],
-              if (feedback.scenario.isNotEmpty) ...[
-                Text('תרחיש: ${feedback.scenario}'),
-                const SizedBox(height: 8),
-              ],
-              if ((feedback.folderKey == 'shooting_ranges' ||
-                      feedback.folder == 'מטווחי ירי' ||
-                      feedback.module == 'shooting_ranges') &&
-                  feedback.attendeesCount > 0) ...[
-                Text(
-                  'מספר חניכים/נוכחים באימון: ${feedback.attendeesCount}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orangeAccent,
                   ),
-                ),
-                const SizedBox(height: 8),
-              ],
-              // Conditional display: Check training summary first, then ranges, surprise drills, and finally regular feedbacks
-              if (feedback.folder == 'משוב סיכום אימון 474' ||
-                  feedback.module == 'training_summary')
-                Text('נוכחים: ${feedback.attendeesCount}')
-              else if (feedback.folder == 'משוב תרגילי הפתעה' ||
-                  feedback.module == 'surprise_drill')
-                const SizedBox.shrink() // No role display for surprise drills
-              else if (feedback.folderKey == 'shooting_ranges' ||
-                  feedback.folderKey == 'ranges_474' ||
-                  feedback.folder == 'מטווחי ירי' ||
-                  feedback.folder == 'מטווחים 474' ||
-                  feedback.module == 'shooting_ranges')
-                Text(
-                  'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
-                )
-              else
-                Text('תפקיד: ${feedback.role}'),
-              const SizedBox(height: 8),
-              // Edit trainees button (Yotam only) for modules that store trainees in Firestore
-              if ((currentUser?.name == 'יותם אלון' &&
-                      currentUser?.role == 'Admin') &&
-                  (feedback.module == 'training_summary' ||
-                      feedback.module == 'surprise_drill' ||
-                      feedback.module == 'shooting_ranges' ||
-                      feedback.folderKey == 'ranges_474' ||
-                      feedback.folderKey == 'shooting_ranges') &&
-                  feedback.id != null &&
-                  feedback.id!.isNotEmpty) ...[
-                InkWell(
-                  onTap: _editTrainees,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 4.0,
-                      horizontal: 8.0,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'עריכת חניכים (${feedback.attendeesCount})',
-                          style: const TextStyle(
-                            color: Colors.blue,
-                            decoration: TextDecoration.underline,
+                  const SizedBox(height: 8),
+                ],
+                // 5. מדריך
+                isResolvingName
+                    ? const Row(
+                        children: [
+                          Text('מדריך: '),
+                          SizedBox(width: 8),
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
+                        ],
+                      )
+                    : (() {
+                        final canEdit =
+                            currentUser?.name == 'יותם אלון' &&
+                            currentUser?.role == 'Admin';
+                        if (canEdit) {
+                          return InkWell(
+                            onTap: _editInstructorName,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4.0,
+                                horizontal: 8.0,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.edit,
+                                    size: 16,
+                                    color: Colors.blue,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        return Text(
+                          'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                        );
+                      })(),
+                const SizedBox(height: 8),
+                // 6. מדריכים נוספים
+                if (feedback.id != null && feedback.id!.isNotEmpty)
+                  FutureBuilder<DocumentSnapshot>(
+                    future: _feedbackDocFuture,
+                    builder: (context, snapshot) {
+                      final List<String> additionalInstructors;
+                      if (_additionalInstructorsOverride != null) {
+                        additionalInstructors = _additionalInstructorsOverride!;
+                      } else if (!snapshot.hasData || !snapshot.data!.exists) {
+                        return const SizedBox.shrink();
+                      } else {
+                        final data =
+                            snapshot.data!.data() as Map<String, dynamic>?;
+                        if (data == null) return const SizedBox.shrink();
+                        additionalInstructors =
+                            (data['instructors'] as List?)?.cast<String>() ??
+                            [];
+                      }
+                      final mainInstructorName = feedback.instructorName;
+                      final filteredInstructors = additionalInstructors
+                          .where(
+                            (name) =>
+                                name.isNotEmpty && name != mainInstructorName,
+                          )
+                          .toList();
+                      final canEdit =
+                          currentUser?.name == 'יותם אלון' &&
+                          currentUser?.role == 'Admin';
+                      if (filteredInstructors.isEmpty && !canEdit) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'מדריכים נוספים:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              if (canEdit) ...[
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => _editAdditionalInstructors(
+                                    additionalInstructors,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4.0),
+                                    child: Icon(
+                                      Icons.edit,
+                                      size: 16,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          if (filteredInstructors.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 12.0),
+                              child: Text(
+                                'אין מדריכים נוספים',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            )
+                          else
+                            ...filteredInstructors.map(
+                              (name) => Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 12.0,
+                                  bottom: 2.0,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      '• ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                        ],
+                      );
+                    },
+                  ),
+                // 7. טווח (מטווחים בלבד)
+                if (isRangeFeedback) ...[
+                  Text(
+                    'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ] else ...[
+                // ===== ORIGINAL ORDER for other feedback types =====
+                // Show resolved instructor name (or loading indicator)
+                isResolvingName
+                    ? const Row(
+                        children: [
+                          Text('מדריך: '),
+                          SizedBox(width: 8),
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ],
+                      )
+                    : (() {
+                        final canEdit =
+                            currentUser?.name == 'יותם אלון' &&
+                            currentUser?.role == 'Admin';
+                        if (canEdit) {
+                          return InkWell(
+                            onTap: _editInstructorName,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4.0,
+                                horizontal: 8.0,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.edit,
+                                    size: 16,
+                                    color: Colors.blue,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        return Text(
+                          'מדריך: ${resolvedInstructorName ?? feedback.instructorName}',
+                        );
+                      })(),
+                const SizedBox(height: 8),
+                // Additional instructors for surprise drills
+                if (feedback.module == 'surprise_drill' &&
+                    feedback.id != null &&
+                    feedback.id!.isNotEmpty)
+                  FutureBuilder<DocumentSnapshot>(
+                    future: _feedbackDocFuture,
+                    builder: (context, snapshot) {
+                      final List<String> additionalInstructors;
+                      if (_additionalInstructorsOverride != null) {
+                        additionalInstructors = _additionalInstructorsOverride!;
+                      } else if (!snapshot.hasData || !snapshot.data!.exists) {
+                        return const SizedBox.shrink();
+                      } else {
+                        final data =
+                            snapshot.data!.data() as Map<String, dynamic>?;
+                        if (data == null) return const SizedBox.shrink();
+                        additionalInstructors =
+                            (data['instructors'] as List?)?.cast<String>() ??
+                            [];
+                      }
+                      final mainInstructorName = feedback.instructorName;
+                      final filteredInstructors = additionalInstructors
+                          .where(
+                            (name) =>
+                                name.isNotEmpty && name != mainInstructorName,
+                          )
+                          .toList();
+                      final canEdit =
+                          currentUser?.name == 'יותם אלון' &&
+                          currentUser?.role == 'Admin';
+                      if (filteredInstructors.isEmpty && !canEdit) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'מדריכים נוספים:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              if (canEdit) ...[
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => _editAdditionalInstructors(
+                                    additionalInstructors,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4.0),
+                                    child: Icon(
+                                      Icons.edit,
+                                      size: 16,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          if (filteredInstructors.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 12.0),
+                              child: Text(
+                                'אין מדריכים נוספים',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            )
+                          else
+                            ...filteredInstructors.map(
+                              (name) => Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 12.0,
+                                  bottom: 2.0,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      '• ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                        ],
+                      );
+                    },
+                  ),
+                // Date display with edit capability for Yotam Alon
+                (() {
+                  final canEditDate =
+                      currentUser?.name == 'יותם אלון' &&
+                      currentUser?.role == 'Admin';
+                  if (canEditDate) {
+                    return InkWell(
+                      onTap: _editFeedbackDate,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 4.0,
+                          horizontal: 8.0,
                         ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.edit, size: 16, color: Colors.blue),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'תאריך: $date',
+                              style: const TextStyle(
+                                color: Colors.blue,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.edit,
+                              size: 16,
+                              color: Colors.blue,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  } else {
+                    return Text('תאריך: $date');
+                  }
+                })(),
+                const SizedBox(height: 8),
+                Text('תרגיל: ${feedback.exercise}'),
+                const SizedBox(height: 8),
+                if (feedback.folder.isNotEmpty) ...[
+                  Text('תיקייה: ${feedback.folder}'),
+                  const SizedBox(height: 8),
+                ],
+                if (feedback.scenario.isNotEmpty) ...[
+                  Text('תרחיש: ${feedback.scenario}'),
+                  const SizedBox(height: 8),
+                ],
+                // Role display
+                if (isSurpriseDrill)
+                  const SizedBox.shrink()
+                else
+                  Text('תפקיד: ${feedback.role}'),
+                const SizedBox(height: 8),
+                // Edit trainees button (Yotam only) for surprise drills
+                if ((currentUser?.name == 'יותם אלון' &&
+                        currentUser?.role == 'Admin') &&
+                    feedback.module == 'surprise_drill' &&
+                    feedback.id != null &&
+                    feedback.id!.isNotEmpty) ...[
+                  InkWell(
+                    onTap: _editTrainees,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 4.0,
+                        horizontal: 8.0,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'עריכת חניכים (${feedback.attendeesCount})',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.edit, size: 16, color: Colors.blue),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-              ],
-              // Display settlement/name based on feedback type
-              if (feedback.folderKey == 'shooting_ranges' ||
-                  feedback.folder == 'מטווחי ירי' ||
-                  feedback.module == 'shooting_ranges')
-                Text('יישוב: ${feedback.settlement}')
-              else if (feedback.folder == 'משוב תרגילי הפתעה' ||
-                  feedback.module == 'surprise_drill')
-                Text(
-                  'יישוב: ${feedback.name}',
-                ) // For surprise drills, 'name' field contains settlement
-              else if (feedback.folder == 'משוב סיכום אימון 474' ||
-                  feedback.module == 'training_summary')
-                Text('יישוב: ${feedback.settlement}')
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('שם: ${feedback.name}'),
-                    if (feedback.settlement.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text('יישוב: ${feedback.settlement}'),
+                  const SizedBox(height: 8),
+                ],
+                // Display settlement/name based on feedback type
+                if (isSurpriseDrill)
+                  Text('יישוב: ${feedback.name}')
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'שם: ${feedback.name}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (feedback.settlement.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text('יישוב: ${feedback.settlement}'),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
+              ],
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 8),
@@ -10320,139 +10934,158 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               // כרטיס סיכום כללי למטווח 474
-                              Card(
-                                color: Colors.blueGrey.shade800,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Column(
-                                    children: [
-                                      const Text(
-                                        'סיכום כללי - מטווח 474',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                              InkWell(
+                                onTap: () => _showAllTraineesModal(
+                                  context,
+                                  stations,
+                                  trainees,
+                                  isLongRange,
+                                  'סיכום כללי - מטווח 474',
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Card(
+                                  color: Colors.blueGrey.shade800,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      children: [
+                                        const Text(
+                                          'סיכום כללי - מטווח 474',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      // ✅ LONG RANGE: Show points, percentage, and bullets fired
-                                      isLongRange
-                                          ? Column(
-                                              children: [
-                                                // Points display
-                                                Text(
-                                                  'סך נקודות',
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  '$totalValue / $totalMax',
-                                                  style: const TextStyle(
-                                                    fontSize: 32,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.orangeAccent,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                // Percentage (from points only)
-                                                Text(
-                                                  '$percentage%',
-                                                  style: const TextStyle(
-                                                    fontSize: 24,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.greenAccent,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                const Text(
-                                                  'אחוז הצלחה',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white60,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 12),
-                                                // Total bullets fired (tracking only)
-                                                Text(
-                                                  'סה"כ כדורים שנורו: $totalBulletsFired',
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.white70,
-                                                    fontStyle: FontStyle.italic,
-                                                  ),
-                                                ),
-                                              ],
-                                            )
-                                          : Column(
-                                              children: [
-                                                Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceAround,
-                                                  children: [
-                                                    Column(
-                                                      children: [
-                                                        const Text(
-                                                          'סך פגיעות/כדורים',
-                                                          style: TextStyle(
-                                                            color: Colors.white,
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 4,
-                                                        ),
-                                                        Text(
-                                                          '$totalMax/$totalValue',
-                                                          style: const TextStyle(
-                                                            fontSize: 24,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Colors
-                                                                .orangeAccent,
-                                                          ),
-                                                        ),
-                                                      ],
+                                        const SizedBox(height: 12),
+                                        // ✅ LONG RANGE: Show points, percentage, and bullets fired
+                                        isLongRange
+                                            ? Column(
+                                                children: [
+                                                  // Points display
+                                                  Text(
+                                                    'סך נקודות',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.white70,
                                                     ),
-                                                    Column(
-                                                      children: [
-                                                        const Text(
-                                                          'אחוז פגיעה כללי',
-                                                          style: TextStyle(
-                                                            color: Colors.white,
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 4,
-                                                        ),
-                                                        Text(
-                                                          '$percentage%',
-                                                          style: const TextStyle(
-                                                            fontSize: 32,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Colors
-                                                                .greenAccent,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 12),
-                                                Text(
-                                                  'סה"כ כדורים שנורו: $totalBulletsFiredShortRange',
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.white70,
-                                                    fontStyle: FontStyle.italic,
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                    ],
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    '$totalValue / $totalMax',
+                                                    style: const TextStyle(
+                                                      fontSize: 32,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  // Percentage (from points only)
+                                                  Text(
+                                                    '$percentage%',
+                                                    style: const TextStyle(
+                                                      fontSize: 24,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.greenAccent,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  const Text(
+                                                    'אחוז הצלחה',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white60,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  // Total bullets fired (tracking only)
+                                                  Text(
+                                                    'סה"כ כדורים שנורו: $totalBulletsFired',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.white70,
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                    ),
+                                                  ),
+                                                ],
+                                              )
+                                            : Column(
+                                                children: [
+                                                  Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .spaceAround,
+                                                    children: [
+                                                      Column(
+                                                        children: [
+                                                          const Text(
+                                                            'סך פגיעות/כדורים',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 4,
+                                                          ),
+                                                          Text(
+                                                            '$totalMax/$totalValue',
+                                                            style: const TextStyle(
+                                                              fontSize: 24,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color: Colors
+                                                                  .orangeAccent,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      Column(
+                                                        children: [
+                                                          const Text(
+                                                            'אחוז פגיעה כללי',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 4,
+                                                          ),
+                                                          Text(
+                                                            '$percentage%',
+                                                            style: const TextStyle(
+                                                              fontSize: 32,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color: Colors
+                                                                  .greenAccent,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Text(
+                                                    'סה"כ כדורים שנורו: $totalBulletsFiredShortRange',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.white70,
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -10889,100 +11522,113 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               // כרטיס סיכום כללי
-                              Card(
-                                color: Colors.blueGrey.shade800,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Column(
-                                    children: [
-                                      const Text(
-                                        'סיכום כללי',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                              InkWell(
+                                onTap: () => _showAllTraineesModal(
+                                  context,
+                                  stations,
+                                  trainees,
+                                  isLongRange,
+                                  'סיכום כללי',
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Card(
+                                  color: Colors.blueGrey.shade800,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      children: [
+                                        const Text(
+                                          'סיכום כללי',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      // ✅ LONG RANGE: Show ONLY points, NO percentage
-                                      isLongRange
-                                          ? Column(
-                                              children: [
-                                                const Text(
-                                                  'סך נקודות',
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    color: Colors.white70,
+                                        const SizedBox(height: 12),
+                                        // ✅ LONG RANGE: Show ONLY points, NO percentage
+                                        isLongRange
+                                            ? Column(
+                                                children: [
+                                                  const Text(
+                                                    'סך נקודות',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.white70,
+                                                    ),
                                                   ),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  '$totalValue / $totalMax',
-                                                  style: const TextStyle(
-                                                    fontSize: 32,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.orangeAccent,
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    '$totalValue / $totalMax',
+                                                    style: const TextStyle(
+                                                      fontSize: 32,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                    ),
                                                   ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                const Text(
-                                                  'נקודות',
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.white60,
+                                                  const SizedBox(height: 4),
+                                                  const Text(
+                                                    'נקודות',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.white60,
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
-                                            )
-                                          : Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.spaceAround,
-                                              children: [
-                                                Column(
-                                                  children: [
-                                                    const Text(
-                                                      'סך פגיעות/כדורים',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
+                                                ],
+                                              )
+                                            : Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceAround,
+                                                children: [
+                                                  Column(
+                                                    children: [
+                                                      const Text(
+                                                        'סך פגיעות/כדורים',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                        ),
                                                       ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      '$totalMax/$totalValue',
-                                                      style: const TextStyle(
-                                                        fontSize: 24,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color:
-                                                            Colors.orangeAccent,
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        '$totalMax/$totalValue',
+                                                        style: const TextStyle(
+                                                          fontSize: 24,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors
+                                                              .orangeAccent,
+                                                        ),
                                                       ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                Column(
-                                                  children: [
-                                                    const Text(
-                                                      'אחוז פגיעה כללי',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
+                                                    ],
+                                                  ),
+                                                  Column(
+                                                    children: [
+                                                      const Text(
+                                                        'אחוז פגיעה כללי',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                        ),
                                                       ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      '$percentage%',
-                                                      style: const TextStyle(
-                                                        fontSize: 32,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color:
-                                                            Colors.greenAccent,
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        '$percentage%',
+                                                        style: const TextStyle(
+                                                          fontSize: 32,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors
+                                                              .greenAccent,
+                                                        ),
                                                       ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                    ],
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
