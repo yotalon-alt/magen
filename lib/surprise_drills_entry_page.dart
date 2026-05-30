@@ -13,7 +13,8 @@ class SurpriseDrillsEntryPage extends StatefulWidget {
   const SurpriseDrillsEntryPage({super.key});
 
   @override
-  State<SurpriseDrillsEntryPage> createState() => _SurpriseDrillsEntryPageState();
+  State<SurpriseDrillsEntryPage> createState() =>
+      _SurpriseDrillsEntryPageState();
 }
 
 class _SurpriseDrillsEntryPageState extends State<SurpriseDrillsEntryPage> {
@@ -140,7 +141,10 @@ class _SurpriseDrillsEntryPageState extends State<SurpriseDrillsEntryPage> {
                         if (_draftCount > 0) ...[
                           const SizedBox(width: 10),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.red,
                               borderRadius: BorderRadius.circular(12),

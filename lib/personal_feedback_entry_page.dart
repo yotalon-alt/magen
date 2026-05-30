@@ -15,7 +15,8 @@ class PersonalFeedbackEntryPage extends StatefulWidget {
   const PersonalFeedbackEntryPage({super.key, required this.exercise});
 
   @override
-  State<PersonalFeedbackEntryPage> createState() => _PersonalFeedbackEntryPageState();
+  State<PersonalFeedbackEntryPage> createState() =>
+      _PersonalFeedbackEntryPageState();
 }
 
 class _PersonalFeedbackEntryPageState extends State<PersonalFeedbackEntryPage> {
@@ -81,7 +82,8 @@ class _PersonalFeedbackEntryPageState extends State<PersonalFeedbackEntryPage> {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => FeedbackFormPage(exercise: widget.exercise),
+                          builder: (_) =>
+                              FeedbackFormPage(exercise: widget.exercise),
                         ),
                       );
                     },
@@ -118,8 +120,9 @@ class _PersonalFeedbackEntryPageState extends State<PersonalFeedbackEntryPage> {
                     onPressed: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) =>
-                              PersonalFeedbackTempListPage(exercise: widget.exercise),
+                          builder: (_) => PersonalFeedbackTempListPage(
+                            exercise: widget.exercise,
+                          ),
                         ),
                       );
                       _loadDraftCount();
@@ -146,7 +149,10 @@ class _PersonalFeedbackEntryPageState extends State<PersonalFeedbackEntryPage> {
                         if (_draftCount > 0) ...[
                           const SizedBox(width: 10),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.red,
                               borderRadius: BorderRadius.circular(12),
