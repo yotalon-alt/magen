@@ -2855,6 +2855,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
     _isSaving = true;
 
+    // ✅ FIX: Capture instructor names SYNCHRONOUSLY before any await.
+    // dispose() clears _instructorNameControllers immediately after calling
+    // _saveTemporarily() (without await), so any read after an await hits an
+    // empty map.  Snapshot values here while controllers are still alive.
+    final List<String> instructorsSnapshot = _collectInstructorNames();
+    final int instructorsCountSnapshot = instructorsCount;
+
     try {
       debugPrint('\n========== ✅ DRAFT_SAVE START ==========');
       debugPrint('DRAFT_SAVE: mode=${widget.mode} rangeType=$_rangeType');
@@ -3081,8 +3088,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'settlementName': settlementName,
         'rangeFolder': rangeFolder ?? '',
         'attendeesCount': attendeesCount,
-        'instructorsCount': instructorsCount, // מספר מדריכים
-        'instructors': _collectInstructorNames(), // רשימת מדריכים
+        'instructorsCount': instructorsCountSnapshot, // מספר מדריכים
+        'instructors': instructorsSnapshot, // רשימת מדריכים
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': _dateManuallySet
             ? Timestamp.fromDate(_selectedDateTime)
@@ -3396,8 +3403,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 final stageName = remoteIdxToName[remoteStageIdx];
                 if (stageName == null) return; // unknown remote stage — skip
                 final mapped = localNameToIdx[stageName];
-                if (mapped == null)
+                if (mapped == null) {
                   return; // stage not present locally yet — skip
+                }
                 localIdx = mapped;
               }
 
