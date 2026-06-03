@@ -39,8 +39,8 @@ class _PersonalFeedbackEntryPageState extends State<PersonalFeedbackEntryPage> {
           .where('isTemporary', isEqualTo: true)
           .where('exercise', isEqualTo: widget.exercise);
       if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
-      final snap = await q.count().get().timeout(const Duration(seconds: 8));
-      if (mounted) setState(() => _draftCount = snap.count ?? 0);
+      final snap = await q.limit(500).get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.docs.length);
     } catch (_) {}
   }
 

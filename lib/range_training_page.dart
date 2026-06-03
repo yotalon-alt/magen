@@ -3299,119 +3299,116 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('🔄 REALTIME: Merging remote changes...');
 
       final remoteTrainees = remoteData['trainees'] as List?;
-      if (remoteTrainees == null || remoteTrainees.isEmpty) {
-        debugPrint('⚠️ REALTIME: No remote trainees to merge');
-        _isLoadingRemoteChanges = false;
-        return;
-      }
 
-      debugPrint('   Remote trainees count: ${remoteTrainees.length}');
+      debugPrint('   Remote trainees count: ${remoteTrainees?.length ?? 0}');
       debugPrint('   Local trainees count: ${traineeRows.length}');
 
       setState(() {
         // Merge each trainee - KEEP NON-EMPTY VALUES from both sides
-        for (int i = 0; i < remoteTrainees.length; i++) {
-          // Ensure we have enough local rows
-          while (i >= traineeRows.length) {
-            traineeRows.add(
-              TraineeRowModel(index: traineeRows.length, name: ''),
-            );
-          }
-
-          final remoteTrainee = remoteTrainees[i] as Map<String, dynamic>;
-          final remoteName = (remoteTrainee['name'] as String?) ?? '';
-          final remoteValues =
-              remoteTrainee['values'] as Map<String, dynamic>? ?? {};
-
-          debugPrint('   Merging trainee[$i]:');
-          debugPrint('     Local name: "${traineeRows[i].name}"');
-          debugPrint('     Remote name: "$remoteName"');
-
-          // MERGE NAME: Use remote name if local is empty
-          if (traineeRows[i].name.trim().isEmpty && remoteName.isNotEmpty) {
-            debugPrint('     ✅ Taking remote name');
-            traineeRows[i].name = remoteName;
-
-            // ✅ FIX: Update name TextField controller explicitly to prevent display mismatch
-            // This ensures the UI shows the merged name immediately
-            final nameControllerKey = 'trainee_$i';
-            if (_textControllers.containsKey(nameControllerKey)) {
-              _textControllers[nameControllerKey]!.text = remoteName;
-              debugPrint('     🔄 Updated name controller to: "$remoteName"');
-            }
-          } else if (traineeRows[i].name.trim().isNotEmpty &&
-              remoteName.isEmpty) {
-            debugPrint('     ✅ Keeping local name');
-            // Keep local name - controller already correct
-          } else if (traineeRows[i].name.trim().isNotEmpty &&
-              remoteName.isNotEmpty &&
-              traineeRows[i].name != remoteName) {
-            debugPrint(
-              '     ⚠️ Both have names - keeping local (user is editing)',
-            );
-            // Keep local (current user is typing) - don't update controller
-          }
-
-          // MERGE VALUES: Take non-zero values from either side
-          final Map<int, int> mergedValues = Map<int, int>.from(
-            traineeRows[i].values,
-          );
-          int mergedCount = 0;
-
-          remoteValues.forEach((key, value) {
-            final stageIdx = int.tryParse(
-              key.toString().replaceAll('station_', ''),
-            );
-            if (stageIdx != null) {
-              final localValue = traineeRows[i].values[stageIdx] ?? 0;
-              final remoteValue = (value as num?)?.toInt() ?? 0;
-
-              debugPrint(
-                '     Station[$stageIdx]: local=$localValue remote=$remoteValue',
+        if (remoteTrainees != null && remoteTrainees.isNotEmpty) {
+          for (int i = 0; i < remoteTrainees.length; i++) {
+            // Ensure we have enough local rows
+            while (i >= traineeRows.length) {
+              traineeRows.add(
+                TraineeRowModel(index: traineeRows.length, name: ''),
               );
-
-              // SMART MERGE: Take non-zero value
-              if (localValue == 0 && remoteValue > 0) {
-                mergedValues[stageIdx] = remoteValue;
-                mergedCount++;
-                debugPrint('       → Taking remote value');
-              } else if (localValue > 0 && remoteValue == 0) {
-                // Keep local
-                debugPrint('       → Keeping local value');
-              } else if (localValue > 0 &&
-                  remoteValue > 0 &&
-                  localValue != remoteValue) {
-                // Both have values - keep local (user is actively editing)
-                debugPrint('       → Both non-zero, keeping local');
-              }
             }
-          });
 
-          // Apply merged values
-          traineeRows[i].values.addAll(mergedValues);
+            final remoteTrainee = remoteTrainees[i] as Map<String, dynamic>;
+            final remoteName = (remoteTrainee['name'] as String?) ?? '';
+            final remoteValues =
+                remoteTrainee['values'] as Map<String, dynamic>? ?? {};
 
-          // FIX 1: Merge timeValues (e.g. 'בוחן רמה' time)
-          final remoteTimeValues =
-              remoteTrainee['timeValues'] as Map<String, dynamic>? ?? {};
-          remoteTimeValues.forEach((key, value) {
-            final timeKey = key
-                .toString()
-                .replaceAll('station_', '')
-                .replaceAll('_time', '');
-            final stageIdx = int.tryParse(timeKey);
-            if (stageIdx != null) {
-              final localTime = traineeRows[i].timeValues[stageIdx];
-              final remoteTime = (value as num?)?.toDouble();
-              if ((localTime == null || localTime == 0) &&
-                  remoteTime != null &&
-                  remoteTime > 0) {
-                traineeRows[i].timeValues[stageIdx] = remoteTime;
-                debugPrint('     ✅ Merged timeValue[$stageIdx]=$remoteTime');
+            debugPrint('   Merging trainee[$i]:');
+            debugPrint('     Local name: "${traineeRows[i].name}"');
+            debugPrint('     Remote name: "$remoteName"');
+
+            // MERGE NAME: Use remote name if local is empty
+            if (traineeRows[i].name.trim().isEmpty && remoteName.isNotEmpty) {
+              debugPrint('     ✅ Taking remote name');
+              traineeRows[i].name = remoteName;
+
+              // ✅ FIX: Update name TextField controller explicitly to prevent display mismatch
+              // This ensures the UI shows the merged name immediately
+              final nameControllerKey = 'trainee_$i';
+              if (_textControllers.containsKey(nameControllerKey)) {
+                _textControllers[nameControllerKey]!.text = remoteName;
+                debugPrint('     🔄 Updated name controller to: "$remoteName"');
               }
+            } else if (traineeRows[i].name.trim().isNotEmpty &&
+                remoteName.isEmpty) {
+              debugPrint('     ✅ Keeping local name');
+              // Keep local name - controller already correct
+            } else if (traineeRows[i].name.trim().isNotEmpty &&
+                remoteName.isNotEmpty &&
+                traineeRows[i].name != remoteName) {
+              debugPrint(
+                '     ⚠️ Both have names - keeping local (user is editing)',
+              );
+              // Keep local (current user is typing) - don't update controller
             }
-          });
 
-          debugPrint('     Merged $mergedCount cells from remote');
+            // MERGE VALUES: Take non-zero values from either side
+            final Map<int, int> mergedValues = Map<int, int>.from(
+              traineeRows[i].values,
+            );
+            int mergedCount = 0;
+
+            remoteValues.forEach((key, value) {
+              final stageIdx = int.tryParse(
+                key.toString().replaceAll('station_', ''),
+              );
+              if (stageIdx != null) {
+                final localValue = traineeRows[i].values[stageIdx] ?? 0;
+                final remoteValue = (value as num?)?.toInt() ?? 0;
+
+                debugPrint(
+                  '     Station[$stageIdx]: local=$localValue remote=$remoteValue',
+                );
+
+                // SMART MERGE: Take non-zero value
+                if (localValue == 0 && remoteValue > 0) {
+                  mergedValues[stageIdx] = remoteValue;
+                  mergedCount++;
+                  debugPrint('       → Taking remote value');
+                } else if (localValue > 0 && remoteValue == 0) {
+                  // Keep local
+                  debugPrint('       → Keeping local value');
+                } else if (localValue > 0 &&
+                    remoteValue > 0 &&
+                    localValue != remoteValue) {
+                  // Both have values - keep local (user is actively editing)
+                  debugPrint('       → Both non-zero, keeping local');
+                }
+              }
+            });
+
+            // Apply merged values
+            traineeRows[i].values.addAll(mergedValues);
+
+            // FIX 1: Merge timeValues (e.g. 'בוחן רמה' time)
+            final remoteTimeValues =
+                remoteTrainee['timeValues'] as Map<String, dynamic>? ?? {};
+            remoteTimeValues.forEach((key, value) {
+              final timeKey = key
+                  .toString()
+                  .replaceAll('station_', '')
+                  .replaceAll('_time', '');
+              final stageIdx = int.tryParse(timeKey);
+              if (stageIdx != null) {
+                final localTime = traineeRows[i].timeValues[stageIdx];
+                final remoteTime = (value as num?)?.toDouble();
+                if ((localTime == null || localTime == 0) &&
+                    remoteTime != null &&
+                    remoteTime > 0) {
+                  traineeRows[i].timeValues[stageIdx] = remoteTime;
+                  debugPrint('     ✅ Merged timeValue[$stageIdx]=$remoteTime');
+                }
+              }
+            });
+
+            debugPrint('     Merged $mergedCount cells from remote');
+          }
         }
 
         // FIX 2: Merge remote stations (additive only — never remove local stages)
@@ -3440,6 +3437,82 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               );
             }
           }
+        }
+
+        // LAST WRITE WINS: Sync non-table fields from remote
+        final remoteSettlementName = remoteData['settlementName'] as String?;
+        final remoteSettlement = remoteData['settlement'] as String?;
+        final remoteAttendeesCount =
+            (remoteData['attendeesCount'] as num?)?.toInt();
+        final remoteInstructorsCount =
+            (remoteData['instructorsCount'] as num?)?.toInt();
+        final remoteInstructors = remoteData['instructors'] as List?;
+        final remoteSummary = remoteData['summary'] as String?;
+        final remoteSelectedShortRangeStage =
+            remoteData['selectedShortRangeStage'] as String?;
+        final remoteManualStageName = remoteData['manualStageName'] as String?;
+
+        if (remoteSettlementName != null && remoteSettlementName.isNotEmpty) {
+          settlementName = remoteSettlementName;
+          debugPrint(
+            '     ✅ REALTIME: Updated settlementName=$settlementName',
+          );
+        }
+        if (remoteSettlement != null &&
+            remoteSettlement.isNotEmpty &&
+            remoteSettlement != 'יישוב ידני') {
+          selectedSettlement = remoteSettlement;
+          debugPrint(
+            '     ✅ REALTIME: Updated selectedSettlement=$selectedSettlement',
+          );
+        }
+        if (remoteAttendeesCount != null) {
+          attendeesCount = remoteAttendeesCount;
+          _attendeesCountController.text = remoteAttendeesCount.toString();
+          debugPrint(
+            '     ✅ REALTIME: Updated attendeesCount=$attendeesCount',
+          );
+        }
+        if (remoteInstructorsCount != null) {
+          instructorsCount = remoteInstructorsCount;
+          _instructorsCountController.text = remoteInstructorsCount.toString();
+          debugPrint(
+            '     ✅ REALTIME: Updated instructorsCount=$instructorsCount',
+          );
+        }
+        if (remoteInstructors != null) {
+          for (int i = 0; i < remoteInstructors.length; i++) {
+            final name = remoteInstructors[i]?.toString() ?? '';
+            final key = 'instructor_$i';
+            if (_instructorNameControllers.containsKey(key)) {
+              _instructorNameControllers[key]!.text = name;
+            } else {
+              _instructorNameControllers[key] =
+                  TextEditingController(text: name);
+            }
+          }
+          debugPrint(
+            '     ✅ REALTIME: Updated ${remoteInstructors.length} instructor names',
+          );
+        }
+        if (remoteSummary != null && remoteSummary.isNotEmpty) {
+          trainingSummary = remoteSummary;
+          _trainingSummaryController.text = remoteSummary;
+          debugPrint('     ✅ REALTIME: Updated trainingSummary');
+        }
+        if (remoteSelectedShortRangeStage != null &&
+            remoteSelectedShortRangeStage.isNotEmpty) {
+          selectedShortRangeStage = remoteSelectedShortRangeStage;
+          debugPrint(
+            '     ✅ REALTIME: Updated selectedShortRangeStage=$selectedShortRangeStage',
+          );
+        }
+        if (remoteManualStageName != null && remoteManualStageName.isNotEmpty) {
+          manualStageName = remoteManualStageName;
+          _manualStageController.text = remoteManualStageName;
+          debugPrint(
+            '     ✅ REALTIME: Updated manualStageName=$manualStageName',
+          );
         }
       });
 

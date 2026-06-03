@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../instructor_course_feedback_page.dart';
 import 'screenings_in_progress_page.dart';
 import '../widgets/standard_back_button.dart';
+import '../main.dart' show currentUser;
 
 class ScreeningsMenuPage extends StatefulWidget {
   final String courseType; // expected: 'miunim'
@@ -12,6 +14,29 @@ class ScreeningsMenuPage extends StatefulWidget {
 }
 
 class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
+  int _draftCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraftCount();
+  }
+
+  Future<void> _loadDraftCount() async {
+    try {
+      final uid = currentUser?.uid;
+      if (uid == null) return;
+      final isAdmin = currentUser?.role == 'Admin';
+      Query q = FirebaseFirestore.instance
+          .collection('instructor_course_evaluations')
+          .where('status', isEqualTo: 'draft')
+          .where('courseType', isEqualTo: widget.courseType);
+      if (!isAdmin) q = q.where('userId', isEqualTo: uid);
+      final snap = await q.limit(500).get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.docs.length);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -76,8 +101,8 @@ class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
                   width: double.infinity,
                   height: 80,
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => ScreeningsInProgressPage(
@@ -86,6 +111,7 @@ class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
                           ),
                         ),
                       );
+                      _loadDraftCount();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueGrey.shade700,
@@ -100,7 +126,35 @@ class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
                       ),
                       elevation: 8,
                     ),
-                    child: const Text('מיונים זמניים (בתהליך)'),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.edit_note, size: 28),
+                        const SizedBox(width: 12),
+                        const Text('מיונים זמניים (בתהליך)'),
+                        if (_draftCount > 0) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$_draftCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ],
