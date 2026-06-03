@@ -3396,7 +3396,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 final stageName = remoteIdxToName[remoteStageIdx];
                 if (stageName == null) return; // unknown remote stage — skip
                 final mapped = localNameToIdx[stageName];
-                if (mapped == null) return; // stage not present locally yet — skip
+                if (mapped == null)
+                  return; // stage not present locally yet — skip
                 localIdx = mapped;
               }
 
@@ -3430,10 +3431,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               if (newVal != (traineeRows[i].values[localIdx] ?? 0)) {
                 // update both mobile and desktop controller keys
                 final displayStr = newVal > 0 ? newVal.toString() : '';
-                _textControllers['row_${i}_station_$localIdx']
-                    ?.text = displayStr;
+                _textControllers['row_${i}_station_$localIdx']?.text =
+                    displayStr;
                 _textControllers['desktop_trainee_${i}_station_$localIdx']
-                    ?.text = displayStr;
+                        ?.text =
+                    displayStr;
               }
             });
             traineeRows[i].values.addAll(mergedValues);
@@ -3466,9 +3468,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 traineeRows[i].timeValues[localIdx] = remoteTime;
                 // Also update the time controller so בוחן רמה time is visible
                 final timeStr = remoteTime > 0 ? remoteTime.toString() : '';
-                _textControllers[
-                    'desktop_trainee_${i}_station_${localIdx}_time']
-                    ?.text = timeStr;
+                _textControllers['desktop_trainee_${i}_station_${localIdx}_time']
+                        ?.text =
+                    timeStr;
                 debugPrint(
                   '     ✅ Merged timeValue remote[$remoteStageIdx]→local[$localIdx]=$remoteTime',
                 );
