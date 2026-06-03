@@ -3442,10 +3442,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // LAST WRITE WINS: Sync non-table fields from remote
         final remoteSettlementName = remoteData['settlementName'] as String?;
         final remoteSettlement = remoteData['settlement'] as String?;
-        final remoteAttendeesCount =
-            (remoteData['attendeesCount'] as num?)?.toInt();
-        final remoteInstructorsCount =
-            (remoteData['instructorsCount'] as num?)?.toInt();
+        final remoteAttendeesCount = (remoteData['attendeesCount'] as num?)
+            ?.toInt();
+        final remoteInstructorsCount = (remoteData['instructorsCount'] as num?)
+            ?.toInt();
         final remoteInstructors = remoteData['instructors'] as List?;
         final remoteSummary = remoteData['summary'] as String?;
         final remoteSelectedShortRangeStage =
@@ -3454,9 +3454,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         if (remoteSettlementName != null && remoteSettlementName.isNotEmpty) {
           settlementName = remoteSettlementName;
-          debugPrint(
-            '     ✅ REALTIME: Updated settlementName=$settlementName',
-          );
+          debugPrint('     ✅ REALTIME: Updated settlementName=$settlementName');
         }
         if (remoteSettlement != null &&
             remoteSettlement.isNotEmpty &&
@@ -3469,9 +3467,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         if (remoteAttendeesCount != null) {
           attendeesCount = remoteAttendeesCount;
           _attendeesCountController.text = remoteAttendeesCount.toString();
-          debugPrint(
-            '     ✅ REALTIME: Updated attendeesCount=$attendeesCount',
-          );
+          debugPrint('     ✅ REALTIME: Updated attendeesCount=$attendeesCount');
         }
         if (remoteInstructorsCount != null) {
           instructorsCount = remoteInstructorsCount;
@@ -3487,8 +3483,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             if (_instructorNameControllers.containsKey(key)) {
               _instructorNameControllers[key]!.text = name;
             } else {
-              _instructorNameControllers[key] =
-                  TextEditingController(text: name);
+              _instructorNameControllers[key] = TextEditingController(
+                text: name,
+              );
             }
           }
           debugPrint(
