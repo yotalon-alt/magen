@@ -19,6 +19,7 @@ import 'surprise_drills_entry_page.dart';
 import 'training_summary_entry_page.dart';
 import 'weapon_reset_page.dart';
 import 'widgets/standard_back_button.dart';
+import 'range_training_page.dart';
 import 'widgets/connectivity_banner.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
@@ -9520,6 +9521,41 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                     'טווח: ${feedback.rangeSubType.isNotEmpty ? feedback.rangeSubType : 'לא ידוע'}',
                   ),
                   const SizedBox(height: 8),
+                  // ✅ ערוך נתוני טבלה — יותם אלון בלבד
+                  if (currentUser?.name == 'יותם אלון' &&
+                      currentUser?.role == 'Admin' &&
+                      feedback.id != null &&
+                      feedback.id!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.edit_note, size: 18),
+                        label: const Text('ערוך נתוני טבלה וכדורים'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                        ),
+                        onPressed: () {
+                          final rangeType = feedback.rangeSubType == 'טווח רחוק'
+                              ? 'ארוכים'
+                              : 'קצרים';
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RangeTrainingPage(
+                                rangeType: rangeType,
+                                feedbackId: feedback.id,
+                                editFinalFeedback: true,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                 ],
               ] else ...[
                 // ===== ORIGINAL ORDER for other feedback types =====

@@ -136,12 +136,15 @@ class RangeTrainingPage extends StatefulWidget {
   final String rangeType; // 'קצרים' / 'ארוכים' / 'הפתעה'
   final String? feedbackId; // optional: edit an existing temporary feedback
   final String mode; // 'range' or 'surprise' - determines UI behavior
+  final bool editFinalFeedback; // true = editing a final (non-draft) feedback
 
   const RangeTrainingPage({
     super.key,
     required this.rangeType,
     this.feedbackId,
     this.mode = 'range', // default to range mode
+    this.editFinalFeedback =
+        false, // true = edit existing final feedback (Yotam only)
   });
 
   @override
@@ -749,44 +752,55 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   /// ✅ DEBOUNCED AUTOSAVE: Schedule autosave after 700ms of inactivity
   void _scheduleAutoSave() {
-    // 🆕 Don't autosave until settlement is entered
-    // Check: selectedSettlement (dropdown), settlementName (free text), or manualSettlementText (ידני)
-    final hasSettlement =
-        (selectedSettlement != null &&
-            selectedSettlement!.isNotEmpty &&
-            selectedSettlement != 'יישוב ידני') ||
-        settlementName.trim().isNotEmpty ||
-        manualSettlementText.trim().isNotEmpty;
-    if (!hasSettlement) {
-      debugPrint('⏸️ AUTOSAVE: Skipping - no settlement entered yet');
-      return;
+    // When editing a final feedback, skip the settlement gate — doc already has settlement
+    if (!widget.editFinalFeedback) {
+      // 🆕 Don't autosave until settlement is entered
+      final hasSettlement =
+          (selectedSettlement != null &&
+              selectedSettlement!.isNotEmpty &&
+              selectedSettlement != 'יישוב ידני') ||
+          settlementName.trim().isNotEmpty ||
+          manualSettlementText.trim().isNotEmpty;
+      if (!hasSettlement) {
+        debugPrint('⏸️ AUTOSAVE: Skipping - no settlement entered yet');
+        return;
+      }
     }
 
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(milliseconds: 700), () {
       debugPrint('🔄 AUTOSAVE: Timer triggered (700ms debounce)');
-      _saveTemporarily();
+      if (widget.editFinalFeedback) {
+        _saveEditedFinalFeedback();
+      } else {
+        _saveTemporarily();
+      }
     });
   }
 
   /// ✅ IMMEDIATE SAVE: Triggered when user leaves a field (focus loss)
   void _saveImmediately() {
-    // 🆕 Don't save until settlement is entered
-    // Check: selectedSettlement (dropdown), settlementName (free text), or manualSettlementText (ידני)
-    final hasSettlement =
-        (selectedSettlement != null &&
-            selectedSettlement!.isNotEmpty &&
-            selectedSettlement != 'יישוב ידני') ||
-        settlementName.trim().isNotEmpty ||
-        manualSettlementText.trim().isNotEmpty;
-    if (!hasSettlement) {
-      debugPrint('⏸️ IMMEDIATE SAVE: Skipping - no settlement entered yet');
-      return;
+    if (!widget.editFinalFeedback) {
+      // 🆕 Don't save until settlement is entered
+      final hasSettlement =
+          (selectedSettlement != null &&
+              selectedSettlement!.isNotEmpty &&
+              selectedSettlement != 'יישוב ידני') ||
+          settlementName.trim().isNotEmpty ||
+          manualSettlementText.trim().isNotEmpty;
+      if (!hasSettlement) {
+        debugPrint('⏸️ IMMEDIATE SAVE: Skipping - no settlement entered yet');
+        return;
+      }
     }
 
     _autoSaveTimer?.cancel(); // Cancel pending debounced save
     debugPrint('⚡ IMMEDIATE SAVE: Saving now');
-    _saveTemporarily();
+    if (widget.editFinalFeedback) {
+      _saveEditedFinalFeedback();
+    } else {
+      _saveTemporarily();
+    }
   }
 
   /// ✅ תאריך מותאם אישית - רק עבור אדמין יותם
@@ -837,7 +851,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // ✅ FIX: אם יש timer פעיל בעת יציאה — שמור מיד כדי לא לאבד נתונים
     if (_autoSaveTimer?.isActive == true) {
       _autoSaveTimer?.cancel();
-      _saveTemporarily(); // מופעל ברקע, לא מחכים — לא מאט את הניווט
+      if (widget.editFinalFeedback) {
+        _saveEditedFinalFeedback(); // save only table/station data
+      } else {
+        _saveTemporarily(); // מופעל ברקע, לא מחכים — לא מאט את הניווט
+      }
     } else {
       _autoSaveTimer?.cancel();
     }
@@ -2840,6 +2858,127 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       if (mounted) {
         setState(() => _isSaving = false);
       }
+    }
+  }
+
+  /// ✅ EDIT FINAL FEEDBACK: Updates only trainees+stations in a finalized document.
+  /// Does NOT change status, isTemporary, finalizedAt, or any other metadata.
+  Future<void> _saveEditedFinalFeedback() async {
+    if (_isSaving) return;
+    final docId = _editingFeedbackId ?? widget.feedbackId;
+    if (docId == null || docId.isEmpty) {
+      debugPrint('❌ EDIT_FINAL: No document ID, aborting');
+      return;
+    }
+    _isSaving = true;
+    try {
+      debugPrint('✏️ EDIT_FINAL: Saving trainees+stations to doc=$docId');
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+      // Build trainees payload (same logic as _saveTemporarily)
+      final List<Map<String, dynamic>> traineesPayload = [];
+      for (int i = 0; i < traineeRows.length; i++) {
+        final row = traineeRows[i];
+        final rowData = row.toFirestore();
+        final Map<String, dynamic> valuesMap = Map<String, dynamic>.from(
+          rowData['values'] as Map? ?? {},
+        );
+        final Map<String, int> hitsMap = {};
+        int total = 0;
+        valuesMap.forEach((k, v) {
+          try {
+            final intVal = (v as num).toInt();
+            hitsMap[k.toString()] = intVal;
+            total += intVal;
+          } catch (_) {}
+        });
+        rowData['hits'] = hitsMap;
+        rowData['totalHits'] = total;
+        traineesPayload.add(rowData);
+      }
+
+      // Build stations payload (same logic as _saveTemporarily)
+      List<Map<String, dynamic>> stationsData;
+      if (_rangeType == 'קצרים') {
+        stationsData = shortRangeStagesList.map((stage) {
+          final stageName = stage.isManual
+              ? stage.manualName.trim()
+              : stage.selectedStage ?? '';
+          return {
+            'name': stageName,
+            'bulletsCount': stage.bulletsCount,
+            'timeSeconds': null,
+            'hits': null,
+            'isManual': stage.isManual,
+            'isLevelTester': stage.selectedStage == 'בוחן רמה',
+            'selectedRubrics': ['זמן', 'פגיעות'],
+            'isSharedTarget': stage.isSharedTarget,
+          };
+        }).toList();
+        if (stationsData.isEmpty && stations.isNotEmpty) {
+          stationsData = stations.map((s) => s.toJson()).toList();
+        }
+      } else {
+        stationsData = longRangeStagesList.asMap().entries.map((entry) {
+          final index = entry.key;
+          final stage = entry.value;
+          int achievedPoints = 0;
+          for (final row in traineeRows) {
+            achievedPoints += row.values[index] ?? 0;
+          }
+          return {
+            'name': stage.name,
+            'bulletsCount': stage.bulletsCount,
+            'maxPoints': stage.maxPoints,
+            'achievedPoints': achievedPoints,
+            'isManual': stage.isManual,
+            'timeSeconds': null,
+            'hits': null,
+            'isLevelTester': false,
+            'selectedRubrics': ['זמן', 'פגיעות'],
+            'isSharedTarget': stage.isSharedTarget,
+          };
+        }).toList();
+        if (stationsData.isEmpty && stations.isNotEmpty) {
+          stationsData = stations.map((s) => s.toJson()).toList();
+        }
+      }
+
+      final patch = <String, dynamic>{
+        'trainees': traineesPayload,
+        'stations': stationsData,
+        'updatedByUid': uid,
+        'updatedByName': currentUser?.name ?? '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(docId)
+          .set(patch, SetOptions(merge: true));
+
+      debugPrint('✅ EDIT_FINAL: Saved successfully');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('השינויים נשמרו'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ EDIT_FINAL ERROR: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('שגיאה בשמירה: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -5286,64 +5425,101 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 ),
                 const SizedBox(height: 24),
 
-                // Finalize Save button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isSaving
-                        ? null
-                        : () async {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('אישור סיום משוב'),
-                                content: const Text(
-                                  'האם אתה בטוח שברצונך לסיים ולסגור את המשוב?\nהפעולה סוגרת את המשוב לצמיתות.',
+                // Finalize Save button (hidden when editing a final feedback)
+                if (widget.editFinalFeedback) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSaving ? null : _saveEditedFinalFeedback,
+                      icon: const Icon(Icons.save),
+                      label: _isSaving
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('ביטול'),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('סיים וסגור'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirmed == true) _saveToFirestore();
-                          },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.deepOrange,
+                                SizedBox(width: 12),
+                                Text('שומר...', style: TextStyle(fontSize: 18)),
+                              ],
+                            )
+                          : const Text(
+                              'שמור שינויים',
+                              style: TextStyle(fontSize: 18),
+                            ),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.green.shade700,
+                      ),
                     ),
-                    child: _isSaving
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
+                  ),
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('אישור סיום משוב'),
+                                  content: const Text(
+                                    'האם אתה בטוח שברצונך לסיים ולסגור את המשוב?\nהפעולה סוגרת את המשוב לצמיתות.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('ביטול'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('סיים וסגור'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed == true) _saveToFirestore();
+                            },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.deepOrange,
+                      ),
+                      child: _isSaving
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              SizedBox(width: 12),
-                              Text('שומר...', style: TextStyle(fontSize: 18)),
-                            ],
-                          )
-                        : Text(
-                            widget.mode == 'surprise'
-                                ? 'שמירה סופית - תרגיל הפתעה'
-                                : 'שמירה סופית - מטווח',
-                            style: const TextStyle(fontSize: 18),
-                          ),
+                                SizedBox(width: 12),
+                                Text('שומר...', style: TextStyle(fontSize: 18)),
+                              ],
+                            )
+                          : Text(
+                              widget.mode == 'surprise'
+                                  ? 'שמירה סופית - תרגיל הפתעה'
+                                  : 'שמירה סופית - מטווח',
+                              style: const TextStyle(fontSize: 18),
+                            ),
+                    ),
                   ),
-                ),
+                ],
 
                 // הערות למשתמש
                 const SizedBox(height: 12),
@@ -6061,6 +6237,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     required int currentValue,
     required int maxValue,
     required void Function(int) onConfirm,
+    bool blockIfNoMax = false, // אם true: חוסם שמירה כשאין כדורים מוגדרים
   }) async {
     String value = currentValue > 0 ? currentValue.toString() : '';
     await showDialog<void>(
@@ -6208,13 +6385,42 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                             ElevatedButton(
                               onPressed: () {
                                 final val = int.tryParse(value) ?? 0;
-                                if (maxValue > 0 && val > maxValue) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'הערך לא יכול לעלות על $maxValue',
+                                // בוחן רמה: אין כדורים מוגדרים — חסום
+                                if (blockIfNoMax && maxValue == 0) {
+                                  showDialog<void>(
+                                    context: ctx,
+                                    builder: (innerCtx) => AlertDialog(
+                                      title: const Text('לא הוזן מספר כדורים'),
+                                      content: const Text(
+                                        'יש להזין מספר כדורים למקצה לפני שמירת פגיעות.',
                                       ),
-                                      duration: const Duration(seconds: 1),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(innerCtx),
+                                          child: const Text('הבנתי'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  return;
+                                }
+                                // פגיעות עולות על מספר הכדורים — חסום
+                                if (maxValue > 0 && val > maxValue) {
+                                  showDialog<void>(
+                                    context: ctx,
+                                    builder: (innerCtx) => AlertDialog(
+                                      title: const Text('פגיעות חורגות'),
+                                      content: Text(
+                                        'לא ניתן לרשום $val פגיעות.\nמספר הכדורים למקצה הוא $maxValue.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(innerCtx),
+                                          child: const Text('הבנתי'),
+                                        ),
+                                      ],
                                     ),
                                   );
                                   return;
@@ -6437,13 +6643,42 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                               onPressed: () {
                                 final hits = int.tryParse(hitsValue) ?? 0;
                                 final time = double.tryParse(timeValue) ?? 0.0;
-                                if (maxHits > 0 && hits > maxHits) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'פגיעות לא יכולות לעלות על $maxHits',
+                                // בוחן רמה: אין כדורים מוגדרים — חסום
+                                if (maxHits == 0) {
+                                  showDialog<void>(
+                                    context: ctx,
+                                    builder: (innerCtx) => AlertDialog(
+                                      title: const Text('לא הוזן מספר כדורים'),
+                                      content: const Text(
+                                        'יש להזין מספר כדורים למקצה לפני שמירת פגיעות.',
                                       ),
-                                      duration: const Duration(seconds: 1),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(innerCtx),
+                                          child: const Text('הבנתי'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  return;
+                                }
+                                // פגיעות עולות על מספר הכדורים — חסום
+                                if (hits > maxHits) {
+                                  showDialog<void>(
+                                    context: ctx,
+                                    builder: (innerCtx) => AlertDialog(
+                                      title: const Text('פגיעות חורגות'),
+                                      content: Text(
+                                        'לא ניתן לרשום $hits פגיעות.\nמספר הכדורים למקצה הוא $maxHits.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(innerCtx),
+                                          child: const Text('הבנתי'),
+                                        ),
+                                      ],
                                     ),
                                   );
                                   return;
@@ -7815,6 +8050,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           currentValue:
                                                               currentValue,
                                                           maxValue: maxVal,
+                                                          // חסום כניסת פגיעות כשאין כדורים — רק לטווח קצר
+                                                          blockIfNoMax:
+                                                              widget.mode !=
+                                                                  'surprise' &&
+                                                              _rangeType ==
+                                                                  'קצרים',
                                                           onConfirm: (val) {
                                                             setState(
                                                               () => row.setValue(
