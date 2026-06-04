@@ -14235,7 +14235,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
             // Only count if this trainee has data for this station
             if (hitsMap.containsKey('station_$i')) {
               final station = stations[i];
-              
+
               // ✅ If a specific station is selected, only count that station
               if (selectedStation != 'כל המקצים') {
                 final stationName = _normalizeStationName(
@@ -14245,7 +14245,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                   continue; // Skip this station - not the selected one
                 }
               }
-              
+
               if (isLongRange) {
                 // ✅ LONG RANGE: Use maxPoints for performed stations
                 feedbackTotalBullets +=
@@ -14255,7 +14255,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 feedbackTotalBullets +=
                     (station['bulletsCount'] as num?)?.toInt() ?? 0;
               }
-              
+
               // Count hits for this station
               feedbackTotalHits +=
                   (hitsMap['station_$i'] as num?)?.toInt() ?? 0;
