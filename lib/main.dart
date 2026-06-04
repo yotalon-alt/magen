@@ -13552,9 +13552,9 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
     // Build sorted lists from relevant exercise feedbacks (not filtered)
     final exerciseFeedbacks = feedbackStorage.where((f) {
-      return f.folder == 'מעגל פתוח' ||
-          f.folder == 'מעגל פרוץ' ||
-          f.folder == 'סריקות רחוב';
+      if (f.isTemporary == true) return false;
+      const allowedFolders = ['משובים – כללי', 'מחלקות ההגנה – חטיבה 474'];
+      return allowedFolders.contains(f.folder);
     });
 
     final instructorsList =
@@ -18813,7 +18813,10 @@ class _SurpriseDrillsStatisticsPageState
 
     // Build sorted lists from surprise drill feedbacks (not filtered)
     final surpriseDrillFeedbacks = feedbackStorage.where((f) {
-      return f.folder == 'תרגילי הפתעה';
+      if (f.isTemporary == true) return false;
+      return f.folder == 'משוב תרגילי הפתעה' ||
+          f.folder == 'תרגילי הפתעה כללי' ||
+          f.module == 'surprise_drill';
     });
 
     final instructorsList =
