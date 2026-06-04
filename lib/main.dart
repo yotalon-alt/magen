@@ -13549,15 +13549,25 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       'מעגל פרוץ',
       'סריקות רחוב',
     ];
-    final instructors = <String>{'כל המדריכים'}
-      ..addAll(
-        feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
-      );
 
-    final settlements = <String>{'כל היישובים'}
-      ..addAll(
-        feedbackStorage.map((f) => f.settlement).where((s) => s.isNotEmpty),
-      );
+    // Build sorted lists from filtered data only
+    final instructorsList =
+        filtered
+            .map((f) => f.instructorName)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final instructors = ['כל המדריכים', ...instructorsList];
+
+    final settlementsList =
+        filtered
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final settlements = ['כל היישובים', ...settlementsList];
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -14778,16 +14788,24 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       }
     }
 
-    // lists for dropdowns
-    final instructors = <String>{'כל המדריכים'}
-      ..addAll(
-        feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
-      );
+    // Build sorted lists from filtered data only
+    final instructorsList =
+        filtered
+            .map((f) => f.instructorName)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final instructors = ['כל המדריכים', ...instructorsList];
 
-    final settlements = <String>{'כל היישובים'}
-      ..addAll(
-        feedbackStorage.map((f) => f.settlement).where((s) => s.isNotEmpty),
-      );
+    final settlementsList =
+        filtered
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final settlements = ['כל היישובים', ...settlementsList];
 
     // Build station list dynamically from range data
     final Set<String> stationNames = {};
@@ -14807,6 +14825,9 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
         }
       }
     }
+
+    // Sort stations alphabetically
+    orderedStations.sort();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -14884,6 +14905,12 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                               var stationName =
                                   station['name'] ?? 'מקצה ${i + 1}';
                               stationName = _normalizeStationName(stationName);
+
+                              // Skip if specific stations selected and this isn't one of them
+                              if (selectedStations.isNotEmpty &&
+                                  !selectedStations.contains(stationName)) {
+                                continue;
+                              }
 
                               // Skip shared-target stations – no individual accuracy data
                               final isSharedTarget =
@@ -18762,16 +18789,24 @@ class _SurpriseDrillsStatisticsPageState
       }
     }
 
-    // Build lists for dropdowns
-    final instructors = <String>{'כל המדריכים'}
-      ..addAll(
-        feedbackStorage.map((f) => f.instructorName).where((s) => s.isNotEmpty),
-      );
+    // Build sorted lists from filtered data only
+    final instructorsList =
+        filtered
+            .map((f) => f.instructorName)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final instructors = ['כל המדריכים', ...instructorsList];
 
-    final settlements = <String>{'כל היישובים'}
-      ..addAll(
-        feedbackStorage.map((f) => f.settlement).where((s) => s.isNotEmpty),
-      );
+    final settlementsList =
+        filtered
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final settlements = ['כל היישובים', ...settlementsList];
 
     // Build principle list from all surprise drills data
     final Set<String> principleNames = {};
@@ -18784,6 +18819,9 @@ class _SurpriseDrillsStatisticsPageState
         principleNames.add(name);
       }
     }
+
+    // Convert to sorted list
+    final principlesList = principleNames.toList()..sort();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -19003,7 +19041,7 @@ class _SurpriseDrillsStatisticsPageState
                             // Principle filter
                             MultiSelectDropdownField(
                               label: 'עיקרון',
-                              items: principleNames.toList(),
+                              items: principlesList,
                               selectedItems: selectedPrinciples,
                               onChanged: (newSelection) {
                                 setState(
