@@ -13208,6 +13208,16 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       for (final k in sarikotRekhovCriteria) k: [],
     };
 
+    // Detailed breakdown by settlement
+    final Map<String, Map<String, List<int>>> maagalPatuachBySettlement = {};
+    final Map<String, Map<String, List<int>>> maagalPoruzBySettlement = {};
+    final Map<String, Map<String, List<int>>> sarikotRekhovBySettlement = {};
+
+    // Detailed breakdown by instructor
+    final Map<String, Map<String, List<int>>> maagalPatuachByInstructor = {};
+    final Map<String, Map<String, List<int>>> maagalPoruzByInstructor = {};
+    final Map<String, Map<String, List<int>>> sarikotRekhovByInstructor = {};
+
     // role aggregates
     final Map<String, List<int>> roleValues = {};
     // settlement aggregates
@@ -13218,17 +13228,74 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       if (f.exercise == 'מעגל פתוח') {
         for (final c in maagalPatuachCriteria) {
           final val = f.scores[c];
-          if (val != null && val != 0) maagalPatuachValues[c]!.add(val);
+          if (val != null && val != 0) {
+            maagalPatuachValues[c]!.add(val);
+
+            // By settlement
+            if (f.settlement.isNotEmpty) {
+              maagalPatuachBySettlement.putIfAbsent(c, () => {});
+              maagalPatuachBySettlement[c]!.putIfAbsent(f.settlement, () => []);
+              maagalPatuachBySettlement[c]![f.settlement]!.add(val);
+            }
+
+            // By instructor
+            if (f.instructorName.isNotEmpty) {
+              maagalPatuachByInstructor.putIfAbsent(c, () => {});
+              maagalPatuachByInstructor[c]!.putIfAbsent(
+                f.instructorName,
+                () => [],
+              );
+              maagalPatuachByInstructor[c]![f.instructorName]!.add(val);
+            }
+          }
         }
       } else if (f.exercise == 'מעגל פרוץ') {
         for (final c in maagalPoruzCriteria) {
           final val = f.scores[c];
-          if (val != null && val != 0) maagalPoruzValues[c]!.add(val);
+          if (val != null && val != 0) {
+            maagalPoruzValues[c]!.add(val);
+
+            // By settlement
+            if (f.settlement.isNotEmpty) {
+              maagalPoruzBySettlement.putIfAbsent(c, () => {});
+              maagalPoruzBySettlement[c]!.putIfAbsent(f.settlement, () => []);
+              maagalPoruzBySettlement[c]![f.settlement]!.add(val);
+            }
+
+            // By instructor
+            if (f.instructorName.isNotEmpty) {
+              maagalPoruzByInstructor.putIfAbsent(c, () => {});
+              maagalPoruzByInstructor[c]!.putIfAbsent(
+                f.instructorName,
+                () => [],
+              );
+              maagalPoruzByInstructor[c]![f.instructorName]!.add(val);
+            }
+          }
         }
       } else if (f.exercise == 'סריקות רחוב') {
         for (final c in sarikotRekhovCriteria) {
           final val = f.scores[c];
-          if (val != null && val != 0) sarikotRekhovValues[c]!.add(val);
+          if (val != null && val != 0) {
+            sarikotRekhovValues[c]!.add(val);
+
+            // By settlement
+            if (f.settlement.isNotEmpty) {
+              sarikotRekhovBySettlement.putIfAbsent(c, () => {});
+              sarikotRekhovBySettlement[c]!.putIfAbsent(f.settlement, () => []);
+              sarikotRekhovBySettlement[c]![f.settlement]!.add(val);
+            }
+
+            // By instructor
+            if (f.instructorName.isNotEmpty) {
+              sarikotRekhovByInstructor.putIfAbsent(c, () => {});
+              sarikotRekhovByInstructor[c]!.putIfAbsent(
+                f.instructorName,
+                () => [],
+              );
+              sarikotRekhovByInstructor[c]![f.instructorName]!.add(val);
+            }
+          }
         }
       }
       const predefinedRoles = [
@@ -13334,6 +13401,140 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
                 ),
               ],
             ),
+          ],
+        ),
+      );
+    }
+
+    // Helper to build detailed criterion bars with multi-group comparison
+    Widget buildDetailedCriterionBars({
+      required String criterion,
+      required Map<String, List<int>> valuesByGroup,
+      required List<int> globalValues,
+      required Color baseColor,
+    }) {
+      final colorPalette = [
+        Colors.blue.shade600,
+        Colors.green.shade600,
+        Colors.orange.shade600,
+        Colors.purple.shade600,
+        Colors.red.shade600,
+        Colors.teal.shade600,
+        Colors.amber.shade700,
+        Colors.indigo.shade600,
+      ];
+
+      // Sort groups by average
+      final sortedGroups = valuesByGroup.entries.toList()
+        ..sort((a, b) => avgOf(b.value).compareTo(avgOf(a.value)));
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              criterion,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...sortedGroups.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final group = entry.value.key;
+              final vals = entry.value.value;
+              final avg = avgOf(vals);
+              final color = colorPalette[idx % colorPalette.length];
+              final pct = (avg / 5.0).clamp(0.0, 1.0);
+              final percentage = (pct * 100).toStringAsFixed(0);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Container(
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: FractionallySizedBox(
+                          widthFactor: pct,
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        '${avg.toStringAsFixed(1)}/5 ($percentage%) | $group',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            // Global average
+            if (globalValues.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Container(
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: FractionallySizedBox(
+                          widthFactor: (avgOf(globalValues) / 5.0).clamp(
+                            0.0,
+                            1.0,
+                          ),
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade500,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        '${avgOf(globalValues).toStringAsFixed(1)}/5 (${((avgOf(globalValues) / 5.0) * 100).toStringAsFixed(0)}%) | ממוצע כללי',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       );
@@ -13731,26 +13932,66 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               Text('סה"כ משובים: $total', style: const TextStyle(fontSize: 14)),
 
               const SizedBox(height: 12),
-              const Text(
-                'מעגל פתוח – ממוצע לפי קריטריון',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Text(
+                selectedSettlements.length >= 2 ||
+                        selectedInstructors.length >= 2
+                    ? 'מעגל פתוח – ממוצע לפי קריטריון (מפורט)'
+                    : 'מעגל פתוח – ממוצע לפי קריטריון',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
-              ...(maagalPatuachCriteria
-                      .where((c) => (maagalPatuachValues[c] ?? []).isNotEmpty)
-                      .toList()
-                    ..sort(
-                      (a, b) => avgOf(
-                        maagalPatuachValues[b]!,
-                      ).compareTo(avgOf(maagalPatuachValues[a]!)),
-                    ))
-                  .map(
-                    (c) => buildCriterionBar(
-                      c,
-                      maagalPatuachValues[c]!,
-                      const Color(0xFF1565C0),
+              // Check if we need detailed view
+              if (selectedSettlements.length >= 2)
+                ...(maagalPatuachCriteria
+                        .where(
+                          (c) =>
+                              (maagalPatuachBySettlement[c]?.isNotEmpty ??
+                              false),
+                        )
+                        .toList())
+                    .map(
+                      (c) => buildDetailedCriterionBars(
+                        criterion: c,
+                        valuesByGroup: maagalPatuachBySettlement[c] ?? {},
+                        globalValues: maagalPatuachValues[c] ?? [],
+                        baseColor: const Color(0xFF1565C0),
+                      ),
+                    )
+              else if (selectedInstructors.length >= 2)
+                ...(maagalPatuachCriteria
+                        .where(
+                          (c) =>
+                              (maagalPatuachByInstructor[c]?.isNotEmpty ??
+                              false),
+                        )
+                        .toList())
+                    .map(
+                      (c) => buildDetailedCriterionBars(
+                        criterion: c,
+                        valuesByGroup: maagalPatuachByInstructor[c] ?? {},
+                        globalValues: maagalPatuachValues[c] ?? [],
+                        baseColor: const Color(0xFF1565C0),
+                      ),
+                    )
+              else
+                ...(maagalPatuachCriteria
+                        .where((c) => (maagalPatuachValues[c] ?? []).isNotEmpty)
+                        .toList()
+                      ..sort(
+                        (a, b) => avgOf(
+                          maagalPatuachValues[b]!,
+                        ).compareTo(avgOf(maagalPatuachValues[a]!)),
+                      ))
+                    .map(
+                      (c) => buildCriterionBar(
+                        c,
+                        maagalPatuachValues[c]!,
+                        const Color(0xFF1565C0),
+                      ),
                     ),
-                  ),
               if (maagalPatuachCriteria.every(
                 (c) => (maagalPatuachValues[c] ?? []).isEmpty,
               ))
@@ -13764,26 +14005,64 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
               const Divider(),
               const SizedBox(height: 8),
-              const Text(
-                'מעגל פרוץ – ממוצע לפי קריטריון',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Text(
+                selectedSettlements.length >= 2 ||
+                        selectedInstructors.length >= 2
+                    ? 'מעגל פרוץ – ממוצע לפי קריטריון (מפורט)'
+                    : 'מעגל פרוץ – ממוצע לפי קריטריון',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
-              ...(maagalPoruzCriteria
-                      .where((c) => (maagalPoruzValues[c] ?? []).isNotEmpty)
-                      .toList()
-                    ..sort(
-                      (a, b) => avgOf(
-                        maagalPoruzValues[b]!,
-                      ).compareTo(avgOf(maagalPoruzValues[a]!)),
-                    ))
-                  .map(
-                    (c) => buildCriterionBar(
-                      c,
-                      maagalPoruzValues[c]!,
-                      const Color(0xFF6A1B9A),
+              // Check if we need detailed view
+              if (selectedSettlements.length >= 2)
+                ...(maagalPoruzCriteria
+                        .where(
+                          (c) =>
+                              (maagalPoruzBySettlement[c]?.isNotEmpty ?? false),
+                        )
+                        .toList())
+                    .map(
+                      (c) => buildDetailedCriterionBars(
+                        criterion: c,
+                        valuesByGroup: maagalPoruzBySettlement[c] ?? {},
+                        globalValues: maagalPoruzValues[c] ?? [],
+                        baseColor: const Color(0xFF6A1B9A),
+                      ),
+                    )
+              else if (selectedInstructors.length >= 2)
+                ...(maagalPoruzCriteria
+                        .where(
+                          (c) =>
+                              (maagalPoruzByInstructor[c]?.isNotEmpty ?? false),
+                        )
+                        .toList())
+                    .map(
+                      (c) => buildDetailedCriterionBars(
+                        criterion: c,
+                        valuesByGroup: maagalPoruzByInstructor[c] ?? {},
+                        globalValues: maagalPoruzValues[c] ?? [],
+                        baseColor: const Color(0xFF6A1B9A),
+                      ),
+                    )
+              else
+                ...(maagalPoruzCriteria
+                        .where((c) => (maagalPoruzValues[c] ?? []).isNotEmpty)
+                        .toList()
+                      ..sort(
+                        (a, b) => avgOf(
+                          maagalPoruzValues[b]!,
+                        ).compareTo(avgOf(maagalPoruzValues[a]!)),
+                      ))
+                    .map(
+                      (c) => buildCriterionBar(
+                        c,
+                        maagalPoruzValues[c]!,
+                        const Color(0xFF6A1B9A),
+                      ),
                     ),
-                  ),
               if (maagalPoruzCriteria.every(
                 (c) => (maagalPoruzValues[c] ?? []).isEmpty,
               ))
@@ -13797,26 +14076,66 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
 
               const Divider(),
               const SizedBox(height: 8),
-              const Text(
-                'סריקות רחוב – ממוצע לפי קריטריון',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Text(
+                selectedSettlements.length >= 2 ||
+                        selectedInstructors.length >= 2
+                    ? 'סריקות רחוב – ממוצע לפי קריטריון (מפורט)'
+                    : 'סריקות רחוב – ממוצע לפי קריטריון',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
-              ...(sarikotRekhovCriteria
-                      .where((c) => (sarikotRekhovValues[c] ?? []).isNotEmpty)
-                      .toList()
-                    ..sort(
-                      (a, b) => avgOf(
-                        sarikotRekhovValues[b]!,
-                      ).compareTo(avgOf(sarikotRekhovValues[a]!)),
-                    ))
-                  .map(
-                    (c) => buildCriterionBar(
-                      c,
-                      sarikotRekhovValues[c]!,
-                      const Color(0xFF00695C),
+              // Check if we need detailed view
+              if (selectedSettlements.length >= 2)
+                ...(sarikotRekhovCriteria
+                        .where(
+                          (c) =>
+                              (sarikotRekhovBySettlement[c]?.isNotEmpty ??
+                              false),
+                        )
+                        .toList())
+                    .map(
+                      (c) => buildDetailedCriterionBars(
+                        criterion: c,
+                        valuesByGroup: sarikotRekhovBySettlement[c] ?? {},
+                        globalValues: sarikotRekhovValues[c] ?? [],
+                        baseColor: const Color(0xFF00695C),
+                      ),
+                    )
+              else if (selectedInstructors.length >= 2)
+                ...(sarikotRekhovCriteria
+                        .where(
+                          (c) =>
+                              (sarikotRekhovByInstructor[c]?.isNotEmpty ??
+                              false),
+                        )
+                        .toList())
+                    .map(
+                      (c) => buildDetailedCriterionBars(
+                        criterion: c,
+                        valuesByGroup: sarikotRekhovByInstructor[c] ?? {},
+                        globalValues: sarikotRekhovValues[c] ?? [],
+                        baseColor: const Color(0xFF00695C),
+                      ),
+                    )
+              else
+                ...(sarikotRekhovCriteria
+                        .where((c) => (sarikotRekhovValues[c] ?? []).isNotEmpty)
+                        .toList()
+                      ..sort(
+                        (a, b) => avgOf(
+                          sarikotRekhovValues[b]!,
+                        ).compareTo(avgOf(sarikotRekhovValues[a]!)),
+                      ))
+                    .map(
+                      (c) => buildCriterionBar(
+                        c,
+                        sarikotRekhovValues[c]!,
+                        const Color(0xFF00695C),
+                      ),
                     ),
-                  ),
               if (sarikotRekhovCriteria.every(
                 (c) => (sarikotRekhovValues[c] ?? []).isEmpty,
               ))
@@ -14873,165 +15192,432 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              const Text(
-                'ממוצע לפי מקצה',
-                style: TextStyle(
+              Text(
+                selectedSettlements.length >= 2
+                    ? 'ממוצע לפי מקצה (מפורט)'
+                    : 'ממוצע לפי מקצה',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
-              // New graph for station totals
+              // Station statistics with multi-settlement comparison
               Builder(
                 builder: (ctx) {
-                  final Map<String, int> totalHitsPerStation = {};
-                  final Map<String, int> totalBulletsPerStation = {};
-                  final Map<String, bool> isLongRangePerStation =
-                      {}; // ✅ Track range type
-                  for (final f in filtered) {
-                    if (rangeData.containsKey(f.id)) {
-                      final data = rangeData[f.id];
-                      final stations =
-                          (data?['stations'] as List?)
-                              ?.cast<Map<String, dynamic>>() ??
-                          [];
-                      final trainees =
-                          (data?['trainees'] as List?)
-                              ?.cast<Map<String, dynamic>>() ??
-                          [];
+                  // Check if we need detailed view (2+ settlements selected)
+                  final bool showDetailedView = selectedSettlements.length >= 2;
 
-                      // ✅ Detect if this is LONG RANGE
-                      final feedbackType =
-                          (data?['feedbackType'] as String?) ?? '';
-                      final rangeSubType =
-                          (data?['rangeSubType'] as String?) ?? '';
-                      final isLongRange =
-                          feedbackType == 'range_long' ||
-                          feedbackType == 'דווח רחוק' ||
-                          rangeSubType == 'טווח רחוק';
+                  if (showDetailedView) {
+                    // DETAILED VIEW: Breakdown by settlement
+                    final Map<String, Map<String, int>>
+                    hitsPerStationPerSettlement = {};
+                    final Map<String, Map<String, int>>
+                    bulletsPerStationPerSettlement = {};
+                    final Map<String, int> globalHitsPerStation = {};
+                    final Map<String, int> globalBulletsPerStation = {};
+                    final Map<String, bool> isLongRangePerStation = {};
 
-                      for (var i = 0; i < stations.length; i++) {
-                        final station = stations[i];
-                        var stationName = station['name'] ?? 'מקצה ${i + 1}';
-                        stationName = _normalizeStationName(stationName);
+                    for (final f in filtered) {
+                      if (rangeData.containsKey(f.id)) {
+                        final settlement = f.settlement;
+                        if (settlement.isEmpty) continue;
 
-                        // Skip shared-target stations – no individual accuracy data
-                        final isSharedTarget =
-                            (station['isSharedTarget'] as bool?) ?? false;
-                        if (isSharedTarget) continue;
+                        final data = rangeData[f.id];
+                        final stations =
+                            (data?['stations'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+                        final trainees =
+                            (data?['trainees'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
 
-                        isLongRangePerStation[stationName] =
-                            isLongRange; // ✅ Store type
+                        final feedbackType =
+                            (data?['feedbackType'] as String?) ?? '';
+                        final rangeSubType =
+                            (data?['rangeSubType'] as String?) ?? '';
+                        final isLongRange =
+                            feedbackType == 'range_long' ||
+                            feedbackType == 'דווח רחוק' ||
+                            rangeSubType == 'טווח רחוק';
 
-                        final stationMaxValue = isLongRange
-                            ? (station['maxPoints'] as num?)?.toInt() ??
-                                  0 // ✅ LONG: points
-                            : (station['bulletsCount'] as num?)?.toInt() ??
-                                  0; // ✅ SHORT: bullets
+                        for (var i = 0; i < stations.length; i++) {
+                          final station = stations[i];
+                          var stationName = station['name'] ?? 'מקצה ${i + 1}';
+                          stationName = _normalizeStationName(stationName);
 
-                        // ✅ FIX: Count only bullets/points from trainees who performed this station
-                        int stationHits = 0;
-                        int traineesPerformed = 0;
-                        for (final trainee in trainees) {
-                          final hits = trainee['hits'] as Map<String, dynamic>?;
-                          if (hits != null && hits.containsKey('station_$i')) {
-                            stationHits +=
-                                (hits['station_$i'] as num?)?.toInt() ?? 0;
-                            traineesPerformed++;
+                          final isSharedTarget =
+                              (station['isSharedTarget'] as bool?) ?? false;
+                          if (isSharedTarget) continue;
+
+                          isLongRangePerStation[stationName] = isLongRange;
+
+                          final stationMaxValue = isLongRange
+                              ? (station['maxPoints'] as num?)?.toInt() ?? 0
+                              : (station['bulletsCount'] as num?)?.toInt() ?? 0;
+
+                          int stationHits = 0;
+                          int traineesPerformed = 0;
+                          for (final trainee in trainees) {
+                            final hits =
+                                trainee['hits'] as Map<String, dynamic>?;
+                            if (hits != null &&
+                                hits.containsKey('station_$i')) {
+                              stationHits +=
+                                  (hits['station_$i'] as num?)?.toInt() ?? 0;
+                              traineesPerformed++;
+                            }
                           }
-                        }
 
-                        final totalBulletsForStation =
-                            traineesPerformed * stationMaxValue;
-                        totalBulletsPerStation[stationName] =
-                            (totalBulletsPerStation[stationName] ?? 0) +
-                            totalBulletsForStation;
-                        totalHitsPerStation[stationName] =
-                            (totalHitsPerStation[stationName] ?? 0) +
-                            stationHits;
+                          final totalBulletsForStation =
+                              traineesPerformed * stationMaxValue;
+
+                          // Per-settlement data
+                          hitsPerStationPerSettlement.putIfAbsent(
+                            stationName,
+                            () => {},
+                          );
+                          bulletsPerStationPerSettlement.putIfAbsent(
+                            stationName,
+                            () => {},
+                          );
+                          hitsPerStationPerSettlement[stationName]![settlement] =
+                              (hitsPerStationPerSettlement[stationName]![settlement] ??
+                                  0) +
+                              stationHits;
+                          bulletsPerStationPerSettlement[stationName]![settlement] =
+                              (bulletsPerStationPerSettlement[stationName]![settlement] ??
+                                  0) +
+                              totalBulletsForStation;
+
+                          // Global data
+                          globalHitsPerStation[stationName] =
+                              (globalHitsPerStation[stationName] ?? 0) +
+                              stationHits;
+                          globalBulletsPerStation[stationName] =
+                              (globalBulletsPerStation[stationName] ?? 0) +
+                              totalBulletsForStation;
+                        }
                       }
                     }
-                  }
-                  final entries = totalHitsPerStation.entries.toList()
-                    ..sort((a, b) {
-                      final bulletsA = totalBulletsPerStation[a.key] ?? 0;
-                      final bulletsB = totalBulletsPerStation[b.key] ?? 0;
-                      final pctA = bulletsA > 0 ? a.value / bulletsA : 0.0;
-                      final pctB = bulletsB > 0 ? b.value / bulletsB : 0.0;
-                      return pctB.compareTo(pctA);
-                    });
-                  if (entries.isEmpty) return const Text('-');
-                  return Column(
-                    children: entries.map((en) {
-                      final stationName = en.key;
-                      final totalHits = en.value;
-                      final totalBullets =
-                          totalBulletsPerStation[stationName] ?? 0;
-                      final percentage = totalBullets > 0
-                          ? ((totalHits / totalBullets) * 100).toStringAsFixed(
-                              1,
-                            )
-                          : '0.0';
-                      final pct = totalBullets > 0
-                          ? (totalHits / totalBullets).clamp(0.0, 1.0)
-                          : 0.0;
-                      // ✅ Check if this station is LONG RANGE
-                      final isLongRange =
-                          isLongRangePerStation[stationName] ?? false;
-                      final unitLabel = isLongRange ? 'נקודות' : 'כדורים';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              stationName,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
+
+                    if (hitsPerStationPerSettlement.isEmpty) {
+                      return const Text('-');
+                    }
+
+                    // Color palette for settlements
+                    final colorPalette = [
+                      Colors.blue.shade600,
+                      Colors.green.shade600,
+                      Colors.orange.shade600,
+                      Colors.purple.shade600,
+                      Colors.red.shade600,
+                      Colors.teal.shade600,
+                      Colors.amber.shade700,
+                      Colors.indigo.shade600,
+                    ];
+
+                    return Column(
+                      children: hitsPerStationPerSettlement.keys.map((
+                        stationName,
+                      ) {
+                        final settlementData =
+                            hitsPerStationPerSettlement[stationName]!;
+
+                        // Sort settlements by percentage
+                        final sortedSettlements = settlementData.keys.toList()
+                          ..sort((a, b) {
+                            final bulletsA =
+                                bulletsPerStationPerSettlement[stationName]![a] ??
+                                0;
+                            final bulletsB =
+                                bulletsPerStationPerSettlement[stationName]![b] ??
+                                0;
+                            final pctA = bulletsA > 0
+                                ? (settlementData[a]! / bulletsA)
+                                : 0.0;
+                            final pctB = bulletsB > 0
+                                ? (settlementData[b]! / bulletsB)
+                                : 0.0;
+                            return pctB.compareTo(pctA);
+                          });
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 20.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                stationName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white24,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: FractionallySizedBox(
-                                      widthFactor: pct,
-                                      alignment: Alignment.centerRight,
+                              const SizedBox(height: 8),
+                              ...sortedSettlements.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final settlement = entry.value;
+                                final hits = settlementData[settlement]!;
+                                final bullets =
+                                    bulletsPerStationPerSettlement[stationName]![settlement] ??
+                                    0;
+                                final pct = bullets > 0
+                                    ? (hits / bullets).clamp(0.0, 1.0)
+                                    : 0.0;
+                                final percentage = (pct * 100).toStringAsFixed(
+                                  1,
+                                );
+                                final color =
+                                    colorPalette[idx % colorPalette.length];
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 6.0),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: Container(
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade200,
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
+                                          ),
+                                          child: FractionallySizedBox(
+                                            widthFactor: pct,
+                                            alignment: Alignment.centerRight,
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: color,
+                                                borderRadius:
+                                                    BorderRadius.circular(5),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          '$percentage% ($hits/$bullets) | $settlement',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: color,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                              // Global average
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 3,
                                       child: Container(
+                                        height: 10,
                                         decoration: BoxDecoration(
-                                          color: Colors.teal,
+                                          color: Colors.grey.shade200,
                                           borderRadius: BorderRadius.circular(
-                                            6,
+                                            5,
+                                          ),
+                                        ),
+                                        child: FractionallySizedBox(
+                                          widthFactor:
+                                              ((globalHitsPerStation[stationName] ??
+                                                          0) /
+                                                      (globalBulletsPerStation[stationName] ??
+                                                          1))
+                                                  .clamp(0.0, 1.0),
+                                          alignment: Alignment.centerRight,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade500,
+                                              borderRadius:
+                                                  BorderRadius.circular(5),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        '${(((globalHitsPerStation[stationName] ?? 0) / (globalBulletsPerStation[stationName] ?? 1)) * 100).toStringAsFixed(1)}% | ממוצע כללי',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  } else {
+                    // SIMPLE VIEW: Regular aggregated view
+                    final Map<String, int> totalHitsPerStation = {};
+                    final Map<String, int> totalBulletsPerStation = {};
+                    final Map<String, bool> isLongRangePerStation = {};
+
+                    for (final f in filtered) {
+                      if (rangeData.containsKey(f.id)) {
+                        final data = rangeData[f.id];
+                        final stations =
+                            (data?['stations'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+                        final trainees =
+                            (data?['trainees'] as List?)
+                                ?.cast<Map<String, dynamic>>() ??
+                            [];
+
+                        final feedbackType =
+                            (data?['feedbackType'] as String?) ?? '';
+                        final rangeSubType =
+                            (data?['rangeSubType'] as String?) ?? '';
+                        final isLongRange =
+                            feedbackType == 'range_long' ||
+                            feedbackType == 'דווח רחוק' ||
+                            rangeSubType == 'טווח רחוק';
+
+                        for (var i = 0; i < stations.length; i++) {
+                          final station = stations[i];
+                          var stationName = station['name'] ?? 'מקצה ${i + 1}';
+                          stationName = _normalizeStationName(stationName);
+
+                          final isSharedTarget =
+                              (station['isSharedTarget'] as bool?) ?? false;
+                          if (isSharedTarget) continue;
+
+                          isLongRangePerStation[stationName] = isLongRange;
+
+                          final stationMaxValue = isLongRange
+                              ? (station['maxPoints'] as num?)?.toInt() ?? 0
+                              : (station['bulletsCount'] as num?)?.toInt() ?? 0;
+
+                          int stationHits = 0;
+                          int traineesPerformed = 0;
+                          for (final trainee in trainees) {
+                            final hits =
+                                trainee['hits'] as Map<String, dynamic>?;
+                            if (hits != null &&
+                                hits.containsKey('station_$i')) {
+                              stationHits +=
+                                  (hits['station_$i'] as num?)?.toInt() ?? 0;
+                              traineesPerformed++;
+                            }
+                          }
+
+                          final totalBulletsForStation =
+                              traineesPerformed * stationMaxValue;
+                          totalBulletsPerStation[stationName] =
+                              (totalBulletsPerStation[stationName] ?? 0) +
+                              totalBulletsForStation;
+                          totalHitsPerStation[stationName] =
+                              (totalHitsPerStation[stationName] ?? 0) +
+                              stationHits;
+                        }
+                      }
+                    }
+
+                    final entries = totalHitsPerStation.entries.toList()
+                      ..sort((a, b) {
+                        final bulletsA = totalBulletsPerStation[a.key] ?? 0;
+                        final bulletsB = totalBulletsPerStation[b.key] ?? 0;
+                        final pctA = bulletsA > 0 ? a.value / bulletsA : 0.0;
+                        final pctB = bulletsB > 0 ? b.value / bulletsB : 0.0;
+                        return pctB.compareTo(pctA);
+                      });
+
+                    if (entries.isEmpty) return const Text('-');
+
+                    return Column(
+                      children: entries.map((en) {
+                        final stationName = en.key;
+                        final totalHits = en.value;
+                        final totalBullets =
+                            totalBulletsPerStation[stationName] ?? 0;
+                        final percentage = totalBullets > 0
+                            ? ((totalHits / totalBullets) * 100)
+                                  .toStringAsFixed(1)
+                            : '0.0';
+                        final pct = totalBullets > 0
+                            ? (totalHits / totalBullets).clamp(0.0, 1.0)
+                            : 0.0;
+                        final isLongRange =
+                            isLongRangePerStation[stationName] ?? false;
+                        final unitLabel = isLongRange ? 'נקודות' : 'כדורים';
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                stationName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white24,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: FractionallySizedBox(
+                                        widthFactor: pct,
+                                        alignment: Alignment.centerRight,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.teal,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
-                                  style: const TextStyle(
-                                    color: Colors.teal,
-                                    fontWeight: FontWeight.bold,
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '$totalHits מתוך $totalBullets $unitLabel ($percentage%)',
+                                    style: const TextStyle(
+                                      color: Colors.teal,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  );
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  }
                 },
               ),
 
@@ -17814,6 +18400,140 @@ class _SurpriseDrillsStatisticsPageState
     return sum / vals.length;
   }
 
+  // Helper to build detailed criterion bars with multi-group comparison
+  Widget buildDetailedCriterionBars({
+    required String criterion,
+    required Map<String, List<int>> valuesByGroup,
+    required List<int> globalValues,
+    required Color baseColor,
+  }) {
+    final colorPalette = [
+      Colors.blue.shade600,
+      Colors.green.shade600,
+      Colors.orange.shade600,
+      Colors.purple.shade600,
+      Colors.red.shade600,
+      Colors.teal.shade600,
+      Colors.amber.shade700,
+      Colors.indigo.shade600,
+    ];
+
+    // Sort groups by average
+    final sortedGroups = valuesByGroup.entries.toList()
+      ..sort((a, b) => avgOf(b.value).compareTo(avgOf(a.value)));
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            criterion,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...sortedGroups.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final group = entry.value.key;
+            final vals = entry.value.value;
+            final avg = avgOf(vals);
+            final color = colorPalette[idx % colorPalette.length];
+            final pct = (avg / 5.0).clamp(0.0, 1.0);
+            final percentage = (pct * 100).toStringAsFixed(0);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: pct,
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${avg.toStringAsFixed(1)}/5 ($percentage%) | $group',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          // Global average
+          if (globalValues.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: (avgOf(globalValues) / 5.0).clamp(
+                          0.0,
+                          1.0,
+                        ),
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade500,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${avgOf(globalValues).toStringAsFixed(1)}/5 (${((avgOf(globalValues) / 5.0) * 100).toStringAsFixed(0)}%) | ממוצע כללי',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = getFiltered();
@@ -17827,6 +18547,10 @@ class _SurpriseDrillsStatisticsPageState
     // Build settlement aggregates with principles per settlement
     final Map<String, Map<String, List<int>>> settlementPrincipleValues = {};
     final Map<String, Map<String, int>> settlementPrincipleCounts = {};
+
+    // Build instructor aggregates with principles per instructor
+    final Map<String, Map<String, List<int>>> instructorPrincipleValues = {};
+    final Map<String, Map<String, int>> instructorPrincipleCounts = {};
 
     for (final f in filtered) {
       if (!surpriseDrillsData.containsKey(f.id)) continue;
@@ -17873,6 +18597,26 @@ class _SurpriseDrillsStatisticsPageState
 
                 settlementPrincipleCounts[settlement]![principleName] =
                     (settlementPrincipleCounts[settlement]![principleName] ??
+                        0) +
+                    1;
+              }
+
+              // Per-instructor principle stats
+              final instructor = f.instructorName;
+              if (instructor.isNotEmpty) {
+                instructorPrincipleValues.putIfAbsent(instructor, () => {});
+                instructorPrincipleCounts.putIfAbsent(instructor, () => {});
+
+                instructorPrincipleValues[instructor]!.putIfAbsent(
+                  principleName,
+                  () => [],
+                );
+                instructorPrincipleValues[instructor]![principleName]!.add(
+                  score,
+                );
+
+                instructorPrincipleCounts[instructor]![principleName] =
+                    (instructorPrincipleCounts[instructor]![principleName] ??
                         0) +
                     1;
               }
@@ -18253,66 +18997,118 @@ class _SurpriseDrillsStatisticsPageState
               Text('סה"כ משובים: $total', style: const TextStyle(fontSize: 14)),
 
               const SizedBox(height: 12),
-              const Text(
-                'ממוצע לפי עיקרון (כללי)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Text(
+                selectedSettlements.length >= 2 ||
+                        selectedInstructors.length >= 2
+                    ? 'ממוצע לפי עיקרון (מפורט)'
+                    : 'ממוצע לפי עיקרון (כללי)',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
-              ...principleValuesGlobal.entries.map((e) {
-                final principleName = e.key;
-                final values = e.value;
-                final avg = avgOf(values);
-                final count = principleCountsGlobal[principleName] ?? 0;
-                final pct = (avg / 5.0).clamp(0.0, 1.0);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        principleName,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+              // Check if we need detailed view
+              if (selectedSettlements.length >= 2)
+                ...principleValuesGlobal.entries.map((e) {
+                  final principleName = e.key;
+                  final values = e.value;
+                  // Build per-settlement breakdown
+                  final Map<String, List<int>> valuesByGroup = {};
+                  for (final settlement in selectedSettlements) {
+                    if (settlementPrincipleValues.containsKey(settlement) &&
+                        settlementPrincipleValues[settlement]!.containsKey(
+                          principleName,
+                        )) {
+                      valuesByGroup[settlement] =
+                          settlementPrincipleValues[settlement]![principleName]!;
+                    }
+                  }
+                  return buildDetailedCriterionBars(
+                    criterion: principleName,
+                    valuesByGroup: valuesByGroup,
+                    globalValues: values,
+                    baseColor: Colors.orangeAccent,
+                  );
+                })
+              else if (selectedInstructors.length >= 2)
+                ...principleValuesGlobal.entries.map((e) {
+                  final principleName = e.key;
+                  final values = e.value;
+                  // Build per-instructor breakdown
+                  final Map<String, List<int>> valuesByGroup = {};
+                  for (final instructor in selectedInstructors) {
+                    if (instructorPrincipleValues.containsKey(instructor) &&
+                        instructorPrincipleValues[instructor]!.containsKey(
+                          principleName,
+                        )) {
+                      valuesByGroup[instructor] =
+                          instructorPrincipleValues[instructor]![principleName]!;
+                    }
+                  }
+                  return buildDetailedCriterionBars(
+                    criterion: principleName,
+                    valuesByGroup: valuesByGroup,
+                    globalValues: values,
+                    baseColor: Colors.orangeAccent,
+                  );
+                })
+              else
+                ...principleValuesGlobal.entries.map((e) {
+                  final principleName = e.key;
+                  final values = e.value;
+                  final avg = avgOf(values);
+                  final count = principleCountsGlobal[principleName] ?? 0;
+                  final pct = (avg / 5.0).clamp(0.0, 1.0);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          principleName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: FractionallySizedBox(
-                                widthFactor: pct,
-                                alignment: Alignment.centerRight,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.orangeAccent,
-                                    borderRadius: BorderRadius.circular(6),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: FractionallySizedBox(
+                                  widthFactor: pct,
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.orangeAccent,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '${avg.toStringAsFixed(1)} ($count)',
-                            style: const TextStyle(
-                              color: Colors.orangeAccent,
-                              fontWeight: FontWeight.bold,
+                            const SizedBox(width: 12),
+                            Text(
+                              '${avg.toStringAsFixed(1)} ($count)',
+                              style: const TextStyle(
+                                color: Colors.orangeAccent,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
 
               const Divider(),
               const SizedBox(height: 8),
