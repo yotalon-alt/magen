@@ -8891,6 +8891,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       );
                                     }
 
+                                    // Compute max value for this cell based on mode
+                                    final int desktopMaxValue;
+                                    if (widget.mode == 'surprise') {
+                                      desktopMaxValue = 10;
+                                    } else if (_rangeType == 'ארוכים') {
+                                      desktopMaxValue = stationIndex <
+                                              longRangeStagesList.length
+                                          ? longRangeStagesList[stationIndex]
+                                              .maxPoints
+                                          : 0;
+                                    } else {
+                                      desktopMaxValue = station.bulletsCount;
+                                    }
+
                                     // Standard single input for non-level-tester stations
                                     return SizedBox(
                                       width: 80,
@@ -8913,80 +8927,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
-                                          FilteringTextInputFormatter
-                                              .digitsOnly,
-                                          // ✅ LONG RANGE: Allow up to 3 digits (0-150)
+                                          FilteringTextInputFormatter.digitsOnly,
                                           LengthLimitingTextInputFormatter(3),
+                                          if (desktopMaxValue > 0)
+                                            _MaxValueFormatter(desktopMaxValue),
                                         ],
                                         textAlign: TextAlign.center,
                                         onChanged: (v) {
                                           final score = int.tryParse(v) ?? 0;
-
-                                          // Validation based on mode
-                                          if (widget.mode == 'surprise') {
-                                            // Surprise mode: 0-10 scale
-                                            if (score < 0 || score > 10) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'ציון חייב להיות בין 0 ל-10',
-                                                  ),
-                                                  duration: Duration(
-                                                    seconds: 1,
-                                                  ),
-                                                ),
-                                              );
-                                              return;
-                                            }
-                                          } else if (_rangeType == 'ארוכים') {
-                                            // ✅ LONG RANGE: Validate against stage maxPoints (POINTS-ONLY)
-                                            // CRITICAL: NEVER validate against bullets for long-range
-                                            if (stationIndex <
-                                                longRangeStagesList.length) {
-                                              final stage =
-                                                  longRangeStagesList[stationIndex];
-                                              if (score > stage.maxPoints) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      'נקודות לא יכולות לעלות על ${stage.maxPoints} נקודות',
-                                                    ),
-                                                    duration: const Duration(
-                                                      seconds: 1,
-                                                    ),
-                                                  ),
-                                                );
-                                                return;
-                                              }
-                                            }
-                                            // ✅ Accept any value if stage not found (defensive)
-                                          } else if (score >
-                                              station.bulletsCount) {
-                                            // ✅ SHORT RANGE ONLY: Validate against bullets count
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'פגיעות לא יכולות לעלות על ${station.bulletsCount} כדורים',
-                                                ),
-                                                duration: const Duration(
-                                                  seconds: 1,
-                                                ),
-                                              ),
-                                            );
-                                            return;
-                                          }
-                                          // ✅ ONLY UPDATE DATA: No setState, no save
                                           row.setValue(stationIndex, score);
                                           _scheduleAutoSave();
                                         },
                                         onSubmitted: (v) {
-                                          // ✅ IMMEDIATE SAVE: User pressed Enter
                                           final score = int.tryParse(v) ?? 0;
                                           row.setValue(stationIndex, score);
                                           _saveImmediately();
@@ -9144,6 +9096,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         }
       },
     );
+  }
+}
+
+/// Blocks input above a maximum integer value at the formatter level (desktop table)
+class _MaxValueFormatter extends TextInputFormatter {
+  final int maxValue;
+  _MaxValueFormatter(this.maxValue);
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) return newValue;
+    final value = int.tryParse(newValue.text);
+    if (value == null || value > maxValue) return oldValue;
+    return newValue;
   }
 }
 
