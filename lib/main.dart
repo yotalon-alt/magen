@@ -13550,9 +13550,15 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       'סריקות רחוב',
     ];
 
-    // Build sorted lists from filtered data only
+    // Build sorted lists from relevant exercise feedbacks (not filtered)
+    final exerciseFeedbacks = feedbackStorage.where((f) {
+      return f.folder == 'מעגל פתוח' ||
+          f.folder == 'מעגל פרוץ' ||
+          f.folder == 'סריקות רחוב';
+    });
+
     final instructorsList =
-        filtered
+        exerciseFeedbacks
             .map((f) => f.instructorName)
             .where((s) => s.isNotEmpty)
             .toSet()
@@ -13561,7 +13567,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
     final instructors = ['כל המדריכים', ...instructorsList];
 
     final settlementsList =
-        filtered
+        exerciseFeedbacks
             .map((f) => f.settlement)
             .where((s) => s.isNotEmpty)
             .toSet()
@@ -14788,9 +14794,13 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       }
     }
 
-    // Build sorted lists from filtered data only
+    // Build sorted lists from all range feedbacks (not filtered)
+    final rangeFeedbacks = feedbackStorage.where((f) {
+      return f.folder == 'מטווחי ירי' || f.folder == 'מטווחים 474';
+    });
+
     final instructorsList =
-        filtered
+        rangeFeedbacks
             .map((f) => f.instructorName)
             .where((s) => s.isNotEmpty)
             .toSet()
@@ -14799,7 +14809,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     final instructors = ['כל המדריכים', ...instructorsList];
 
     final settlementsList =
-        filtered
+        rangeFeedbacks
             .map((f) => f.settlement)
             .where((s) => s.isNotEmpty)
             .toSet()
@@ -14810,7 +14820,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     // Build station list dynamically from range data
     final Set<String> stationNames = {};
     final List<String> orderedStations = [];
-    for (final f in filtered) {
+    for (final f in rangeFeedbacks) {
       if (rangeData.containsKey(f.id)) {
         final data = rangeData[f.id];
         final stations =
@@ -15399,6 +15409,12 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           var stationName = station['name'] ?? 'מקצה ${i + 1}';
                           stationName = _normalizeStationName(stationName);
 
+                          // Skip if specific stations selected and this isn't one of them
+                          if (selectedStations.isNotEmpty &&
+                              !selectedStations.contains(stationName)) {
+                            continue;
+                          }
+
                           final isSharedTarget =
                               (station['isSharedTarget'] as bool?) ?? false;
                           if (isSharedTarget) continue;
@@ -15662,6 +15678,12 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                           final station = stations[i];
                           var stationName = station['name'] ?? 'מקצה ${i + 1}';
                           stationName = _normalizeStationName(stationName);
+
+                          // Skip if specific stations selected and this isn't one of them
+                          if (selectedStations.isNotEmpty &&
+                              !selectedStations.contains(stationName)) {
+                            continue;
+                          }
 
                           final isSharedTarget =
                               (station['isSharedTarget'] as bool?) ?? false;
@@ -18789,9 +18811,13 @@ class _SurpriseDrillsStatisticsPageState
       }
     }
 
-    // Build sorted lists from filtered data only
+    // Build sorted lists from surprise drill feedbacks (not filtered)
+    final surpriseDrillFeedbacks = feedbackStorage.where((f) {
+      return f.folder == 'תרגילי הפתעה';
+    });
+
     final instructorsList =
-        filtered
+        surpriseDrillFeedbacks
             .map((f) => f.instructorName)
             .where((s) => s.isNotEmpty)
             .toSet()
@@ -18800,7 +18826,7 @@ class _SurpriseDrillsStatisticsPageState
     final instructors = ['כל המדריכים', ...instructorsList];
 
     final settlementsList =
-        filtered
+        surpriseDrillFeedbacks
             .map((f) => f.settlement)
             .where((s) => s.isNotEmpty)
             .toSet()
