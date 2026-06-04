@@ -37,7 +37,26 @@ class _SurpriseDrillsEntryPageState extends State<SurpriseDrillsEntryPage> {
           .where('isTemporary', isEqualTo: true);
       if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
       final snap = await q.limit(500).get().timeout(const Duration(seconds: 8));
-      if (mounted) setState(() => _draftCount = snap.docs.length);
+
+      // Also count feedbacks where user is an additional instructor
+      final Set<String> ids = snap.docs.map((d) => d.id).toSet();
+      if (!isAdmin) {
+        try {
+          final sharedSnap = await FirebaseFirestore.instance
+              .collection('feedbacks')
+              .where('module', isEqualTo: 'surprise_drill')
+              .where('isTemporary', isEqualTo: true)
+              .where('instructors', arrayContains: currentUser?.name ?? '')
+              .limit(500)
+              .get()
+              .timeout(const Duration(seconds: 8));
+          for (final doc in sharedSnap.docs) {
+            ids.add(doc.id);
+          }
+        } catch (_) {}
+      }
+
+      if (mounted) setState(() => _draftCount = ids.length);
     } catch (_) {}
   }
 
