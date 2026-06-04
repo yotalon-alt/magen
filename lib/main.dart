@@ -14066,7 +14066,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
           .limit(500)
           .get()
           .timeout(const Duration(seconds: 10));
-      
+
       // Store all data in rangeData map
       for (final doc in snapshot.docs) {
         final data = doc.data();
