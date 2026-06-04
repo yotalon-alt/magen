@@ -14058,19 +14058,20 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
   Future<void> _loadRangeData() async {
     try {
-      final filtered = getFiltered();
-      for (final f in filtered) {
-        if (f.id != null && f.id!.isNotEmpty) {
-          final doc = await FirebaseFirestore.instance
-              .collection('feedbacks')
-              .doc(f.id)
-              .get();
-          if (doc.exists) {
-            final data = doc.data();
-            if (data != null) {
-              rangeData[f.id!] = data;
-            }
-          }
+      // ✅ Single query for all range feedbacks (much faster than individual reads)
+      final snapshot = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('folder', whereIn: ['מטווחי ירי', 'מטווחים 474'])
+          .where('isTemporary', isEqualTo: false)
+          .limit(500)
+          .get()
+          .timeout(const Duration(seconds: 10));
+      
+      // Store all data in rangeData map
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if (data.isNotEmpty) {
+          rangeData[doc.id] = data;
         }
       }
     } catch (e) {
