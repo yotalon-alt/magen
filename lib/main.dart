@@ -520,6 +520,9 @@ class _MultiSelectDropdownFieldState extends State<MultiSelectDropdownField> {
     final renderBox = context.findRenderObject() as RenderBox;
     final size = renderBox.size;
 
+    // Local selection copy for immediate UI feedback
+    final localSelection = Set<String>.from(widget.selectedItems);
+
     return OverlayEntry(
       builder: (context) => GestureDetector(
         onTap: _closeDropdown,
@@ -548,22 +551,18 @@ class _MultiSelectDropdownFieldState extends State<MultiSelectDropdownField> {
                           shrinkWrap: true,
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           children: widget.items.map((item) {
-                            final isSelected = widget.selectedItems.contains(
-                              item,
-                            );
+                            final isSelected = localSelection.contains(item);
                             return InkWell(
                               onTap: () {
-                                final newSelection = Set<String>.from(
-                                  widget.selectedItems,
-                                );
                                 if (isSelected) {
-                                  newSelection.remove(item);
+                                  localSelection.remove(item);
                                 } else {
-                                  newSelection.add(item);
+                                  localSelection.add(item);
                                 }
-                                widget.onChanged(newSelection);
+                                widget.onChanged(
+                                  Set<String>.from(localSelection),
+                                );
                                 setModalState(() {});
-                                setState(() {});
                               },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -13412,6 +13411,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
       required Map<String, List<int>> valuesByGroup,
       required List<int> globalValues,
       required Color baseColor,
+      Map<String, Color>? groupColors,
     }) {
       final colorPalette = [
         Colors.blue.shade600,
@@ -13447,7 +13447,9 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               final group = entry.value.key;
               final vals = entry.value.value;
               final avg = avgOf(vals);
-              final color = colorPalette[idx % colorPalette.length];
+              final color =
+                  groupColors?[group] ??
+                  colorPalette[idx % colorPalette.length];
               final pct = (avg / 5.0).clamp(0.0, 1.0);
               final percentage = (pct * 100).toStringAsFixed(0);
 
@@ -13945,37 +13947,77 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               const SizedBox(height: 8),
               // Check if we need detailed view
               if (selectedSettlements.length >= 2)
-                ...(maagalPatuachCriteria
-                        .where(
-                          (c) =>
-                              (maagalPatuachBySettlement[c]?.isNotEmpty ??
-                              false),
-                        )
-                        .toList())
-                    .map(
-                      (c) => buildDetailedCriterionBars(
-                        criterion: c,
-                        valuesByGroup: maagalPatuachBySettlement[c] ?? {},
-                        globalValues: maagalPatuachValues[c] ?? [],
-                        baseColor: const Color(0xFF1565C0),
-                      ),
-                    )
+                ...(() {
+                  // Create fixed color map for settlements
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final settlementColors = <String, Color>{};
+                  final sortedSettlements = selectedSettlements.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedSettlements.length; i++) {
+                    settlementColors[sortedSettlements[i]] =
+                        colorPalette[i % colorPalette.length];
+                  }
+                  return maagalPatuachCriteria
+                      .where(
+                        (c) =>
+                            (maagalPatuachBySettlement[c]?.isNotEmpty ?? false),
+                      )
+                      .map(
+                        (c) => buildDetailedCriterionBars(
+                          criterion: c,
+                          valuesByGroup: maagalPatuachBySettlement[c] ?? {},
+                          globalValues: maagalPatuachValues[c] ?? [],
+                          baseColor: const Color(0xFF1565C0),
+                          groupColors: settlementColors,
+                        ),
+                      )
+                      .toList();
+                }())
               else if (selectedInstructors.length >= 2)
-                ...(maagalPatuachCriteria
-                        .where(
-                          (c) =>
-                              (maagalPatuachByInstructor[c]?.isNotEmpty ??
-                              false),
-                        )
-                        .toList())
-                    .map(
-                      (c) => buildDetailedCriterionBars(
-                        criterion: c,
-                        valuesByGroup: maagalPatuachByInstructor[c] ?? {},
-                        globalValues: maagalPatuachValues[c] ?? [],
-                        baseColor: const Color(0xFF1565C0),
-                      ),
-                    )
+                ...(() {
+                  // Create fixed color map for instructors
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final instructorColors = <String, Color>{};
+                  final sortedInstructors = selectedInstructors.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedInstructors.length; i++) {
+                    instructorColors[sortedInstructors[i]] =
+                        colorPalette[i % colorPalette.length];
+                  }
+                  return maagalPatuachCriteria
+                      .where(
+                        (c) =>
+                            (maagalPatuachByInstructor[c]?.isNotEmpty ?? false),
+                      )
+                      .map(
+                        (c) => buildDetailedCriterionBars(
+                          criterion: c,
+                          valuesByGroup: maagalPatuachByInstructor[c] ?? {},
+                          globalValues: maagalPatuachValues[c] ?? [],
+                          baseColor: const Color(0xFF1565C0),
+                          groupColors: instructorColors,
+                        ),
+                      )
+                      .toList();
+                }())
               else
                 ...(maagalPatuachCriteria
                         .where((c) => (maagalPatuachValues[c] ?? []).isNotEmpty)
@@ -14018,35 +14060,77 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               const SizedBox(height: 8),
               // Check if we need detailed view
               if (selectedSettlements.length >= 2)
-                ...(maagalPoruzCriteria
-                        .where(
-                          (c) =>
-                              (maagalPoruzBySettlement[c]?.isNotEmpty ?? false),
-                        )
-                        .toList())
-                    .map(
-                      (c) => buildDetailedCriterionBars(
-                        criterion: c,
-                        valuesByGroup: maagalPoruzBySettlement[c] ?? {},
-                        globalValues: maagalPoruzValues[c] ?? [],
-                        baseColor: const Color(0xFF6A1B9A),
-                      ),
-                    )
+                ...(() {
+                  // Create fixed color map for settlements
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final settlementColors = <String, Color>{};
+                  final sortedSettlements = selectedSettlements.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedSettlements.length; i++) {
+                    settlementColors[sortedSettlements[i]] =
+                        colorPalette[i % colorPalette.length];
+                  }
+                  return maagalPoruzCriteria
+                      .where(
+                        (c) =>
+                            (maagalPoruzBySettlement[c]?.isNotEmpty ?? false),
+                      )
+                      .map(
+                        (c) => buildDetailedCriterionBars(
+                          criterion: c,
+                          valuesByGroup: maagalPoruzBySettlement[c] ?? {},
+                          globalValues: maagalPoruzValues[c] ?? [],
+                          baseColor: const Color(0xFF6A1B9A),
+                          groupColors: settlementColors,
+                        ),
+                      )
+                      .toList();
+                }())
               else if (selectedInstructors.length >= 2)
-                ...(maagalPoruzCriteria
-                        .where(
-                          (c) =>
-                              (maagalPoruzByInstructor[c]?.isNotEmpty ?? false),
-                        )
-                        .toList())
-                    .map(
-                      (c) => buildDetailedCriterionBars(
-                        criterion: c,
-                        valuesByGroup: maagalPoruzByInstructor[c] ?? {},
-                        globalValues: maagalPoruzValues[c] ?? [],
-                        baseColor: const Color(0xFF6A1B9A),
-                      ),
-                    )
+                ...(() {
+                  // Create fixed color map for instructors
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final instructorColors = <String, Color>{};
+                  final sortedInstructors = selectedInstructors.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedInstructors.length; i++) {
+                    instructorColors[sortedInstructors[i]] =
+                        colorPalette[i % colorPalette.length];
+                  }
+                  return maagalPoruzCriteria
+                      .where(
+                        (c) =>
+                            (maagalPoruzByInstructor[c]?.isNotEmpty ?? false),
+                      )
+                      .map(
+                        (c) => buildDetailedCriterionBars(
+                          criterion: c,
+                          valuesByGroup: maagalPoruzByInstructor[c] ?? {},
+                          globalValues: maagalPoruzValues[c] ?? [],
+                          baseColor: const Color(0xFF6A1B9A),
+                          groupColors: instructorColors,
+                        ),
+                      )
+                      .toList();
+                }())
               else
                 ...(maagalPoruzCriteria
                         .where((c) => (maagalPoruzValues[c] ?? []).isNotEmpty)
@@ -14089,37 +14173,77 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
               const SizedBox(height: 8),
               // Check if we need detailed view
               if (selectedSettlements.length >= 2)
-                ...(sarikotRekhovCriteria
-                        .where(
-                          (c) =>
-                              (sarikotRekhovBySettlement[c]?.isNotEmpty ??
-                              false),
-                        )
-                        .toList())
-                    .map(
-                      (c) => buildDetailedCriterionBars(
-                        criterion: c,
-                        valuesByGroup: sarikotRekhovBySettlement[c] ?? {},
-                        globalValues: sarikotRekhovValues[c] ?? [],
-                        baseColor: const Color(0xFF00695C),
-                      ),
-                    )
+                ...(() {
+                  // Create fixed color map for settlements
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final settlementColors = <String, Color>{};
+                  final sortedSettlements = selectedSettlements.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedSettlements.length; i++) {
+                    settlementColors[sortedSettlements[i]] =
+                        colorPalette[i % colorPalette.length];
+                  }
+                  return sarikotRekhovCriteria
+                      .where(
+                        (c) =>
+                            (sarikotRekhovBySettlement[c]?.isNotEmpty ?? false),
+                      )
+                      .map(
+                        (c) => buildDetailedCriterionBars(
+                          criterion: c,
+                          valuesByGroup: sarikotRekhovBySettlement[c] ?? {},
+                          globalValues: sarikotRekhovValues[c] ?? [],
+                          baseColor: const Color(0xFF00695C),
+                          groupColors: settlementColors,
+                        ),
+                      )
+                      .toList();
+                }())
               else if (selectedInstructors.length >= 2)
-                ...(sarikotRekhovCriteria
-                        .where(
-                          (c) =>
-                              (sarikotRekhovByInstructor[c]?.isNotEmpty ??
-                              false),
-                        )
-                        .toList())
-                    .map(
-                      (c) => buildDetailedCriterionBars(
-                        criterion: c,
-                        valuesByGroup: sarikotRekhovByInstructor[c] ?? {},
-                        globalValues: sarikotRekhovValues[c] ?? [],
-                        baseColor: const Color(0xFF00695C),
-                      ),
-                    )
+                ...(() {
+                  // Create fixed color map for instructors
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final instructorColors = <String, Color>{};
+                  final sortedInstructors = selectedInstructors.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedInstructors.length; i++) {
+                    instructorColors[sortedInstructors[i]] =
+                        colorPalette[i % colorPalette.length];
+                  }
+                  return sarikotRekhovCriteria
+                      .where(
+                        (c) =>
+                            (sarikotRekhovByInstructor[c]?.isNotEmpty ?? false),
+                      )
+                      .map(
+                        (c) => buildDetailedCriterionBars(
+                          criterion: c,
+                          valuesByGroup: sarikotRekhovByInstructor[c] ?? {},
+                          globalValues: sarikotRekhovValues[c] ?? [],
+                          baseColor: const Color(0xFF00695C),
+                          groupColors: instructorColors,
+                        ),
+                      )
+                      .toList();
+                }())
               else
                 ...(sarikotRekhovCriteria
                         .where((c) => (sarikotRekhovValues[c] ?? []).isNotEmpty)
@@ -15319,6 +15443,15 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                       Colors.indigo.shade600,
                     ];
 
+                    // Create fixed color map for settlements
+                    final settlementColors = <String, Color>{};
+                    final sortedSettlementNames = selectedSettlements.toList()
+                      ..sort();
+                    for (var i = 0; i < sortedSettlementNames.length; i++) {
+                      settlementColors[sortedSettlementNames[i]] =
+                          colorPalette[i % colorPalette.length];
+                    }
+
                     return Column(
                       children: hitsPerStationPerSettlement.keys.map((
                         stationName,
@@ -15372,6 +15505,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                   1,
                                 );
                                 final color =
+                                    settlementColors[settlement] ??
                                     colorPalette[idx % colorPalette.length];
 
                                 return Padding(
@@ -18406,6 +18540,7 @@ class _SurpriseDrillsStatisticsPageState
     required Map<String, List<int>> valuesByGroup,
     required List<int> globalValues,
     required Color baseColor,
+    Map<String, Color>? groupColors,
   }) {
     final colorPalette = [
       Colors.blue.shade600,
@@ -18441,7 +18576,8 @@ class _SurpriseDrillsStatisticsPageState
             final group = entry.value.key;
             final vals = entry.value.value;
             final avg = avgOf(vals);
-            final color = colorPalette[idx % colorPalette.length];
+            final color =
+                groupColors?[group] ?? colorPalette[idx % colorPalette.length];
             final pct = (avg / 5.0).clamp(0.0, 1.0);
             final percentage = (pct * 100).toStringAsFixed(0);
 
@@ -19010,49 +19146,91 @@ class _SurpriseDrillsStatisticsPageState
               const SizedBox(height: 8),
               // Check if we need detailed view
               if (selectedSettlements.length >= 2)
-                ...principleValuesGlobal.entries.map((e) {
-                  final principleName = e.key;
-                  final values = e.value;
-                  // Build per-settlement breakdown
-                  final Map<String, List<int>> valuesByGroup = {};
-                  for (final settlement in selectedSettlements) {
-                    if (settlementPrincipleValues.containsKey(settlement) &&
-                        settlementPrincipleValues[settlement]!.containsKey(
-                          principleName,
-                        )) {
-                      valuesByGroup[settlement] =
-                          settlementPrincipleValues[settlement]![principleName]!;
-                    }
+                ...(() {
+                  // Create fixed color map for settlements
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final settlementColors = <String, Color>{};
+                  final sortedSettlements = selectedSettlements.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedSettlements.length; i++) {
+                    settlementColors[sortedSettlements[i]] =
+                        colorPalette[i % colorPalette.length];
                   }
-                  return buildDetailedCriterionBars(
-                    criterion: principleName,
-                    valuesByGroup: valuesByGroup,
-                    globalValues: values,
-                    baseColor: Colors.orangeAccent,
-                  );
-                })
+                  return principleValuesGlobal.entries.map((e) {
+                    final principleName = e.key;
+                    final values = e.value;
+                    // Build per-settlement breakdown
+                    final Map<String, List<int>> valuesByGroup = {};
+                    for (final settlement in selectedSettlements) {
+                      if (settlementPrincipleValues.containsKey(settlement) &&
+                          settlementPrincipleValues[settlement]!.containsKey(
+                            principleName,
+                          )) {
+                        valuesByGroup[settlement] =
+                            settlementPrincipleValues[settlement]![principleName]!;
+                      }
+                    }
+                    return buildDetailedCriterionBars(
+                      criterion: principleName,
+                      valuesByGroup: valuesByGroup,
+                      globalValues: values,
+                      baseColor: Colors.orangeAccent,
+                      groupColors: settlementColors,
+                    );
+                  }).toList();
+                }())
               else if (selectedInstructors.length >= 2)
-                ...principleValuesGlobal.entries.map((e) {
-                  final principleName = e.key;
-                  final values = e.value;
-                  // Build per-instructor breakdown
-                  final Map<String, List<int>> valuesByGroup = {};
-                  for (final instructor in selectedInstructors) {
-                    if (instructorPrincipleValues.containsKey(instructor) &&
-                        instructorPrincipleValues[instructor]!.containsKey(
-                          principleName,
-                        )) {
-                      valuesByGroup[instructor] =
-                          instructorPrincipleValues[instructor]![principleName]!;
-                    }
+                ...(() {
+                  // Create fixed color map for instructors
+                  final colorPalette = [
+                    Colors.blue.shade600,
+                    Colors.green.shade600,
+                    Colors.orange.shade600,
+                    Colors.purple.shade600,
+                    Colors.red.shade600,
+                    Colors.teal.shade600,
+                    Colors.amber.shade700,
+                    Colors.indigo.shade600,
+                  ];
+                  final instructorColors = <String, Color>{};
+                  final sortedInstructors = selectedInstructors.toList()
+                    ..sort();
+                  for (var i = 0; i < sortedInstructors.length; i++) {
+                    instructorColors[sortedInstructors[i]] =
+                        colorPalette[i % colorPalette.length];
                   }
-                  return buildDetailedCriterionBars(
-                    criterion: principleName,
-                    valuesByGroup: valuesByGroup,
-                    globalValues: values,
-                    baseColor: Colors.orangeAccent,
-                  );
-                })
+                  return principleValuesGlobal.entries.map((e) {
+                    final principleName = e.key;
+                    final values = e.value;
+                    // Build per-instructor breakdown
+                    final Map<String, List<int>> valuesByGroup = {};
+                    for (final instructor in selectedInstructors) {
+                      if (instructorPrincipleValues.containsKey(instructor) &&
+                          instructorPrincipleValues[instructor]!.containsKey(
+                            principleName,
+                          )) {
+                        valuesByGroup[instructor] =
+                            instructorPrincipleValues[instructor]![principleName]!;
+                      }
+                    }
+                    return buildDetailedCriterionBars(
+                      criterion: principleName,
+                      valuesByGroup: valuesByGroup,
+                      globalValues: values,
+                      baseColor: Colors.orangeAccent,
+                      groupColors: instructorColors,
+                    );
+                  }).toList();
+                }())
               else
                 ...principleValuesGlobal.entries.map((e) {
                   final principleName = e.key;
