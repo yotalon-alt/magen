@@ -8785,8 +8785,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                     // אין כדורים — לא שומרים (AlertDialog יופיע ב-onSubmitted)
                                                     if (station.bulletsCount ==
                                                             0 &&
-                                                        hits > 0)
+                                                        hits > 0) {
                                                       return;
+                                                    }
                                                     row.setValue(
                                                       stationIndex,
                                                       hits,
@@ -8968,8 +8969,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           if (widget.mode == 'range' &&
                                               _rangeType != 'ארוכים' &&
                                               station.bulletsCount == 0 &&
-                                              score > 0)
+                                              score > 0) {
                                             return;
+                                          }
                                           row.setValue(stationIndex, score);
                                           _scheduleAutoSave();
                                         },
