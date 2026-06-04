@@ -8769,7 +8769,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   inputFormatters: [
                                                     FilteringTextInputFormatter
                                                         .digitsOnly,
-                                                    if (station.bulletsCount > 0)
+                                                    if (station.bulletsCount >
+                                                        0)
                                                       _MaxValueFormatter(
                                                         station.bulletsCount,
                                                       ),
@@ -8784,7 +8785,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                     // אין כדורים — לא שומרים (AlertDialog יופיע ב-onSubmitted)
                                                     if (station.bulletsCount ==
                                                             0 &&
-                                                        hits > 0) return;
+                                                        hits > 0)
+                                                      return;
                                                     row.setValue(
                                                       stationIndex,
                                                       hits,
@@ -8802,33 +8804,30 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           ?.clear();
                                                       showDialog<void>(
                                                         context: context,
-                                                        builder: (ctx) =>
-                                                            Directionality(
-                                                              textDirection:
-                                                                  TextDirection
-                                                                      .rtl,
-                                                              child: AlertDialog(
-                                                                title: const Text(
-                                                                  'לא הוזן מספר כדורים',
-                                                                ),
-                                                                content:
-                                                                    const Text(
-                                                                      'יש להזין מספר כדורים למקצה לפני שמירת פגיעות.',
-                                                                    ),
-                                                                actions: [
-                                                                  TextButton(
-                                                                    onPressed: () =>
-                                                                        Navigator.pop(
-                                                                          ctx,
-                                                                        ),
-                                                                    child:
-                                                                        const Text(
-                                                                          'הבנתי',
-                                                                        ),
-                                                                  ),
-                                                                ],
-                                                              ),
+                                                        builder: (ctx) => Directionality(
+                                                          textDirection:
+                                                              TextDirection.rtl,
+                                                          child: AlertDialog(
+                                                            title: const Text(
+                                                              'לא הוזן מספר כדורים',
                                                             ),
+                                                            content: const Text(
+                                                              'יש להזין מספר כדורים למקצה לפני שמירת פגיעות.',
+                                                            ),
+                                                            actions: [
+                                                              TextButton(
+                                                                onPressed: () =>
+                                                                    Navigator.pop(
+                                                                      ctx,
+                                                                    ),
+                                                                child:
+                                                                    const Text(
+                                                                      'הבנתי',
+                                                                    ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
                                                       );
                                                       return;
                                                     }
@@ -8969,7 +8968,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                           if (widget.mode == 'range' &&
                                               _rangeType != 'ארוכים' &&
                                               station.bulletsCount == 0 &&
-                                              score > 0) return;
+                                              score > 0)
+                                            return;
                                           row.setValue(stationIndex, score);
                                           _scheduleAutoSave();
                                         },
@@ -8998,8 +8998,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                     TextButton(
                                                       onPressed: () =>
                                                           Navigator.pop(ctx),
-                                                      child:
-                                                          const Text('הבנתי'),
+                                                      child: const Text(
+                                                        'הבנתי',
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
