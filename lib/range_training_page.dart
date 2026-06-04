@@ -8769,6 +8769,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   inputFormatters: [
                                                     FilteringTextInputFormatter
                                                         .digitsOnly,
+                                                    if (station.bulletsCount > 0)
+                                                      _MaxValueFormatter(
+                                                        station.bulletsCount,
+                                                      ),
                                                   ],
                                                   textAlign: TextAlign.center,
                                                   style: const TextStyle(
@@ -8777,23 +8781,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   onChanged: (v) {
                                                     final hits =
                                                         int.tryParse(v) ?? 0;
-                                                    if (hits >
-                                                        station.bulletsCount) {
-                                                      ScaffoldMessenger.of(
-                                                        context,
-                                                      ).showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                            'פגיעות לא יכולות לעלות על ${station.bulletsCount}',
-                                                          ),
-                                                          duration:
-                                                              const Duration(
-                                                                seconds: 1,
-                                                              ),
-                                                        ),
-                                                      );
-                                                      return;
-                                                    }
+                                                    // אין כדורים — לא שומרים (AlertDialog יופיע ב-onSubmitted)
+                                                    if (station.bulletsCount ==
+                                                            0 &&
+                                                        hits > 0) return;
                                                     row.setValue(
                                                       stationIndex,
                                                       hits,
@@ -8804,6 +8795,43 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                   onSubmitted: (v) {
                                                     final hits =
                                                         int.tryParse(v) ?? 0;
+                                                    if (station.bulletsCount ==
+                                                            0 &&
+                                                        hits > 0) {
+                                                      _textControllers[controllerKey]
+                                                          ?.clear();
+                                                      showDialog<void>(
+                                                        context: context,
+                                                        builder: (ctx) =>
+                                                            Directionality(
+                                                              textDirection:
+                                                                  TextDirection
+                                                                      .rtl,
+                                                              child: AlertDialog(
+                                                                title: const Text(
+                                                                  'לא הוזן מספר כדורים',
+                                                                ),
+                                                                content:
+                                                                    const Text(
+                                                                      'יש להזין מספר כדורים למקצה לפני שמירת פגיעות.',
+                                                                    ),
+                                                                actions: [
+                                                                  TextButton(
+                                                                    onPressed: () =>
+                                                                        Navigator.pop(
+                                                                          ctx,
+                                                                        ),
+                                                                    child:
+                                                                        const Text(
+                                                                          'הבנתי',
+                                                                        ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                      );
+                                                      return;
+                                                    }
                                                     row.setValue(
                                                       stationIndex,
                                                       hits,
@@ -8937,11 +8965,48 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         textAlign: TextAlign.center,
                                         onChanged: (v) {
                                           final score = int.tryParse(v) ?? 0;
+                                          // טווח קצר ללא כדורים — לא שומרים (AlertDialog יופיע ב-onSubmitted)
+                                          if (widget.mode == 'range' &&
+                                              _rangeType != 'ארוכים' &&
+                                              station.bulletsCount == 0 &&
+                                              score > 0) return;
                                           row.setValue(stationIndex, score);
                                           _scheduleAutoSave();
                                         },
                                         onSubmitted: (v) {
                                           final score = int.tryParse(v) ?? 0;
+                                          // טווח קצר ללא כדורים — חסום ב-AlertDialog
+                                          if (widget.mode == 'range' &&
+                                              _rangeType != 'ארוכים' &&
+                                              station.bulletsCount == 0 &&
+                                              score > 0) {
+                                            _textControllers[controllerKey]
+                                                ?.clear();
+                                            showDialog<void>(
+                                              context: context,
+                                              builder: (ctx) => Directionality(
+                                                textDirection:
+                                                    TextDirection.rtl,
+                                                child: AlertDialog(
+                                                  title: const Text(
+                                                    'לא הוזן מספר כדורים',
+                                                  ),
+                                                  content: const Text(
+                                                    'יש להזין מספר כדורים למקצה לפני שמירת פגיעות.',
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(ctx),
+                                                      child:
+                                                          const Text('הבנתי'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                            return;
+                                          }
                                           row.setValue(stationIndex, score);
                                           _saveImmediately();
                                         },
