@@ -8896,10 +8896,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                     if (widget.mode == 'surprise') {
                                       desktopMaxValue = 10;
                                     } else if (_rangeType == 'ארוכים') {
-                                      desktopMaxValue = stationIndex <
+                                      desktopMaxValue =
+                                          stationIndex <
                                               longRangeStagesList.length
                                           ? longRangeStagesList[stationIndex]
-                                              .maxPoints
+                                                .maxPoints
                                           : 0;
                                     } else {
                                       desktopMaxValue = station.bulletsCount;
@@ -8927,7 +8928,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly,
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
                                           LengthLimitingTextInputFormatter(3),
                                           if (desktopMaxValue > 0)
                                             _MaxValueFormatter(desktopMaxValue),
