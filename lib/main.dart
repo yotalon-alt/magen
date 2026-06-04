@@ -14227,6 +14227,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
 
         // ✅ FIX: Count only bullets/points from stations that were actually performed
         int feedbackTotalBullets = 0;
+        int feedbackTotalHits = 0;
         for (final trainee in trainees) {
           final hitsMap =
               (trainee['hits'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -14234,6 +14235,17 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
             // Only count if this trainee has data for this station
             if (hitsMap.containsKey('station_$i')) {
               final station = stations[i];
+              
+              // ✅ If a specific station is selected, only count that station
+              if (selectedStation != 'כל המקצים') {
+                final stationName = _normalizeStationName(
+                  station['name'] as String? ?? '',
+                );
+                if (stationName != selectedStation) {
+                  continue; // Skip this station - not the selected one
+                }
+              }
+              
               if (isLongRange) {
                 // ✅ LONG RANGE: Use maxPoints for performed stations
                 feedbackTotalBullets +=
@@ -14243,19 +14255,18 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                 feedbackTotalBullets +=
                     (station['bulletsCount'] as num?)?.toInt() ?? 0;
               }
+              
+              // Count hits for this station
+              feedbackTotalHits +=
+                  (hitsMap['station_$i'] as num?)?.toInt() ?? 0;
             }
           }
         }
         totalBulletsPerSettlement[f.settlement] =
             (totalBulletsPerSettlement[f.settlement] ?? 0) +
             feedbackTotalBullets;
-
-        int totalHits = 0;
-        for (final trainee in trainees) {
-          totalHits += (trainee['totalHits'] as num?)?.toInt() ?? 0;
-        }
         totalHitsPerSettlement[f.settlement] =
-            (totalHitsPerSettlement[f.settlement] ?? 0) + totalHits;
+            (totalHitsPerSettlement[f.settlement] ?? 0) + feedbackTotalHits;
       }
     }
 
