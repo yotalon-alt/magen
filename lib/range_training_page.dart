@@ -5844,11 +5844,29 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 bottom: BorderSide(color: Colors.grey.shade200),
                               ),
                             ),
-                            child: _buildTraineeAutocomplete(
-                              idx: idx,
-                              row: row,
-                              controllerKey: controllerKey,
-                              focusKey: focusKey,
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  child: Text(
+                                    '${idx + 1}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _buildTraineeAutocomplete(
+                                    idx: idx,
+                                    row: row,
+                                    controllerKey: controllerKey,
+                                    focusKey: focusKey,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
@@ -6608,7 +6626,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isMobile = constraints.maxWidth < 600;
+        final isMobile =
+            constraints.maxWidth <
+            5000; // Always mobile layout (no desktop layout needed)
 
         // ✅ Check isEmpty AFTER LayoutBuilder but BEFORE mobile/desktop split
         // This allows V2 and other branches to be reached if data exists
@@ -6720,212 +6740,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       // Horizontally scrollable station headers (synced with body)
                       Expanded(
                         child: _rangeType == 'ארוכים'
-                            ? SingleChildScrollView(
+                            ? Scrollbar(
                                 controller: _headerHorizontal,
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    ...displayStations.asMap().entries.map((
-                                      entry,
-                                    ) {
-                                      final stationIndex = entry.key;
-                                      final station = entry.value;
-                                      return SizedBox(
-                                        width: 95,
-                                        child: GestureDetector(
-                                          onLongPress: () =>
-                                              _confirmToggleSharedTarget(
-                                                stationIndex,
-                                              ),
-                                          child: Container(
-                                            height:
-                                                widget.mode == 'surprise' &&
-                                                    kIsWeb
-                                                ? 68
-                                                : 56,
-                                            padding: const EdgeInsets.all(4.0),
-                                            decoration: BoxDecoration(
-                                              color: station.isSharedTarget
-                                                  ? Colors.purple.shade50
-                                                  : station.isLevelTester
-                                                  ? Colors.orange.shade50
-                                                  : Colors.blueGrey.shade50,
-                                              border: Border(
-                                                left: BorderSide(
-                                                  color: Colors.grey.shade300,
-                                                ),
-                                                bottom: BorderSide(
-                                                  color: station.isSharedTarget
-                                                      ? Colors.purple.shade300
-                                                      : Colors.grey.shade300,
-                                                  width: station.isSharedTarget
-                                                      ? 2
-                                                      : 1,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                if (station.isSharedTarget)
-                                                  Icon(
-                                                    Icons.people,
-                                                    size: 12,
-                                                    color:
-                                                        Colors.purple.shade600,
-                                                  ),
-                                                Text(
-                                                  station.name.isEmpty
-                                                      ? '$_itemLabel ${stationIndex + 1}'
-                                                      : station.name,
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 11,
-                                                    color:
-                                                        station.isSharedTarget
-                                                        ? Colors.purple.shade800
-                                                        : station.isLevelTester
-                                                        ? Colors.orange.shade800
-                                                        : Colors.black87,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  softWrap: false,
-                                                ),
-                                                if (station.isSharedTarget)
-                                                  Text(
-                                                    'משותף',
-                                                    style: TextStyle(
-                                                      fontSize: 8,
-                                                      color: Colors
-                                                          .purple
-                                                          .shade600,
-                                                    ),
-                                                  )
-                                                else if (stationIndex <
-                                                        longRangeStagesList
-                                                            .length &&
-                                                    longRangeStagesList[stationIndex]
-                                                            .maxPoints >
-                                                        0) ...[
-                                                  Text(
-                                                    '${longRangeStagesList[stationIndex].maxPoints}',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color:
-                                                          Colors.grey.shade600,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                    textAlign: TextAlign.center,
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                    // Summary columns for long range
-                                    SizedBox(
-                                      width: 95,
-                                      child: Container(
-                                        height: 56,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade50,
-                                          border: Border(
-                                            left: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Center(
-                                          child: Text(
-                                            'סהכ נקודות',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 10,
-                                              color: Colors.blue,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            softWrap: false,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 95,
-                                      child: Container(
-                                        height: 56,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.shade50,
-                                          border: Border(
-                                            left: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Center(
-                                          child: Text(
-                                            'ממוצע',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 10,
-                                              color: Colors.green,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            softWrap: false,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 95,
-                                      child: Container(
-                                        height: 56,
-                                        padding: const EdgeInsets.all(4.0),
-                                        decoration: BoxDecoration(
-                                          color: Colors.orange.shade50,
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade300,
-                                            ),
-                                          ),
-                                        ),
-                                        child: const Center(
-                                          child: Text(
-                                            'סהכ כדורים',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 10,
-                                              color: Colors.orange,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            softWrap: false,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : SingleChildScrollView(
-                                controller: _headerHorizontal,
-                                primary: false,
-                                scrollDirection: Axis.horizontal,
-                                child: SizedBox(
-                                  width: totalStationsWidth,
+                                thumbVisibility: true,
+                                scrollbarOrientation:
+                                    ScrollbarOrientation.bottom,
+                                child: SingleChildScrollView(
+                                  controller: _headerHorizontal,
+                                  scrollDirection: Axis.horizontal,
                                   child: Row(
                                     children: [
                                       ...displayStations.asMap().entries.map((
@@ -6933,214 +6755,122 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       ) {
                                         final stationIndex = entry.key;
                                         final station = entry.value;
-                                        return GestureDetector(
-                                          onLongPress: () =>
-                                              _confirmToggleSharedTarget(
-                                                stationIndex,
-                                              ),
-                                          child: Container(
-                                            width: stationColumnWidth,
-                                            // ✅ WEB FIX: Increase height for surprise drills to show "מקס׳: 10" without clipping
-                                            height:
-                                                widget.mode == 'surprise' &&
-                                                    kIsWeb
-                                                ? 68
-                                                : 56,
-                                            padding: const EdgeInsets.all(4.0),
-                                            decoration: BoxDecoration(
-                                              color: station.isSharedTarget
-                                                  ? Colors.purple.shade50
-                                                  : station.isLevelTester
-                                                  ? Colors.orange.shade50
-                                                  : Colors.blueGrey.shade50,
-                                              border: Border(
-                                                left: BorderSide(
-                                                  color: Colors.grey.shade300,
+                                        return SizedBox(
+                                          width: 95,
+                                          child: GestureDetector(
+                                            onLongPress: () =>
+                                                _confirmToggleSharedTarget(
+                                                  stationIndex,
                                                 ),
-                                                bottom: BorderSide(
-                                                  color: station.isSharedTarget
-                                                      ? Colors.purple.shade300
-                                                      : Colors.grey.shade300,
-                                                  width: station.isSharedTarget
-                                                      ? 2
-                                                      : 1,
-                                                ),
+                                            child: Container(
+                                              height:
+                                                  widget.mode == 'surprise' &&
+                                                      kIsWeb
+                                                  ? 68
+                                                  : 56,
+                                              padding: const EdgeInsets.all(
+                                                4.0,
                                               ),
-                                            ),
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                if (station.isSharedTarget)
-                                                  Icon(
-                                                    Icons.people,
-                                                    size: 12,
-                                                    color:
-                                                        Colors.purple.shade600,
+                                              decoration: BoxDecoration(
+                                                color: station.isSharedTarget
+                                                    ? Colors.purple.shade50
+                                                    : station.isLevelTester
+                                                    ? Colors.orange.shade50
+                                                    : Colors.blueGrey.shade50,
+                                                border: Border(
+                                                  left: BorderSide(
+                                                    color: Colors.grey.shade300,
                                                   ),
-                                                Text(
-                                                  station.name.isEmpty
-                                                      ? '$_itemLabel ${stationIndex + 1}'
-                                                      : station.name,
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 11,
+                                                  bottom: BorderSide(
                                                     color:
                                                         station.isSharedTarget
-                                                        ? Colors.purple.shade800
-                                                        : station.isLevelTester
-                                                        ? Colors.orange.shade800
-                                                        : Colors.black87,
+                                                        ? Colors.purple.shade300
+                                                        : Colors.grey.shade300,
+                                                    width:
+                                                        station.isSharedTarget
+                                                        ? 2
+                                                        : 1,
                                                   ),
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  softWrap: false,
                                                 ),
-                                                if (station.isSharedTarget)
-                                                  Text(
-                                                    'משותף',
-                                                    style: TextStyle(
-                                                      fontSize: 8,
+                                              ),
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  if (station.isSharedTarget)
+                                                    Icon(
+                                                      Icons.people,
+                                                      size: 12,
                                                       color: Colors
                                                           .purple
                                                           .shade600,
                                                     ),
-                                                  )
-                                                // ✅ SURPRISE DRILLS: Show "מקס׳: 10" for each principle
-                                                else if (widget.mode ==
-                                                    'surprise') ...[
-                                                  const SizedBox(height: 2),
-                                                  const Text(
-                                                    'מקס׳: 10',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: Colors.black54,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                    textAlign: TextAlign.center,
-                                                  ),
-                                                ]
-                                                // בוחן רמה: Show bullet count number
-                                                else if (widget.mode ==
-                                                        'range' &&
-                                                    station.isLevelTester) ...[
                                                   Text(
-                                                    '${station.bulletsCount}',
+                                                    station.name.isEmpty
+                                                        ? '$_itemLabel ${stationIndex + 1}'
+                                                        : station.name,
                                                     style: TextStyle(
-                                                      fontSize: 9,
-                                                      color: Colors
-                                                          .orange
-                                                          .shade700,
                                                       fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                    textAlign: TextAlign.center,
-                                                  ),
-                                                ] else if (widget.mode ==
-                                                        'range' &&
-                                                    _rangeType == 'ארוכים' &&
-                                                    stationIndex <
-                                                        longRangeStagesList
-                                                            .length &&
-                                                    longRangeStagesList[stationIndex]
-                                                            .maxPoints >
-                                                        0) ...[
-                                                  Text(
-                                                    '${longRangeStagesList[stationIndex].maxPoints}',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
+                                                          FontWeight.bold,
+                                                      fontSize: 11,
                                                       color:
-                                                          Colors.grey.shade600,
-                                                      fontWeight:
-                                                          FontWeight.w600,
+                                                          station.isSharedTarget
+                                                          ? Colors
+                                                                .purple
+                                                                .shade800
+                                                          : station
+                                                                .isLevelTester
+                                                          ? Colors
+                                                                .orange
+                                                                .shade800
+                                                          : Colors.black87,
                                                     ),
                                                     textAlign: TextAlign.center,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    softWrap: false,
                                                   ),
-                                                ] else if (widget.mode ==
-                                                        'range' &&
-                                                    _rangeType == 'קצרים' &&
-                                                    station.bulletsCount >
-                                                        0) ...[
-                                                  // Short Range: Show just the number
-                                                  Text(
-                                                    '${station.bulletsCount}',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color:
-                                                          Colors.grey.shade600,
-                                                      fontWeight:
-                                                          FontWeight.w600,
+                                                  if (station.isSharedTarget)
+                                                    Text(
+                                                      'משותף',
+                                                      style: TextStyle(
+                                                        fontSize: 8,
+                                                        color: Colors
+                                                            .purple
+                                                            .shade600,
+                                                      ),
+                                                    )
+                                                  else if (stationIndex <
+                                                          longRangeStagesList
+                                                              .length &&
+                                                      longRangeStagesList[stationIndex]
+                                                              .maxPoints >
+                                                          0) ...[
+                                                    Text(
+                                                      '${longRangeStagesList[stationIndex].maxPoints}',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors
+                                                            .grey
+                                                            .shade600,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
                                                     ),
-                                                    textAlign: TextAlign.center,
-                                                  ),
+                                                  ],
                                                 ],
-                                              ],
+                                              ),
                                             ),
                                           ),
                                         );
                                       }),
-                                      // Summary column headers
-                                      if (widget.mode == 'surprise') ...[
-                                        Container(
-                                          width: 90,
-                                          height: 56,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade50,
-                                            border: Border(
-                                              left: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                            ),
-                                          ),
-                                          child: const Center(
-                                            child: Text(
-                                              'סך נקודות',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 10,
-                                                color: Colors.blue,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              softWrap: false,
-                                            ),
-                                          ),
-                                        ),
-                                        Container(
-                                          width: 80,
-                                          height: 56,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.shade50,
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                            ),
-                                          ),
-                                          child: const Center(
-                                            child: Text(
-                                              'אחוז',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 10,
-                                                color: Colors.green,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              softWrap: false,
-                                            ),
-                                          ),
-                                        ),
-                                      ] else if (_rangeType == 'ארוכים') ...[
-                                        // Long Range: Use "נקודות" labels
-                                        Container(
-                                          width: 90,
+                                      // Summary columns for long range
+                                      SizedBox(
+                                        width: 95,
+                                        child: Container(
                                           height: 56,
                                           padding: const EdgeInsets.all(4.0),
                                           decoration: BoxDecoration(
@@ -7167,8 +6897,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                           ),
                                         ),
-                                        Container(
-                                          width: 70,
+                                      ),
+                                      SizedBox(
+                                        width: 95,
+                                        child: Container(
                                           height: 56,
                                           padding: const EdgeInsets.all(4.0),
                                           decoration: BoxDecoration(
@@ -7195,8 +6927,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                           ),
                                         ),
-                                        Container(
-                                          width: 70,
+                                      ),
+                                      SizedBox(
+                                        width: 95,
+                                        child: Container(
                                           height: 56,
                                           padding: const EdgeInsets.all(4.0),
                                           decoration: BoxDecoration(
@@ -7220,63 +6954,392 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                             ),
                                           ),
                                         ),
-                                      ] else ...[
-                                        // Short Range: Use "פגיעות" labels
-                                        Container(
-                                          width: 90,
-                                          height: 56,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade50,
-                                            border: Border(
-                                              left: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                            ),
-                                          ),
-                                          child: const Center(
-                                            child: Text(
-                                              'פגיעות/כדורים',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 10,
-                                                color: Colors.blue,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              softWrap: false,
-                                            ),
-                                          ),
-                                        ),
-                                        Container(
-                                          width: 70,
-                                          height: 56,
-                                          padding: const EdgeInsets.all(4.0),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.shade50,
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.grey.shade300,
-                                              ),
-                                            ),
-                                          ),
-                                          child: const Center(
-                                            child: Text(
-                                              'אחוז',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 10,
-                                                color: Colors.green,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              softWrap: false,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ],
+                                  ),
+                                ),
+                              )
+                            : Scrollbar(
+                                controller: _headerHorizontal,
+                                thumbVisibility: true,
+                                scrollbarOrientation:
+                                    ScrollbarOrientation.bottom,
+                                child: SingleChildScrollView(
+                                  controller: _headerHorizontal,
+                                  primary: false,
+                                  scrollDirection: Axis.horizontal,
+                                  child: SizedBox(
+                                    width: totalStationsWidth,
+                                    child: Row(
+                                      children: [
+                                        ...displayStations.asMap().entries.map((
+                                          entry,
+                                        ) {
+                                          final stationIndex = entry.key;
+                                          final station = entry.value;
+                                          return GestureDetector(
+                                            onLongPress: () =>
+                                                _confirmToggleSharedTarget(
+                                                  stationIndex,
+                                                ),
+                                            child: Container(
+                                              width: stationColumnWidth,
+                                              // ✅ WEB FIX: Increase height for surprise drills to show "מקס׳: 10" without clipping
+                                              height:
+                                                  widget.mode == 'surprise' &&
+                                                      kIsWeb
+                                                  ? 68
+                                                  : 56,
+                                              padding: const EdgeInsets.all(
+                                                4.0,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: station.isSharedTarget
+                                                    ? Colors.purple.shade50
+                                                    : station.isLevelTester
+                                                    ? Colors.orange.shade50
+                                                    : Colors.blueGrey.shade50,
+                                                border: Border(
+                                                  left: BorderSide(
+                                                    color: Colors.grey.shade300,
+                                                  ),
+                                                  bottom: BorderSide(
+                                                    color:
+                                                        station.isSharedTarget
+                                                        ? Colors.purple.shade300
+                                                        : Colors.grey.shade300,
+                                                    width:
+                                                        station.isSharedTarget
+                                                        ? 2
+                                                        : 1,
+                                                  ),
+                                                ),
+                                              ),
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  if (station.isSharedTarget)
+                                                    Icon(
+                                                      Icons.people,
+                                                      size: 12,
+                                                      color: Colors
+                                                          .purple
+                                                          .shade600,
+                                                    ),
+                                                  Text(
+                                                    station.name.isEmpty
+                                                        ? '$_itemLabel ${stationIndex + 1}'
+                                                        : station.name,
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 11,
+                                                      color:
+                                                          station.isSharedTarget
+                                                          ? Colors
+                                                                .purple
+                                                                .shade800
+                                                          : station
+                                                                .isLevelTester
+                                                          ? Colors
+                                                                .orange
+                                                                .shade800
+                                                          : Colors.black87,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    softWrap: false,
+                                                  ),
+                                                  if (station.isSharedTarget)
+                                                    Text(
+                                                      'משותף',
+                                                      style: TextStyle(
+                                                        fontSize: 8,
+                                                        color: Colors
+                                                            .purple
+                                                            .shade600,
+                                                      ),
+                                                    )
+                                                  // ✅ SURPRISE DRILLS: Show "מקס׳: 10" for each principle
+                                                  else if (widget.mode ==
+                                                      'surprise') ...[
+                                                    const SizedBox(height: 2),
+                                                    const Text(
+                                                      'מקס׳: 10',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.black54,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ]
+                                                  // בוחן רמה: Show bullet count number
+                                                  else if (widget.mode ==
+                                                          'range' &&
+                                                      station
+                                                          .isLevelTester) ...[
+                                                    Text(
+                                                      '${station.bulletsCount}',
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        color: Colors
+                                                            .orange
+                                                            .shade700,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ] else if (widget.mode ==
+                                                          'range' &&
+                                                      _rangeType == 'ארוכים' &&
+                                                      stationIndex <
+                                                          longRangeStagesList
+                                                              .length &&
+                                                      longRangeStagesList[stationIndex]
+                                                              .maxPoints >
+                                                          0) ...[
+                                                    Text(
+                                                      '${longRangeStagesList[stationIndex].maxPoints}',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors
+                                                            .grey
+                                                            .shade600,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ] else if (widget.mode ==
+                                                          'range' &&
+                                                      _rangeType == 'קצרים' &&
+                                                      station.bulletsCount >
+                                                          0) ...[
+                                                    // Short Range: Show just the number
+                                                    Text(
+                                                      '${station.bulletsCount}',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors
+                                                            .grey
+                                                            .shade600,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        }),
+                                        // Summary column headers
+                                        if (widget.mode == 'surprise') ...[
+                                          Container(
+                                            width: 90,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              border: Border(
+                                                left: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'סך נקודות',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.blue,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 80,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              border: Border(
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'אחוז',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.green,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                        ] else if (_rangeType == 'ארוכים') ...[
+                                          // Long Range: Use "נקודות" labels
+                                          Container(
+                                            width: 90,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              border: Border(
+                                                left: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'סהכ נקודות',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.blue,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 70,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              border: Border(
+                                                left: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'ממוצע',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.green,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 70,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.shade50,
+                                              border: Border(
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'סהכ כדורים',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.orange,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          // Short Range: Use "פגיעות" labels
+                                          Container(
+                                            width: 90,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              border: Border(
+                                                left: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'פגיעות/כדורים',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.blue,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 70,
+                                            height: 56,
+                                            padding: const EdgeInsets.all(4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              border: Border(
+                                                bottom: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'אחוז',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  color: Colors.green,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                softWrap: false,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -7317,11 +7380,29 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                         ),
                                       ),
                                     ),
-                                    child: _buildTraineeAutocomplete(
-                                      idx: idx,
-                                      row: row,
-                                      controllerKey: controllerKey,
-                                      focusKey: focusKey,
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 20,
+                                          child: Text(
+                                            '${idx + 1}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey.shade600,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: _buildTraineeAutocomplete(
+                                            idx: idx,
+                                            row: row,
+                                            controllerKey: controllerKey,
+                                            focusKey: focusKey,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -8619,7 +8700,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                       // Keep same width as other columns, stack inputs vertically
                                       return SizedBox(
                                         width: 90,
-                                        child: Padding(
+                                        child: Container(
+                                          margin: const EdgeInsets.symmetric(
+                                            horizontal: 2.0,
+                                            vertical: 2.0,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange.shade50,
+                                            border: Border.all(
+                                              color: Colors.orange.shade300,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 2.0,
                                             vertical: 2.0,
@@ -8837,14 +8931,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                               : '',
                                         ),
                                         focusNode: _getFocusNode(focusKey),
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           isDense: true,
-                                          border: OutlineInputBorder(),
+                                          border: const OutlineInputBorder(),
                                           hintText: '0',
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 12,
-                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 12,
+                                              ),
+                                          filled: true,
+                                          fillColor: currentValue > 0
+                                              ? Colors.green.shade50
+                                              : Colors.grey.shade50,
                                         ),
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
