@@ -3350,12 +3350,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // );
     } finally {
       _isSaving = false;
-      // ✅ FIX: עבד snapshot שהגיע בזמן השמירה
+      // Discard any remote data that arrived during our save — our version
+      // is the newest in Firestore. The real-time listener will shortly fire
+      // with our own write (ignored via updatedByUid == currentUid check).
       if (_pendingRemoteData != null) {
-        final pending = _pendingRemoteData!;
+        debugPrint(
+          '🗑️ REALTIME: Discarding queued remote data — our save is the latest version',
+        );
         _pendingRemoteData = null;
-        debugPrint('🔄 REALTIME: Processing queued remote data after save');
-        _mergeRemoteChanges(pending);
       }
     }
   }
@@ -3450,215 +3452,78 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('   Local trainees count: ${traineeRows.length}');
 
       setState(() {
-        // Build stage-name-based index maps for index-order-independent merge (Short Range only)
-        // Remote: stage index → stage name (from remoteData['stations'])
-        // Local:  stage name → stage index (from shortRangeStagesList)
-        final Map<int, String> remoteIdxToName = {};
-        final Map<String, int> localNameToIdx = {};
-        if (_rangeType == 'קצרים') {
-          final remoteStationsList = remoteData['stations'] as List?;
-          if (remoteStationsList != null) {
-            for (int si = 0; si < remoteStationsList.length; si++) {
-              final stMap = remoteStationsList[si] as Map<String, dynamic>?;
-              final sName = stMap?['name'] as String?;
-              if (sName != null && sName.isNotEmpty) {
-                remoteIdxToName[si] = sName;
-              }
-            }
+        // LAST WRITE WINS: Full replacement from remote data
+        // Replace trainee rows completely — no additive/smart merge
+        if (remoteTrainees != null) {
+          // Dispose and clear all text controllers (indices may change)
+          for (final c in _textControllers.values) {
+            c.dispose();
           }
-          for (int si = 0; si < shortRangeStagesList.length; si++) {
-            final stage = shortRangeStagesList[si];
-            final name = stage.isManual
-                ? stage.manualName.trim()
-                : (stage.selectedStage ?? '');
-            if (name.isNotEmpty) {
-              localNameToIdx[name] = si;
-            }
-          }
-          debugPrint('   REALTIME: remoteIdxToName=$remoteIdxToName');
-          debugPrint('   REALTIME: localNameToIdx=$localNameToIdx');
-        }
+          _textControllers.clear();
 
-        // Merge each trainee - KEEP NON-EMPTY VALUES from both sides
-        if (remoteTrainees != null && remoteTrainees.isNotEmpty) {
+          traineeRows.clear();
           for (int i = 0; i < remoteTrainees.length; i++) {
-            // Ensure we have enough local rows
-            while (i >= traineeRows.length) {
-              traineeRows.add(
-                TraineeRowModel(index: traineeRows.length, name: ''),
-              );
-            }
-
             final remoteTrainee = remoteTrainees[i] as Map<String, dynamic>;
-            final remoteName = (remoteTrainee['name'] as String?) ?? '';
-            final remoteValues =
-                remoteTrainee['values'] as Map<String, dynamic>? ?? {};
-
-            debugPrint('   Merging trainee[$i]:');
-            debugPrint('     Local name: "${traineeRows[i].name}"');
-            debugPrint('     Remote name: "$remoteName"');
-
-            // MERGE NAME: Use remote name if local is empty
-            if (traineeRows[i].name.trim().isEmpty && remoteName.isNotEmpty) {
-              debugPrint('     ✅ Taking remote name');
-              traineeRows[i].name = remoteName;
-
-              // ✅ FIX: Update name TextField controller explicitly to prevent display mismatch
-              // This ensures the UI shows the merged name immediately
-              final nameControllerKey = 'trainee_$i';
-              if (_textControllers.containsKey(nameControllerKey)) {
-                _textControllers[nameControllerKey]!.text = remoteName;
-                debugPrint('     🔄 Updated name controller to: "$remoteName"');
-              }
-            } else if (traineeRows[i].name.trim().isNotEmpty &&
-                remoteName.isEmpty) {
-              debugPrint('     ✅ Keeping local name');
-              // Keep local name - controller already correct
-            } else if (traineeRows[i].name.trim().isNotEmpty &&
-                remoteName.isNotEmpty &&
-                traineeRows[i].name != remoteName) {
-              debugPrint(
-                '     ⚠️ Both have names - keeping local (user is editing)',
-              );
-              // Keep local (current user is typing) - don't update controller
-            }
-
-            // MERGE VALUES: Translate remote stage index → stage name → local index
-            // Prevents values landing on the wrong stage when stage order differs between users
-            final Map<int, int> mergedValues = Map<int, int>.from(
-              traineeRows[i].values,
-            );
-            int mergedCount = 0;
-
-            remoteValues.forEach((key, value) {
-              final remoteStageIdx = int.tryParse(
-                key.toString().replaceAll('station_', ''),
-              );
-              if (remoteStageIdx == null) return;
-
-              // Translate remote index → local index via stage name (Short Range only)
-              int localIdx = remoteStageIdx;
-              if (_rangeType == 'קצרים' && remoteIdxToName.isNotEmpty) {
-                final stageName = remoteIdxToName[remoteStageIdx];
-                if (stageName == null) return; // unknown remote stage — skip
-                final mapped = localNameToIdx[stageName];
-                if (mapped == null) {
-                  return; // stage not present locally yet — skip
-                }
-                localIdx = mapped;
-              }
-
-              final localValue = traineeRows[i].values[localIdx] ?? 0;
-              final remoteValue = (value as num?)?.toInt() ?? 0;
-
-              debugPrint(
-                '     Station remote[$remoteStageIdx]→local[$localIdx]: local=$localValue remote=$remoteValue',
-              );
-
-              // SMART MERGE: Take non-zero value
-              if (localValue == 0 && remoteValue > 0) {
-                mergedValues[localIdx] = remoteValue;
-                mergedCount++;
-                debugPrint('       → Taking remote value');
-              } else if (localValue > 0 && remoteValue == 0) {
-                // Keep local
-                debugPrint('       → Keeping local value');
-              } else if (localValue > 0 &&
-                  remoteValue > 0 &&
-                  localValue != remoteValue) {
-                // Both have values - keep local (user is actively editing)
-                debugPrint('       → Both non-zero, keeping local');
-              }
-            });
-
-            // Apply merged values and update matching TextEditingControllers
-            // so the table UI immediately reflects the new values (controllers
-            // are NOT updated automatically during rebuild by design).
-            mergedValues.forEach((localIdx, newVal) {
-              if (newVal != (traineeRows[i].values[localIdx] ?? 0)) {
-                // update both mobile and desktop controller keys
-                final displayStr = newVal > 0 ? newVal.toString() : '';
-                _textControllers['row_${i}_station_$localIdx']?.text =
-                    displayStr;
-                _textControllers['desktop_trainee_${i}_station_$localIdx']
-                        ?.text =
-                    displayStr;
-              }
-            });
-            traineeRows[i].values.addAll(mergedValues);
-
-            // Merge timeValues with same index translation (e.g. 'בוחן רמה' time)
-            final remoteTimeValues =
-                remoteTrainee['timeValues'] as Map<String, dynamic>? ?? {};
-            remoteTimeValues.forEach((key, value) {
-              final timeKey = key
-                  .toString()
-                  .replaceAll('station_', '')
-                  .replaceAll('_time', '');
-              final remoteStageIdx = int.tryParse(timeKey);
-              if (remoteStageIdx == null) return;
-
-              int localIdx = remoteStageIdx;
-              if (_rangeType == 'קצרים' && remoteIdxToName.isNotEmpty) {
-                final stageName = remoteIdxToName[remoteStageIdx];
-                if (stageName == null) return;
-                final mapped = localNameToIdx[stageName];
-                if (mapped == null) return;
-                localIdx = mapped;
-              }
-
-              final localTime = traineeRows[i].timeValues[localIdx];
-              final remoteTime = (value as num?)?.toDouble();
-              if ((localTime == null || localTime == 0) &&
-                  remoteTime != null &&
-                  remoteTime > 0) {
-                traineeRows[i].timeValues[localIdx] = remoteTime;
-                // Also update the time controller so בוחן רמה time is visible
-                final timeStr = remoteTime > 0 ? remoteTime.toString() : '';
-                _textControllers['desktop_trainee_${i}_station_${localIdx}_time']
-                        ?.text =
-                    timeStr;
-                debugPrint(
-                  '     ✅ Merged timeValue remote[$remoteStageIdx]→local[$localIdx]=$remoteTime',
-                );
-              }
-            });
-
-            debugPrint('     Merged $mergedCount cells from remote');
+            traineeRows.add(TraineeRowModel.fromFirestore(remoteTrainee));
           }
+          // Keep _loadedDraftTrainees in sync for count-change restoration
+          _loadedDraftTrainees = List<TraineeRowModel>.from(traineeRows);
+          debugPrint(
+            '   REALTIME: Replaced ${traineeRows.length} trainee rows from remote',
+          );
         }
 
-        // Merge remote stations (additive only — never remove local stages)
+        // Full replacement of stages from remote data (no additive merge)
         final remoteStations = remoteData['stations'] as List?;
         if (remoteStations != null && remoteStations.isNotEmpty) {
-          // Use display name for deduplication (manual stages use manualName, not 'מקצה ידני')
-          final localStageNames = shortRangeStagesList.map((s) {
-            return s.isManual ? s.manualName.trim() : (s.selectedStage ?? '');
-          }).toSet();
-          for (final remoteStation in remoteStations) {
-            final stationMap = remoteStation as Map<String, dynamic>?;
-            // Stations are saved with field 'name', not 'selectedStage'
-            final stageName = stationMap?['name'] as String?;
-            if (stageName != null &&
-                stageName.isNotEmpty &&
-                !localStageNames.contains(stageName)) {
-              final isManual = stationMap?['isManual'] as bool? ?? false;
+          if (_rangeType == 'קצרים') {
+            shortRangeStagesList.clear();
+            for (final remoteStation in remoteStations) {
+              final stationMap = remoteStation as Map<String, dynamic>?;
+              if (stationMap == null) continue;
+              final stageName = stationMap['name'] as String? ?? '';
+              if (stageName.isEmpty) continue;
+              final isManual = stationMap['isManual'] as bool? ?? false;
               shortRangeStagesList.add(
                 ShortRangeStageModel(
                   selectedStage: isManual ? 'מקצה ידני' : stageName,
                   manualName: isManual ? stageName : '',
                   isManual: isManual,
                   bulletsCount:
-                      (stationMap?['bulletsCount'] as num?)?.toInt() ?? 0,
+                      (stationMap['bulletsCount'] as num?)?.toInt() ?? 0,
                   isSharedTarget:
-                      stationMap?['isSharedTarget'] as bool? ?? false,
+                      stationMap['isSharedTarget'] as bool? ?? false,
                 ),
               );
-              localStageNames.add(stageName);
-              debugPrint(
-                '     ✅ REALTIME: Added missing station "$stageName" from remote',
+            }
+            debugPrint(
+              '   REALTIME: Replaced ${shortRangeStagesList.length} short range stages from remote',
+            );
+          } else if (_rangeType == 'ארוכים') {
+            longRangeStagesList.clear();
+            for (final remoteStation in remoteStations) {
+              final stationMap = remoteStation as Map<String, dynamic>?;
+              if (stationMap == null) continue;
+              final stageName = stationMap['name'] as String? ?? '';
+              if (stageName.isEmpty) continue;
+              final isManual = stationMap['isManual'] as bool? ?? false;
+              longRangeStagesList.add(
+                LongRangeStageModel(
+                  name: stageName,
+                  maxPoints: (stationMap['maxPoints'] as num?)?.toInt() ?? 0,
+                  bulletsCount:
+                      (stationMap['bulletsCount'] as num?)?.toInt() ?? 0,
+                  achievedPoints:
+                      (stationMap['achievedPoints'] as num?)?.toInt() ?? 0,
+                  isManual: isManual,
+                  isSharedTarget:
+                      stationMap['isSharedTarget'] as bool? ?? false,
+                ),
               );
             }
+            debugPrint(
+              '   REALTIME: Replaced ${longRangeStagesList.length} long range stages from remote',
+            );
           }
         }
 
