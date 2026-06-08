@@ -3350,15 +3350,42 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // );
     } finally {
       _isSaving = false;
-      // Discard any remote data that arrived during our save — our version
-      // is the newest in Firestore. The real-time listener will shortly fire
-      // with our own write (ignored via updatedByUid == currentUid check).
+      // If a remote update arrived while we were saving, refresh from Firestore.
+      // This gives us the true latest version — which includes our own save AND
+      // any concurrent saves by other users — without using the stale pending snapshot.
       if (_pendingRemoteData != null) {
-        debugPrint(
-          '🗑️ REALTIME: Discarding queued remote data — our save is the latest version',
-        );
         _pendingRemoteData = null;
+        debugPrint(
+          '🔄 REALTIME: Pending remote data detected — refreshing from Firestore',
+        );
+        _refreshFromFirestore();
       }
+    }
+  }
+
+  /// Reads the current document from Firestore and updates local UI state.
+  /// Called only when a remote update arrived during our own save, to ensure
+  /// the UI reflects the true latest version (our save + concurrent saves).
+  Future<void> _refreshFromFirestore() async {
+    final docId = _editingFeedbackId;
+    if (docId == null || docId.isEmpty) return;
+    if (!mounted) return;
+
+    try {
+      debugPrint('🔄 REFRESH: Reading latest state from Firestore doc=$docId');
+      final doc = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(docId)
+          .get();
+
+      if (!doc.exists || !mounted) return;
+      final data = doc.data();
+      if (data == null) return;
+
+      debugPrint('🔄 REFRESH: Got fresh snapshot, applying to UI');
+      _mergeRemoteChanges(data);
+    } catch (e) {
+      debugPrint('❌ REFRESH ERROR: $e');
     }
   }
 
