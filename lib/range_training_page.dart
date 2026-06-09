@@ -3303,6 +3303,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               // Merge: remote is base, local overlays (local wins on same key)
               final merged = Map<String, dynamic>.from(remoteVals)
                 ..addAll(localVals);
+              // Respect intentional deletions: if user touched a cell and its value
+              // is absent from localVals (= deleted), remove it from the merged result
+              // even though remote still has it.
+              final localTouched =
+                  txnTrainees[i]['valuesTouched'] as Map? ?? {};
+              localTouched.forEach((key, touched) {
+                if (touched == true && !localVals.containsKey(key)) {
+                  merged.remove(key);
+                }
+              });
               txnTrainees[i]['values'] = merged;
               // Recalculate hits + totalHits from merged values
               final mergedHits = <String, int>{};
@@ -9285,6 +9295,8 @@ class TraineeRowModel {
     // ✅ FIX: Only store values > 0
     // Existence of key in map = trainee performed this station
     // No key = not performed
+    // Mark as touched so the transaction knows this was an intentional edit/deletion
+    valuesTouched[stationIndex] = true;
     if (value > 0) {
       values[stationIndex] = value;
       debugPrint(
@@ -9340,11 +9352,17 @@ class TraineeRowModel {
         timeValuesMap['station_${stationIdx}_time'] = val;
       }
     });
+    // Serialize which stations were explicitly touched (for deletion detection in merge)
+    final touchedMap = <String, bool>{};
+    valuesTouched.forEach((stationIdx, touched) {
+      if (touched) touchedMap['station_$stationIdx'] = true;
+    });
     return {
       'index': index,
       'name': name.trim(),
       'values': valuesMap,
       'timeValues': timeValuesMap,
+      'valuesTouched': touchedMap,
     };
   }
 
