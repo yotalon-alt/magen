@@ -7612,12 +7612,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             currentValue,
                                                         maxValue: maxPoints,
                                                         onConfirm: (val) {
-                                                          setState(
-                                                            () => row.setValue(
-                                                              stationIndex,
-                                                              val,
-                                                            ),
-                                                          );
+                                                          setState(() {
+                                                            // Look up current row by index — closure ref may be stale after real-time sync
+                                                            final currentRow = traineeRows.firstWhere(
+                                                              (r) => r.index == row.index,
+                                                              orElse: () => row,
+                                                            );
+                                                            currentRow.setValue(stationIndex, val);
+                                                          });
                                                           _scheduleAutoSave();
                                                         },
                                                       );
@@ -7996,14 +7998,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                 timeValue,
                                                             onConfirm: (hits, time) {
                                                               setState(() {
-                                                                row.setValue(
-                                                                  stationIndex,
-                                                                  hits,
+                                                                // Look up current row by index — closure ref may be stale after real-time sync
+                                                                final currentRow = traineeRows.firstWhere(
+                                                                  (r) => r.index == row.index,
+                                                                  orElse: () => row,
                                                                 );
-                                                                row.setTimeValue(
-                                                                  stationIndex,
-                                                                  time,
-                                                                );
+                                                                currentRow.setValue(stationIndex, hits);
+                                                                currentRow.setTimeValue(stationIndex, time);
                                                               });
                                                               _scheduleAutoSave();
                                                             },
@@ -8126,12 +8127,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               _rangeType ==
                                                                   'קצרים',
                                                           onConfirm: (val) {
-                                                            setState(
-                                                              () => row.setValue(
-                                                                stationIndex,
-                                                                val,
-                                                              ),
-                                                            );
+                                                            setState(() {
+                                                              // Look up current row by index — closure ref may be stale after real-time sync
+                                                              final currentRow = traineeRows.firstWhere(
+                                                                (r) => r.index == row.index,
+                                                                orElse: () => row,
+                                                              );
+                                                              currentRow.setValue(stationIndex, val);
+                                                            });
                                                             _scheduleAutoSave();
                                                           },
                                                         );
