@@ -277,6 +277,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // ✅ REAL-TIME SYNC: Listen to concurrent edits by other admins
   StreamSubscription<DocumentSnapshot>? _draftListener;
   bool _isLoadingRemoteChanges = false;
+  int _openDialogCount = 0; // ✅ FIX: Defer remote refresh while any cell dialog is open
+  bool _pendingRefreshAfterDialog = false; // ✅ FIX: Refresh queued while dialog was open
   String? _lastRemoteUpdateBy;
   Map<String, dynamic>?
   _pendingRemoteData; // ✅ FIX: snapshot שהגיע בזמן _isSaving
@@ -3426,8 +3428,16 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // any concurrent saves by other users — without using the stale pending snapshot.
       if (_pendingRemoteData != null) {
         _pendingRemoteData = null;
+        _pendingRefreshAfterDialog = false; // covered by this refresh
         debugPrint(
           '🔄 REALTIME: Pending remote data detected — refreshing from Firestore',
+        );
+        _refreshFromFirestore();
+      } else if (_pendingRefreshAfterDialog && _openDialogCount == 0) {
+        // A refresh was queued while a dialog was open and no save is pending.
+        _pendingRefreshAfterDialog = false;
+        debugPrint(
+          '🔄 REALTIME: Executing deferred refresh after save completed',
         );
         _refreshFromFirestore();
       }
@@ -3438,6 +3448,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   /// Called only when a remote update arrived during our own save, to ensure
   /// the UI reflects the true latest version (our save + concurrent saves).
   Future<void> _refreshFromFirestore() async {
+    // ✅ FIX: If a cell dialog is open, defer refresh until it closes.
+    // Merging traineeRows while dialog is open would discard the user's in-progress input.
+    // Defer if a dialog is open OR if there are unsaved local edits pending (timer active).
+    // Merging traineeRows in either case would discard the user's in-progress input.
+    if (_openDialogCount > 0 || (_autoSaveTimer?.isActive ?? false)) {
+      debugPrint('⏸️ REFRESH: Deferred — dialog open=$_openDialogCount, timer=${_autoSaveTimer?.isActive}');
+      _pendingRefreshAfterDialog = true;
+      return;
+    }
     final docId = _editingFeedbackId;
     if (docId == null || docId.isEmpty) return;
     if (!mounted) return;
@@ -7603,6 +7622,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           ? longRangeStagesList[stationIndex]
                                                                 .maxPoints
                                                           : 0;
+                                                      _openDialogCount++;
                                                       await _showCellInputDialog(
                                                         traineeName: row.name,
                                                         stationName:
@@ -7623,6 +7643,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           _scheduleAutoSave();
                                                         },
                                                       );
+                                                      _openDialogCount--;
+                                                      if (_openDialogCount == 0 && _pendingRefreshAfterDialog) {
+                                                        if (!(_autoSaveTimer?.isActive ?? false)) {
+                                                          // No pending save — refresh now
+                                                          _pendingRefreshAfterDialog = false;
+                                                          _refreshFromFirestore();
+                                                        }
+                                                        // If timer active: save will finish and finally block will do the refresh
+                                                      }
                                                     },
                                                     child: Container(
                                                       margin:
@@ -7985,6 +8014,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       height: rowHeight,
                                                       child: InkWell(
                                                         onTap: () async {
+                                                          _openDialogCount++;
                                                           await _showLevelTesterDialog(
                                                             traineeName:
                                                                 row.name,
@@ -8009,6 +8039,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                               _scheduleAutoSave();
                                                             },
                                                           );
+                                                          _openDialogCount--;
+                                                          if (_openDialogCount == 0 && _pendingRefreshAfterDialog) {
+                                                            if (!(_autoSaveTimer?.isActive ?? false)) {
+                                                              _pendingRefreshAfterDialog = false;
+                                                              _refreshFromFirestore();
+                                                            }
+                                                          }
                                                         },
                                                         child: Container(
                                                           margin:
@@ -8112,6 +8149,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                     height: rowHeight - 4,
                                                     child: InkWell(
                                                       onTap: () async {
+                                                        _openDialogCount++;
                                                         await _showCellInputDialog(
                                                           traineeName: row.name,
                                                           stationName:
@@ -8138,6 +8176,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             _scheduleAutoSave();
                                                           },
                                                         );
+                                                        _openDialogCount--;
+                                                        if (_openDialogCount == 0 && _pendingRefreshAfterDialog) {
+                                                          if (!(_autoSaveTimer?.isActive ?? false)) {
+                                                            _pendingRefreshAfterDialog = false;
+                                                            _refreshFromFirestore();
+                                                          }
+                                                        }
                                                       },
                                                       child: Container(
                                                         margin:
