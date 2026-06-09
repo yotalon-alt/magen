@@ -4077,8 +4077,9 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
       final data = doc.data()!;
 
       // ✅ Load creator UID for permissions
+      // Prefer 'createdByUid' (set only on creation). Fallback to 'instructorId' for old docs.
       final createdByUid =
-          data['instructorId'] as String? ?? data['createdByUid'] as String?;
+          data['createdByUid'] as String? ?? data['instructorId'] as String?;
 
       debugPrint('✅ Draft loaded successfully');
 

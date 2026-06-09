@@ -3203,7 +3203,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             ? 'range_short'
             : (_rangeType == 'ארוכים' ? 'range_long' : moduleType)),
         'rangeMode': widget.mode,
-        'instructorId': uid,
         'instructorName':
             currentUser?.name ?? '', // ✅ Use local name (no Firestore fetch)
         'updatedByUid': uid, // ✅ Track last editor
@@ -3338,6 +3337,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         // ✅ Add creator fields ONLY for new documents (preserve original creator)
         if (isNewDocument) {
+          txnPatch['instructorId'] = uid; // ✅ Only set on creation — never overwrite with editor's UID
           txnPatch['createdByName'] = currentUser?.name ?? '';
           txnPatch['createdByUid'] = uid;
           txnPatch['createdAt'] = FieldValue.serverTimestamp();
@@ -3454,7 +3454,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       if (data == null) return;
 
       debugPrint('🔄 REFRESH: Got fresh snapshot, applying to UI');
-      _mergeRemoteChanges(data);
+      _mergeRemoteChanges(data, fromRefresh: true);
     } catch (e) {
       debugPrint('❌ REFRESH ERROR: $e');
     }
@@ -3526,7 +3526,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
   /// ✅ REAL-TIME SYNC: Merge remote changes with local state
   /// SMART MERGE: Keeps non-empty values from both local and remote
-  void _mergeRemoteChanges(Map<String, dynamic> remoteData) {
+  /// [fromRefresh] = true when called from _refreshFromFirestore (data is already latest Firestore state)
+  ///                 false when called directly from snapshot listener (data may be stale — re-read from Firestore first)
+  void _mergeRemoteChanges(Map<String, dynamic> remoteData, {bool fromRefresh = false}) {
     // Prevent recursion (merging while loading)
     if (_isSaving) {
       // ✅ FIX: שמור לעיבוד אחרי שהשמירה מסתיימת — אל תזרוק!
@@ -3545,6 +3547,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         '⚡ REALTIME: Pending local edits detected — saving immediately before applying remote',
       );
       _saveTemporarily(); // saves local → finally applies _pendingRemoteData
+      return;
+    }
+    // ✅ FIX: When snapshot arrives from listener (not from our own _refreshFromFirestore),
+    // the snapshot data may be stale (created before our last save completed).
+    // Re-read from Firestore to get the true latest state (our save + concurrent saves).
+    if (!fromRefresh) {
+      debugPrint('🔄 REALTIME: Snapshot received — refreshing from Firestore for true latest state');
+      _refreshFromFirestore();
       return;
     }
     if (_isLoadingRemoteChanges) {
@@ -3776,9 +3786,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
       // ✅ Load original creator's name (use stored name)
       final createdByName = data['createdByName'] as String?;
+      // ✅ FIX: Prefer 'createdByUid' (set only on creation, never overwritten).
+      // Fallback to 'instructorId' for backward compatibility with older docs.
       final createdByUid =
-          data['instructorId'] as String? ??
-          data['createdByUid'] as String?; // ✅ Load creator UID for permissions
+          data['createdByUid'] as String? ??
+          data['instructorId'] as String?; // ✅ Load creator UID for permissions
 
       debugPrint('DRAFT_LOAD: rawTrainees.length=${rawTrainees?.length ?? -1}');
       debugPrint('DRAFT_LOAD: rawStations.length=${rawStations?.length ?? -1}');
