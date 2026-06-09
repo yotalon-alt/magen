@@ -274,6 +274,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // ✅ AUTOSAVE TIMER: Debounced autosave (700ms delay)
   Timer? _autoSaveTimer;
 
+  // ✅ SAVE THROTTLE: Track last save time to prevent excessive Firestore writes
+  // When user moves between fields rapidly, only save once per 5 seconds max.
+  // _saveImmediately() defers to the debounce timer if last save was < 5s ago.
+  DateTime? _lastSaveTime;
+
   // ✅ REAL-TIME SYNC: Listen to concurrent edits by other admins
   StreamSubscription<DocumentSnapshot>? _draftListener;
   bool _isLoadingRemoteChanges = false;
@@ -792,6 +797,24 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('⏸️ IMMEDIATE SAVE: Skipping - no settlement entered yet');
         return;
       }
+    }
+
+    // ✅ SAVE THROTTLE: If last save was < 5 seconds ago, defer to debounce timer.
+    // This prevents excessive Firestore writes when user moves between fields rapidly.
+    // The debounce timer will fire 700ms after the last field change, ensuring data is saved.
+    // IMPORTANT: This throttle does NOT apply when called from _mergeRemoteChanges()
+    // because that path calls _saveTemporarily() directly (bypassing _saveImmediately).
+    final now = DateTime.now();
+    if (_lastSaveTime != null &&
+        now.difference(_lastSaveTime!) < const Duration(seconds: 5)) {
+      debugPrint(
+        '⏱️ IMMEDIATE SAVE: Throttled (last save ${now.difference(_lastSaveTime!).inMilliseconds}ms ago) — deferring to timer',
+      );
+      // Ensure a timer is running so the data will be saved
+      if (!(_autoSaveTimer?.isActive ?? false)) {
+        _scheduleAutoSave();
+      }
+      return;
     }
 
     _autoSaveTimer?.cancel(); // Cancel pending debounced save
@@ -3367,6 +3390,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('✅ DRAFT_SAVE: Patch written successfully');
       debugPrint('DRAFT_SAVE: Draft saved at ${docRef.path}');
       debugPrint('DRAFT_SAVE: traineeRows.length=${traineeRows.length}');
+
+      // ✅ THROTTLE: Record save time so _saveImmediately can throttle rapid saves
+      _lastSaveTime = DateTime.now();
 
       // ✅ CRITICAL: Store draftId in _editingFeedbackId after FIRST save
       // This ensures subsequent _saveFinalFeedback() UPDATES same doc instead of creating new one

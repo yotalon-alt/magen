@@ -1101,14 +1101,41 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
+  // ⚡ PERF: Cache profile futures per UID to avoid re-fetching on stream rebuilds
+  final Map<String, Future<DocumentSnapshot>> _profileFutures = {};
+
+  Future<DocumentSnapshot> _loadProfile(String uid) {
+    return _profileFutures.putIfAbsent(uid, () => _fetchProfileCacheFirst(uid));
+  }
+
+  /// ⚡ PERF: Try Firestore local cache first (<100ms), fall back to network only on cache miss.
+  /// Firestore offline persistence is enabled in main(), so returning users always hit cache.
+  Future<DocumentSnapshot> _fetchProfileCacheFirst(String uid) async {
+    final ref = FirebaseFirestore.instance.collection('users').doc(uid);
+    try {
+      final cached = await ref.get(const GetOptions(source: Source.cache));
+      if (cached.exists) {
+        debugPrint('AuthGate: profile loaded from cache (instant)');
+        return cached;
+      }
+    } catch (_) {
+      // Cache miss (first login or cache cleared) — fall through to network
+    }
+    debugPrint('AuthGate: cache miss, loading profile from network...');
+    return ref.get().timeout(const Duration(seconds: 5));
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
+      // ⚡ PERF: initialData bypasses the "waiting" state on returning users.
+      // currentUser is a synchronous getter — no network call, no delay.
+      initialData: FirebaseAuth.instance.currentUser,
       builder: (context, authSnap) {
         debugPrint('AuthGate: authStateChanges=${authSnap.data?.uid}');
 
-        // Still waiting for initial auth state
+        // Still waiting for initial auth state (only on very first cold start)
         if (authSnap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
@@ -1134,11 +1161,7 @@ class _AuthGateState extends State<AuthGate> {
         // User signed in; now validate profile
         debugPrint('AuthGate: user=${user.uid}, loading profile...');
         return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get()
-              .timeout(const Duration(seconds: 5)),
+          future: _loadProfile(user.uid),
           builder: (context, docSnap) {
             // Still loading profile
             if (docSnap.connectionState == ConnectionState.waiting) {
