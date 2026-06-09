@@ -279,6 +279,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   bool _isLoadingRemoteChanges = false;
   int _openDialogCount = 0; // ✅ FIX: Defer remote refresh while any cell dialog is open
   bool _pendingRefreshAfterDialog = false; // ✅ FIX: Refresh queued while dialog was open
+  bool _pendingSave = false; // ✅ FIX: Save requested while _isSaving was true — retry after current save
   String? _lastRemoteUpdateBy;
   Map<String, dynamic>?
   _pendingRemoteData; // ✅ FIX: snapshot שהגיע בזמן _isSaving
@@ -2990,7 +2991,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // NO REBUILD: Doesn't call setState during background auto-save
 
     if (_isSaving) {
-      debugPrint('⚠️ DRAFT_SAVE: Already saving, skipping...');
+      debugPrint('⚠️ DRAFT_SAVE: Already saving — queuing re-save for after current save completes');
+      _pendingSave = true;
       return; // Prevent concurrent saves
     }
 
@@ -3423,6 +3425,17 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // );
     } finally {
       _isSaving = false;
+      // If another save was requested while we were saving, re-save now to capture
+      // any changes (e.g. B confirming a dialog) that were dropped by the early return.
+      // Do this BEFORE any refresh so the re-save writes B's data to Firestore first.
+      final needsResave = _pendingSave;
+      if (needsResave) {
+        _pendingSave = false;
+        debugPrint('🔄 DRAFT_SAVE: Re-saving dropped changes from concurrent save request');
+        _saveTemporarily(); // unawaited — will handle refresh in its own finally
+      }
+      // Skip refresh logic — the re-save's own finally will handle it.
+      if (!needsResave) {
       // If a remote update arrived while we were saving, refresh from Firestore.
       // This gives us the true latest version — which includes our own save AND
       // any concurrent saves by other users — without using the stale pending snapshot.
@@ -3441,6 +3454,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         );
         _refreshFromFirestore();
       }
+      } // end if (!needsResave)
     }
   }
 
