@@ -3189,10 +3189,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           .collection('feedbacks')
           .doc(draftId);
 
-      // ✅ Check if document exists to preserve original creator
-      final existingDoc = await docRef.get();
-      final isNewDocument = !existingDoc.exists;
-
+      // ✅ Build base patch (fields that don't depend on Firestore state)
       Map<String, dynamic> patch = {
         'status': 'temporary',
         'isDraft': true,
@@ -3238,26 +3235,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'summary': trainingSummary, // ✅ סיכום האימון מהמדריך
       };
 
-      // ✅ Add creator fields ONLY for new documents (preserve original creator)
-      if (isNewDocument) {
-        patch['createdByName'] = currentUser?.name ?? '';
-        patch['createdByUid'] = uid;
-        patch['createdAt'] = FieldValue.serverTimestamp();
-      }
-
-      // 🔍 DEBUG: Log temp save flags before write
-      debugPrint(
-        'TEMP_SAVE_FLAGS: docId=$draftId isTemporary=true finalizedAt=null status=temporary isNewDocument=$isNewDocument',
-      );
-
-      // ✅ FIX: ALWAYS save trainees (even if no stations yet)
-      // This allows users to fill trainee names first, then add stations/principles later
-      // Only skip writing stations if they're empty (to preserve existing stage data)
-      patch['trainees'] = traineesPayload;
-
-      if (stationsData.isNotEmpty) {
-        patch['stations'] = stationsData;
-      }
+      // ✅ Snapshot original payload so each transaction retry starts fresh
+      final originalTraineesPayload = traineesPayload
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
 
       debugPrint('DRAFT_SAVE: PATCH keys=${patch.keys.toList()}');
       debugPrint('DRAFT_SAVE: PATCH.attendeesCount=$attendeesCount');
@@ -3283,8 +3264,88 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         debugPrint('🌐 =========================================\n');
       }
 
-      // Use Firestore merge to patch only changed fields
-      await docRef.set(patch, SetOptions(merge: true));
+      // ✅ ATOMIC TRANSACTION: get + merge + set in one operation.
+      // Firestore auto-retries on conflict (up to 5×), eliminating the
+      // race-condition window between the old separate get() and set().
+      bool isNewDocument = false;
+      await FirebaseFirestore.instance.runTransaction((txn) async {
+        final existingDoc = await txn.get(docRef);
+        isNewDocument = !existingDoc.exists;
+
+        // Work on a fresh copy each retry so merges don't stack
+        final txnTrainees = originalTraineesPayload
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+
+        // ✅ CONCURRENT EDIT FIX: Merge remote trainee values with local before saving.
+        // Problem: two instructors editing different cells simultaneously each save their
+        // full local trainees array, overwriting the other's changes.
+        // Solution: read existing Firestore state atomically, merge remote values as the
+        // base, then overlay local values (local always wins on conflict).
+        // This preserves edits made by the other instructor for cells this user didn't touch.
+        if (!isNewDocument) {
+          final remoteTraineesRaw = existingDoc.data()?['trainees'] as List?;
+          if (remoteTraineesRaw != null &&
+              remoteTraineesRaw.length == txnTrainees.length) {
+            for (int i = 0; i < txnTrainees.length; i++) {
+              final remoteTrainee =
+                  remoteTraineesRaw[i] as Map<String, dynamic>?;
+              if (remoteTrainee == null) continue;
+              // Remote values — prefer 'values' field, fall back to 'hits' (legacy)
+              final remoteVals =
+                  (remoteTrainee['values'] as Map<String, dynamic>?) ??
+                  (remoteTrainee['hits'] as Map<String, dynamic>?) ??
+                  {};
+              // Local values (serialized by toFirestore())
+              final localVals = Map<String, dynamic>.from(
+                txnTrainees[i]['values'] as Map? ?? {},
+              );
+              // Merge: remote is base, local overlays (local wins on same key)
+              final merged = Map<String, dynamic>.from(remoteVals)
+                ..addAll(localVals);
+              txnTrainees[i]['values'] = merged;
+              // Recalculate hits + totalHits from merged values
+              final mergedHits = <String, int>{};
+              int mergedTotal = 0;
+              merged.forEach((k, v) {
+                final intVal = (v as num?)?.toInt() ?? 0;
+                if (intVal > 0) {
+                  mergedHits[k] = intVal;
+                  mergedTotal += intVal;
+                }
+              });
+              txnTrainees[i]['hits'] = mergedHits;
+              txnTrainees[i]['totalHits'] = mergedTotal;
+            }
+            debugPrint(
+              'DRAFT_SAVE: ✅ CONCURRENT_MERGE: Merged remote+local for ${txnTrainees.length} trainees',
+            );
+          }
+        }
+
+        // Build final patch for this transaction attempt
+        final txnPatch = Map<String, dynamic>.from(patch);
+
+        // ✅ Add creator fields ONLY for new documents (preserve original creator)
+        if (isNewDocument) {
+          txnPatch['createdByName'] = currentUser?.name ?? '';
+          txnPatch['createdByUid'] = uid;
+          txnPatch['createdAt'] = FieldValue.serverTimestamp();
+        }
+
+        // 🔍 DEBUG: Log temp save flags before write
+        debugPrint(
+          'TEMP_SAVE_FLAGS: docId=$draftId isTemporary=true finalizedAt=null status=temporary isNewDocument=$isNewDocument',
+        );
+
+        // ✅ FIX: ALWAYS save trainees (even if no stations yet)
+        txnPatch['trainees'] = txnTrainees;
+        if (stationsData.isNotEmpty) {
+          txnPatch['stations'] = stationsData;
+        }
+
+        txn.set(docRef, txnPatch, SetOptions(merge: true));
+      });
       debugPrint('✅ DRAFT_SAVE: Patch (merge) complete');
 
       // ✅ Update loaded draft trainees after successful save
@@ -3461,6 +3522,19 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       // ✅ FIX: שמור לעיבוד אחרי שהשמירה מסתיימת — אל תזרוק!
       _pendingRemoteData = remoteData;
       debugPrint('⏸️ REALTIME: Queued remote data (saving in progress)');
+      return;
+    }
+    // ✅ FIX CONCURRENT EDIT: If local timer is active (= unsaved local edits),
+    // save local data FIRST so it reaches Firestore before we overwrite with remote.
+    // Without this, the remote snapshot would replace local edits that haven't been saved yet.
+    if (_autoSaveTimer?.isActive == true) {
+      _autoSaveTimer?.cancel();
+      _pendingRemoteData =
+          remoteData; // will be applied in finally block after save
+      debugPrint(
+        '⚡ REALTIME: Pending local edits detected — saving immediately before applying remote',
+      );
+      _saveTemporarily(); // saves local → finally applies _pendingRemoteData
       return;
     }
     if (_isLoadingRemoteChanges) {
