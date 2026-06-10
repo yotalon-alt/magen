@@ -9778,11 +9778,11 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             vertical: 10,
                           ),
                         ),
-                        onPressed: () {
+                        onPressed: () async {
                           final rangeType = feedback.rangeSubType == 'טווח רחוק'
                               ? 'ארוכים'
                               : 'קצרים';
-                          Navigator.push(
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => RangeTrainingPage(
@@ -9792,6 +9792,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               ),
                             ),
                           );
+                          if (mounted) _refreshDocFuture();
                         },
                       ),
                     ),
