@@ -277,9 +277,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   // ✅ REAL-TIME SYNC: Listen to concurrent edits by other admins
   StreamSubscription<DocumentSnapshot>? _draftListener;
   bool _isLoadingRemoteChanges = false;
-  int _openDialogCount = 0; // ✅ FIX: Defer remote refresh while any cell dialog is open
-  bool _pendingRefreshAfterDialog = false; // ✅ FIX: Refresh queued while dialog was open
-  bool _pendingSave = false; // ✅ FIX: Save requested while _isSaving was true — retry after current save
+  int _openDialogCount =
+      0; // ✅ FIX: Defer remote refresh while any cell dialog is open
+  bool _pendingRefreshAfterDialog =
+      false; // ✅ FIX: Refresh queued while dialog was open
+  bool _pendingSave =
+      false; // ✅ FIX: Save requested while _isSaving was true — retry after current save
   String? _lastRemoteUpdateBy;
   Map<String, dynamic>?
   _pendingRemoteData; // ✅ FIX: snapshot שהגיע בזמן _isSaving
@@ -2991,7 +2994,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // NO REBUILD: Doesn't call setState during background auto-save
 
     if (_isSaving) {
-      debugPrint('⚠️ DRAFT_SAVE: Already saving — queuing re-save for after current save completes');
+      debugPrint(
+        '⚠️ DRAFT_SAVE: Already saving — queuing re-save for after current save completes',
+      );
       _pendingSave = true;
       return; // Prevent concurrent saves
     }
@@ -3341,7 +3346,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
 
         // ✅ Add creator fields ONLY for new documents (preserve original creator)
         if (isNewDocument) {
-          txnPatch['instructorId'] = uid; // ✅ Only set on creation — never overwrite with editor's UID
+          txnPatch['instructorId'] =
+              uid; // ✅ Only set on creation — never overwrite with editor's UID
           txnPatch['createdByName'] = currentUser?.name ?? '';
           txnPatch['createdByUid'] = uid;
           txnPatch['createdAt'] = FieldValue.serverTimestamp();
@@ -3431,29 +3437,31 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       final needsResave = _pendingSave;
       if (needsResave) {
         _pendingSave = false;
-        debugPrint('🔄 DRAFT_SAVE: Re-saving dropped changes from concurrent save request');
+        debugPrint(
+          '🔄 DRAFT_SAVE: Re-saving dropped changes from concurrent save request',
+        );
         _saveTemporarily(); // unawaited — will handle refresh in its own finally
       }
       // Skip refresh logic — the re-save's own finally will handle it.
       if (!needsResave) {
-      // If a remote update arrived while we were saving, refresh from Firestore.
-      // This gives us the true latest version — which includes our own save AND
-      // any concurrent saves by other users — without using the stale pending snapshot.
-      if (_pendingRemoteData != null) {
-        _pendingRemoteData = null;
-        _pendingRefreshAfterDialog = false; // covered by this refresh
-        debugPrint(
-          '🔄 REALTIME: Pending remote data detected — refreshing from Firestore',
-        );
-        _refreshFromFirestore();
-      } else if (_pendingRefreshAfterDialog && _openDialogCount == 0) {
-        // A refresh was queued while a dialog was open and no save is pending.
-        _pendingRefreshAfterDialog = false;
-        debugPrint(
-          '🔄 REALTIME: Executing deferred refresh after save completed',
-        );
-        _refreshFromFirestore();
-      }
+        // If a remote update arrived while we were saving, refresh from Firestore.
+        // This gives us the true latest version — which includes our own save AND
+        // any concurrent saves by other users — without using the stale pending snapshot.
+        if (_pendingRemoteData != null) {
+          _pendingRemoteData = null;
+          _pendingRefreshAfterDialog = false; // covered by this refresh
+          debugPrint(
+            '🔄 REALTIME: Pending remote data detected — refreshing from Firestore',
+          );
+          _refreshFromFirestore();
+        } else if (_pendingRefreshAfterDialog && _openDialogCount == 0) {
+          // A refresh was queued while a dialog was open and no save is pending.
+          _pendingRefreshAfterDialog = false;
+          debugPrint(
+            '🔄 REALTIME: Executing deferred refresh after save completed',
+          );
+          _refreshFromFirestore();
+        }
       } // end if (!needsResave)
     }
   }
@@ -3467,7 +3475,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // Defer if a dialog is open OR if there are unsaved local edits pending (timer active).
     // Merging traineeRows in either case would discard the user's in-progress input.
     if (_openDialogCount > 0 || (_autoSaveTimer?.isActive ?? false)) {
-      debugPrint('⏸️ REFRESH: Deferred — dialog open=$_openDialogCount, timer=${_autoSaveTimer?.isActive}');
+      debugPrint(
+        '⏸️ REFRESH: Deferred — dialog open=$_openDialogCount, timer=${_autoSaveTimer?.isActive}',
+      );
       _pendingRefreshAfterDialog = true;
       return;
     }
@@ -3561,7 +3571,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
   /// SMART MERGE: Keeps non-empty values from both local and remote
   /// [fromRefresh] = true when called from _refreshFromFirestore (data is already latest Firestore state)
   ///                 false when called directly from snapshot listener (data may be stale — re-read from Firestore first)
-  void _mergeRemoteChanges(Map<String, dynamic> remoteData, {bool fromRefresh = false}) {
+  void _mergeRemoteChanges(
+    Map<String, dynamic> remoteData, {
+    bool fromRefresh = false,
+  }) {
     // Prevent recursion (merging while loading)
     if (_isSaving) {
       // ✅ FIX: שמור לעיבוד אחרי שהשמירה מסתיימת — אל תזרוק!
@@ -3586,7 +3599,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // the snapshot data may be stale (created before our last save completed).
     // Re-read from Firestore to get the true latest state (our save + concurrent saves).
     if (!fromRefresh) {
-      debugPrint('🔄 REALTIME: Snapshot received — refreshing from Firestore for true latest state');
+      debugPrint(
+        '🔄 REALTIME: Snapshot received — refreshing from Firestore for true latest state',
+      );
       _refreshFromFirestore();
       return;
     }
@@ -4281,7 +4296,11 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('========== ✅ DRAFT_LOAD END (SUCCESS) ==========\n');
 
       // ✅ START REAL-TIME LISTENER: Monitor concurrent edits by other admins
-      _startListeningToDraft(id);
+      // Skip in editFinalFeedback mode — only one admin edits final feedbacks at a time,
+      // and the initial snapshot from the listener would overwrite the user's in-progress edits.
+      if (!widget.editFinalFeedback) {
+        _startListeningToDraft(id);
+      }
     } catch (e, stackTrace) {
       debugPrint('\n========== ❌ DRAFT_LOAD ERROR ==========');
       debugPrint('DRAFT_LOAD_ERROR: $e');
@@ -7648,20 +7667,32 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                         onConfirm: (val) {
                                                           setState(() {
                                                             // Look up current row by index — closure ref may be stale after real-time sync
-                                                            final currentRow = traineeRows.firstWhere(
-                                                              (r) => r.index == row.index,
-                                                              orElse: () => row,
+                                                            final currentRow =
+                                                                traineeRows.firstWhere(
+                                                                  (r) =>
+                                                                      r.index ==
+                                                                      row.index,
+                                                                  orElse: () =>
+                                                                      row,
+                                                                );
+                                                            currentRow.setValue(
+                                                              stationIndex,
+                                                              val,
                                                             );
-                                                            currentRow.setValue(stationIndex, val);
                                                           });
                                                           _scheduleAutoSave();
                                                         },
                                                       );
                                                       _openDialogCount--;
-                                                      if (_openDialogCount == 0 && _pendingRefreshAfterDialog) {
-                                                        if (!(_autoSaveTimer?.isActive ?? false)) {
+                                                      if (_openDialogCount ==
+                                                              0 &&
+                                                          _pendingRefreshAfterDialog) {
+                                                        if (!(_autoSaveTimer
+                                                                ?.isActive ??
+                                                            false)) {
                                                           // No pending save — refresh now
-                                                          _pendingRefreshAfterDialog = false;
+                                                          _pendingRefreshAfterDialog =
+                                                              false;
                                                           _refreshFromFirestore();
                                                         }
                                                         // If timer active: save will finish and finally block will do the refresh
@@ -8043,20 +8074,38 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             onConfirm: (hits, time) {
                                                               setState(() {
                                                                 // Look up current row by index — closure ref may be stale after real-time sync
-                                                                final currentRow = traineeRows.firstWhere(
-                                                                  (r) => r.index == row.index,
-                                                                  orElse: () => row,
-                                                                );
-                                                                currentRow.setValue(stationIndex, hits);
-                                                                currentRow.setTimeValue(stationIndex, time);
+                                                                final currentRow =
+                                                                    traineeRows.firstWhere(
+                                                                      (r) =>
+                                                                          r.index ==
+                                                                          row.index,
+                                                                      orElse:
+                                                                          () =>
+                                                                              row,
+                                                                    );
+                                                                currentRow
+                                                                    .setValue(
+                                                                      stationIndex,
+                                                                      hits,
+                                                                    );
+                                                                currentRow
+                                                                    .setTimeValue(
+                                                                      stationIndex,
+                                                                      time,
+                                                                    );
                                                               });
                                                               _scheduleAutoSave();
                                                             },
                                                           );
                                                           _openDialogCount--;
-                                                          if (_openDialogCount == 0 && _pendingRefreshAfterDialog) {
-                                                            if (!(_autoSaveTimer?.isActive ?? false)) {
-                                                              _pendingRefreshAfterDialog = false;
+                                                          if (_openDialogCount ==
+                                                                  0 &&
+                                                              _pendingRefreshAfterDialog) {
+                                                            if (!(_autoSaveTimer
+                                                                    ?.isActive ??
+                                                                false)) {
+                                                              _pendingRefreshAfterDialog =
+                                                                  false;
                                                               _refreshFromFirestore();
                                                             }
                                                           }
@@ -8181,19 +8230,33 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           onConfirm: (val) {
                                                             setState(() {
                                                               // Look up current row by index — closure ref may be stale after real-time sync
-                                                              final currentRow = traineeRows.firstWhere(
-                                                                (r) => r.index == row.index,
-                                                                orElse: () => row,
-                                                              );
-                                                              currentRow.setValue(stationIndex, val);
+                                                              final currentRow =
+                                                                  traineeRows.firstWhere(
+                                                                    (r) =>
+                                                                        r.index ==
+                                                                        row.index,
+                                                                    orElse:
+                                                                        () =>
+                                                                            row,
+                                                                  );
+                                                              currentRow
+                                                                  .setValue(
+                                                                    stationIndex,
+                                                                    val,
+                                                                  );
                                                             });
                                                             _scheduleAutoSave();
                                                           },
                                                         );
                                                         _openDialogCount--;
-                                                        if (_openDialogCount == 0 && _pendingRefreshAfterDialog) {
-                                                          if (!(_autoSaveTimer?.isActive ?? false)) {
-                                                            _pendingRefreshAfterDialog = false;
+                                                        if (_openDialogCount ==
+                                                                0 &&
+                                                            _pendingRefreshAfterDialog) {
+                                                          if (!(_autoSaveTimer
+                                                                  ?.isActive ??
+                                                              false)) {
+                                                            _pendingRefreshAfterDialog =
+                                                                false;
                                                             _refreshFromFirestore();
                                                           }
                                                         }
