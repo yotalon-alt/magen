@@ -4227,24 +4227,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         // Replace stations with loaded data
         stations = loadedStations.isNotEmpty ? loadedStations : stations;
 
-        // 🔥 WEB FIX: Clear text controllers for long range to force recreation with fresh values
-        // Root cause: _getController reuses existing controllers without updating text
-        // After load, old controller.text still has pre-save values (e.g., "75")
-        // but if they were normalized during save/load cycle, we need fresh controllers
-        // This ensures controllers are recreated on next build with current traineeRows values
-        if (kIsWeb && _rangeType == 'ארוכים') {
-          debugPrint(
-            '🌐 WEB LONG RANGE: Clearing ${_textControllers.length} text controllers to prevent stale values',
-          );
-          // Dispose old controllers
-          for (final controller in _textControllers.values) {
-            controller.dispose();
-          }
-          _textControllers.clear();
-          debugPrint(
-            '🌐 WEB LONG RANGE: Controllers cleared, will be recreated on rebuild',
-          );
+        // ✅ FIX: Always clear text controllers after loading data from Firestore.
+        // _getController reuses existing controllers without updating text, so after
+        // traineeRows are replaced with fresh data, any controller created during the
+        // first build (before load) would still hold stale/empty values.
+        // Clearing forces recreation on the next build with the correct loaded values.
+        for (final controller in _textControllers.values) {
+          controller.dispose();
         }
+        _textControllers.clear();
+        debugPrint(
+          '✅ DRAFT_LOAD: Cleared ${_textControllers.length} text controllers — will be recreated with fresh values',
+        );
 
         debugPrint('DRAFT_LOAD: State updated');
         debugPrint('DRAFT_LOAD:   attendeesCount=$attendeesCount');
@@ -7666,19 +7660,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                         maxValue: maxPoints,
                                                         onConfirm: (val) {
                                                           setState(() {
-                                                            // Look up current row by index — closure ref may be stale after real-time sync
-                                                            final currentRow =
-                                                                traineeRows.firstWhere(
-                                                                  (r) =>
-                                                                      r.index ==
-                                                                      row.index,
-                                                                  orElse: () =>
-                                                                      row,
-                                                                );
-                                                            currentRow.setValue(
-                                                              stationIndex,
-                                                              val,
-                                                            );
+                                                            if (traineeIdx <
+                                                                traineeRows
+                                                                    .length) {
+                                                              traineeRows[traineeIdx]
+                                                                  .setValue(
+                                                                    stationIndex,
+                                                                    val,
+                                                                  );
+                                                            }
                                                           });
                                                           _scheduleAutoSave();
                                                         },
@@ -8073,26 +8063,20 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                 timeValue,
                                                             onConfirm: (hits, time) {
                                                               setState(() {
-                                                                // Look up current row by index — closure ref may be stale after real-time sync
-                                                                final currentRow =
-                                                                    traineeRows.firstWhere(
-                                                                      (r) =>
-                                                                          r.index ==
-                                                                          row.index,
-                                                                      orElse:
-                                                                          () =>
-                                                                              row,
-                                                                    );
-                                                                currentRow
-                                                                    .setValue(
-                                                                      stationIndex,
-                                                                      hits,
-                                                                    );
-                                                                currentRow
-                                                                    .setTimeValue(
-                                                                      stationIndex,
-                                                                      time,
-                                                                    );
+                                                                if (traineeIdx <
+                                                                    traineeRows
+                                                                        .length) {
+                                                                  traineeRows[traineeIdx]
+                                                                      .setValue(
+                                                                        stationIndex,
+                                                                        hits,
+                                                                      );
+                                                                  traineeRows[traineeIdx]
+                                                                      .setTimeValue(
+                                                                        stationIndex,
+                                                                        time,
+                                                                      );
+                                                                }
                                                               });
                                                               _scheduleAutoSave();
                                                             },
@@ -8229,21 +8213,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                   'קצרים',
                                                           onConfirm: (val) {
                                                             setState(() {
-                                                              // Look up current row by index — closure ref may be stale after real-time sync
-                                                              final currentRow =
-                                                                  traineeRows.firstWhere(
-                                                                    (r) =>
-                                                                        r.index ==
-                                                                        row.index,
-                                                                    orElse:
-                                                                        () =>
-                                                                            row,
-                                                                  );
-                                                              currentRow
-                                                                  .setValue(
-                                                                    stationIndex,
-                                                                    val,
-                                                                  );
+                                                              if (traineeIdx <
+                                                                  traineeRows
+                                                                      .length) {
+                                                                traineeRows[traineeIdx]
+                                                                    .setValue(
+                                                                      stationIndex,
+                                                                      val,
+                                                                    );
+                                                              }
                                                             });
                                                             _scheduleAutoSave();
                                                           },
