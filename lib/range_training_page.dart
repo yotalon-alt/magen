@@ -3328,9 +3328,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               final localTimeVals = Map<String, dynamic>.from(
                 txnTrainees[i]['timeValues'] as Map? ?? {},
               );
-              txnTrainees[i]['timeValues'] = Map<String, dynamic>.from(
-                remoteTimeVals,
-              )..addAll(localTimeVals);
+              final mergedTimeVals = Map<String, dynamic>.from(remoteTimeVals)
+                ..addAll(localTimeVals);
+              // Respect intentional time deletions: if user touched a time cell and
+              // its value is absent from localTimeVals (= deleted), remove from merged
+              final localTimeTouched =
+                  txnTrainees[i]['timeValuesTouched'] as Map? ?? {};
+              localTimeTouched.forEach((key, touched) {
+                if (touched == true && !localTimeVals.containsKey(key)) {
+                  mergedTimeVals.remove(key);
+                }
+              });
+              txnTrainees[i]['timeValues'] = mergedTimeVals;
               // Recalculate hits + totalHits from merged values
               final mergedHits = <String, int>{};
               int mergedTotal = 0;
@@ -5232,12 +5241,58 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     ),
                   ),
 
-                // Stage cards list
-                ...longRangeStagesList.asMap().entries.map((entry) {
+                // Stage cards list with drag-to-reorder
+                ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (newIndex > oldIndex) newIndex--;
+                      final movedStage = longRangeStagesList.removeAt(oldIndex);
+                      longRangeStagesList.insert(newIndex, movedStage);
+                      // Move trainee data columns to match new stage order
+                      for (final row in traineeRows) {
+                        final oldVal = row.values.remove(oldIndex);
+                        final oldTouched = row.valuesTouched.remove(oldIndex);
+                        final updatedValues = <int, int>{};
+                        final updatedTouched = <int, bool>{};
+                        row.values.forEach((k, v) {
+                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                            updatedValues[k - 1] = v;
+                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                            updatedValues[k + 1] = v;
+                          } else {
+                            updatedValues[k] = v;
+                          }
+                        });
+                        row.valuesTouched.forEach((k, v) {
+                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                            updatedTouched[k - 1] = v;
+                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                            updatedTouched[k + 1] = v;
+                          } else {
+                            updatedTouched[k] = v;
+                          }
+                        });
+                        row.values
+                          ..clear()
+                          ..addAll(updatedValues);
+                        row.valuesTouched
+                          ..clear()
+                          ..addAll(updatedTouched);
+                        if (oldVal != null) row.values[newIndex] = oldVal;
+                        if (oldTouched != null) row.valuesTouched[newIndex] = oldTouched;
+                      }
+                    });
+                    _scheduleAutoSave();
+                  },
+                  children: longRangeStagesList.asMap().entries.map((entry) {
                   final index = entry.key;
                   final stage = entry.value;
 
                   return Card(
+                    key: ValueKey(index),
                     margin: const EdgeInsets.only(bottom: 12),
                     child: Padding(
                       padding: const EdgeInsets.all(12.0),
@@ -5247,6 +5302,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           // Header row with stage name and delete button
                           Row(
                             children: [
+                              // Drag handle
+                              ReorderableDragStartListener(
+                                index: index,
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                                  child: Icon(Icons.drag_handle, color: Colors.grey),
+                                ),
+                              ),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5442,7 +5505,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       ),
                     ),
                   );
-                }),
+                }).toList(),
+                ),
 
                 // כפתור הוסף מקצה - מתחת לרשימת המקצים
                 Center(
@@ -7820,15 +7884,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                       if (_openDialogCount ==
                                                               0 &&
                                                           _pendingRefreshAfterDialog) {
-                                                        if (!(_autoSaveTimer
-                                                                ?.isActive ??
-                                                            false)) {
-                                                          // No pending save — refresh now
-                                                          _pendingRefreshAfterDialog =
-                                                              false;
-                                                          _refreshFromFirestore();
-                                                        }
-                                                        // If timer active: save will finish and finally block will do the refresh
+                                                        // local state is current after save — listener will sync
+                                                        _pendingRefreshAfterDialog =
+                                                            false;
                                                       }
                                                     },
                                                     child: Container(
@@ -9626,12 +9684,17 @@ class TraineeRowModel {
     valuesTouched.forEach((stationIdx, touched) {
       if (touched) touchedMap['station_$stationIdx'] = true;
     });
+    final timeTouchedMap = <String, bool>{};
+    timeValuesTouched.forEach((stationIdx, touched) {
+      if (touched) timeTouchedMap['station_${stationIdx}_time'] = true;
+    });
     return {
       'index': index,
       'name': name.trim(),
       'values': valuesMap,
       'timeValues': timeValuesMap,
       'valuesTouched': touchedMap,
+      'timeValuesTouched': timeTouchedMap,
     };
   }
 
