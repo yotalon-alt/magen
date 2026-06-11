@@ -3322,6 +3322,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 }
               });
               txnTrainees[i]['values'] = merged;
+              // Merge timeValues (for בוחן רמה) — same logic: remote base, local wins
+              final remoteTimeVals =
+                  (remoteTrainee['timeValues'] as Map<String, dynamic>?) ?? {};
+              final localTimeVals = Map<String, dynamic>.from(
+                txnTrainees[i]['timeValues'] as Map? ?? {},
+              );
+              txnTrainees[i]['timeValues'] = Map<String, dynamic>.from(
+                remoteTimeVals,
+              )..addAll(localTimeVals);
               // Recalculate hits + totalHits from merged values
               final mergedHits = <String, int>{};
               int mergedTotal = 0;
@@ -3455,12 +3464,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           );
           _refreshFromFirestore();
         } else if (_pendingRefreshAfterDialog && _openDialogCount == 0) {
-          // A refresh was queued while a dialog was open and no save is pending.
+          // A refresh was queued while a dialog was open.
+          // After a successful save, local state is already correct — no need to
+          // re-read from Firestore (which risks a race condition returning stale data).
+          // The listener will fire a new snapshot shortly and update via _mergeRemoteChanges.
           _pendingRefreshAfterDialog = false;
           debugPrint(
-            '🔄 REALTIME: Executing deferred refresh after save completed',
+            '🔄 REALTIME: Cleared pending refresh — local state is current after save, listener will sync',
           );
-          _refreshFromFirestore();
         }
       } // end if (!needsResave)
     }
@@ -3595,16 +3606,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       _saveTemporarily(); // saves local → finally applies _pendingRemoteData
       return;
     }
-    // ✅ FIX: When snapshot arrives from listener (not from our own _refreshFromFirestore),
-    // the snapshot data may be stale (created before our last save completed).
-    // Re-read from Firestore to get the true latest state (our save + concurrent saves).
-    if (!fromRefresh) {
-      debugPrint(
-        '🔄 REALTIME: Snapshot received — refreshing from Firestore for true latest state',
-      );
-      _refreshFromFirestore();
-      return;
-    }
     if (_isLoadingRemoteChanges) {
       debugPrint('⏸️ REALTIME: Skipping merge (already loading)');
       return;
@@ -3613,7 +3614,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     _isLoadingRemoteChanges = true;
 
     try {
-      debugPrint('🔄 REALTIME: Merging remote changes...');
+      debugPrint('🔄 REALTIME: Merging remote changes (smart merge)...');
 
       final remoteTrainees = remoteData['trainees'] as List?;
 
@@ -3621,25 +3622,80 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
       debugPrint('   Local trainees count: ${traineeRows.length}');
 
       setState(() {
-        // LAST WRITE WINS: Full replacement from remote data
-        // Replace trainee rows completely — no additive/smart merge
+        // SMART MERGE: Keep local values where they exist, fill in remote values for cells
+        // the local user hasn't touched. This prevents remote snapshots from overwriting
+        // in-progress local edits (no get() race condition).
         if (remoteTrainees != null) {
-          // Dispose and clear all text controllers (indices may change)
-          for (final c in _textControllers.values) {
-            c.dispose();
-          }
-          _textControllers.clear();
+          if (remoteTrainees.length == traineeRows.length) {
+            // Same number of trainees — merge cell-by-cell
+            for (int i = 0; i < remoteTrainees.length; i++) {
+              final remoteTrainee =
+                  remoteTrainees[i] as Map<String, dynamic>? ?? {};
+              final remoteRow = TraineeRowModel.fromFirestore(remoteTrainee);
+              final localRow = traineeRows[i];
 
-          traineeRows.clear();
-          for (int i = 0; i < remoteTrainees.length; i++) {
-            final remoteTrainee = remoteTrainees[i] as Map<String, dynamic>;
-            traineeRows.add(TraineeRowModel.fromFirestore(remoteTrainee));
+              // For each remote value, only apply if local hasn't touched this cell
+              remoteRow.values.forEach((stationIdx, remoteVal) {
+                if (!localRow.valuesTouched.containsKey(stationIdx)) {
+                  localRow.values[stationIdx] = remoteVal;
+                }
+              });
+              // Remove remote deletions only if local hasn't touched
+              for (final stationIdx in List<int>.from(localRow.values.keys)) {
+                if (!remoteRow.values.containsKey(stationIdx) &&
+                    !localRow.valuesTouched.containsKey(stationIdx)) {
+                  localRow.values.remove(stationIdx);
+                }
+              }
+
+              // Same for timeValues
+              remoteRow.timeValues.forEach((stationIdx, remoteVal) {
+                if (!localRow.timeValuesTouched.containsKey(stationIdx)) {
+                  localRow.timeValues[stationIdx] = remoteVal;
+                }
+              });
+              for (final stationIdx in List<int>.from(
+                localRow.timeValues.keys,
+              )) {
+                if (!remoteRow.timeValues.containsKey(stationIdx) &&
+                    !localRow.timeValuesTouched.containsKey(stationIdx)) {
+                  localRow.timeValues.remove(stationIdx);
+                }
+              }
+
+              // Update name if local is empty
+              if (localRow.name.trim().isEmpty &&
+                  remoteRow.name.trim().isNotEmpty) {
+                traineeRows[i] = TraineeRowModel(
+                  index: localRow.index,
+                  name: remoteRow.name,
+                  values: localRow.values,
+                  timeValues: localRow.timeValues,
+                  valuesTouched: localRow.valuesTouched,
+                  timeValuesTouched: localRow.timeValuesTouched,
+                );
+              }
+            }
+            debugPrint(
+              '   REALTIME: Smart-merged ${traineeRows.length} trainee rows from remote',
+            );
+          } else {
+            // Different number of trainees — full replacement (structural change)
+            for (final c in _textControllers.values) {
+              c.dispose();
+            }
+            _textControllers.clear();
+            traineeRows.clear();
+            for (int i = 0; i < remoteTrainees.length; i++) {
+              final remoteTrainee = remoteTrainees[i] as Map<String, dynamic>;
+              traineeRows.add(TraineeRowModel.fromFirestore(remoteTrainee));
+            }
+            debugPrint(
+              '   REALTIME: Full replacement — ${traineeRows.length} trainee rows (count changed)',
+            );
           }
           // Keep _loadedDraftTrainees in sync for count-change restoration
           _loadedDraftTrainees = List<TraineeRowModel>.from(traineeRows);
-          debugPrint(
-            '   REALTIME: Replaced ${traineeRows.length} trainee rows from remote',
-          );
         }
 
         // Full replacement of stages from remote data (no additive merge)
@@ -8082,6 +8138,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                             },
                                                           );
                                                           _openDialogCount--;
+                                                          // Force rebuild after dialog closes so timeValue Text widget appears
+                                                          if (mounted) setState(() {});
                                                           if (_openDialogCount ==
                                                                   0 &&
                                                               _pendingRefreshAfterDialog) {
@@ -8205,8 +8263,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           currentValue:
                                                               currentValue,
                                                           maxValue: maxVal,
-                                                          // חסום כניסת פגיעות כשאין כדורים — רק לטווח קצר
+                                                          // חסום כניסת פגיעות כשאין כדורים — רק לטווח קצר (לא בעריכת משוב סופי)
                                                           blockIfNoMax:
+                                                              !widget
+                                                                  .editFinalFeedback &&
                                                               widget.mode !=
                                                                   'surprise' &&
                                                               _rangeType ==
@@ -8223,7 +8283,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                                     );
                                                               }
                                                             });
-                                                            _scheduleAutoSave();
+                                                            // מחיקה (val=0) בעריכת משוב סופי — שמור מיידית ללא debounce
+                                                            if (widget
+                                                                    .editFinalFeedback &&
+                                                                val == 0) {
+                                                              _saveEditedFinalFeedback();
+                                                            } else {
+                                                              _scheduleAutoSave();
+                                                            }
                                                           },
                                                         );
                                                         _openDialogCount--;
