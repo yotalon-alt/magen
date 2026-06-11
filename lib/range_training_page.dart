@@ -4940,11 +4940,89 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Display each stage with delete button
-                ...shortRangeStagesList.asMap().entries.map((entry) {
+                // Display each stage with drag-to-reorder + delete button
+                ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (newIndex > oldIndex) newIndex--;
+                      // Move stage in list
+                      final movedStage = shortRangeStagesList.removeAt(oldIndex);
+                      shortRangeStagesList.insert(newIndex, movedStage);
+                      // Move trainee data columns to match new stage order
+                      for (final row in traineeRows) {
+                        final oldVal = row.values.remove(oldIndex);
+                        final oldTime = row.timeValues.remove(oldIndex);
+                        final oldTouched = row.valuesTouched.remove(oldIndex);
+                        final oldTimeTouched = row.timeValuesTouched.remove(oldIndex);
+                        // Shift indices between oldIndex and newIndex
+                        final updatedValues = <int, int>{};
+                        final updatedTimes = <int, double>{};
+                        final updatedTouched = <int, bool>{};
+                        final updatedTimeTouched = <int, bool>{};
+                        row.values.forEach((k, v) {
+                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                            updatedValues[k - 1] = v;
+                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                            updatedValues[k + 1] = v;
+                          } else {
+                            updatedValues[k] = v;
+                          }
+                        });
+                        row.timeValues.forEach((k, v) {
+                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                            updatedTimes[k - 1] = v;
+                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                            updatedTimes[k + 1] = v;
+                          } else {
+                            updatedTimes[k] = v;
+                          }
+                        });
+                        row.valuesTouched.forEach((k, v) {
+                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                            updatedTouched[k - 1] = v;
+                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                            updatedTouched[k + 1] = v;
+                          } else {
+                            updatedTouched[k] = v;
+                          }
+                        });
+                        row.timeValuesTouched.forEach((k, v) {
+                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                            updatedTimeTouched[k - 1] = v;
+                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                            updatedTimeTouched[k + 1] = v;
+                          } else {
+                            updatedTimeTouched[k] = v;
+                          }
+                        });
+                        row.values
+                          ..clear()
+                          ..addAll(updatedValues);
+                        row.timeValues
+                          ..clear()
+                          ..addAll(updatedTimes);
+                        row.valuesTouched
+                          ..clear()
+                          ..addAll(updatedTouched);
+                        row.timeValuesTouched
+                          ..clear()
+                          ..addAll(updatedTimeTouched);
+                        if (oldVal != null) row.values[newIndex] = oldVal;
+                        if (oldTime != null) row.timeValues[newIndex] = oldTime;
+                        if (oldTouched != null) row.valuesTouched[newIndex] = oldTouched;
+                        if (oldTimeTouched != null) row.timeValuesTouched[newIndex] = oldTimeTouched;
+                      }
+                    });
+                    _scheduleAutoSave();
+                  },
+                  children: shortRangeStagesList.asMap().entries.map((entry) {
                   final index = entry.key;
                   final stage = entry.value;
                   return Card(
+                    key: ValueKey(index),
                     margin: const EdgeInsets.only(bottom: 12),
                     child: Padding(
                       padding: const EdgeInsets.all(12.0),
@@ -4954,6 +5032,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                           // Header with stage number and delete button
                           Row(
                             children: [
+                              // Drag handle
+                              ReorderableDragStartListener(
+                                index: index,
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                                  child: Icon(Icons.drag_handle, color: Colors.grey),
+                                ),
+                              ),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5095,7 +5181,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       ),
                     ),
                   );
-                }),
+                }).toList(),
+                ),
 
                 // כפתור הוסף מקצה/עיקרון - מתחת לרשימת המקצים
                 Center(
