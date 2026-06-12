@@ -17609,13 +17609,22 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       }
     }
 
-    // 3. טען חניכים + cross_attendance במקביל (Future.wait)
+    // 3. טען חניכים + cross_attendance
     List<String> allTrainees = [];
     final crossMap = <String, Set<int>>{}; // home: חניך שהתאמן ביישוב אחר
     final guestMap = <String, Set<int>>{}; // host: אורח מיישוב אחר שאימן כאן
+
+    // טעינת חניכים — עצמאית, כדי שכישלון cross_attendance לא ישפיע
     try {
-      final results = await Future.wait([
-        TraineeAutocompleteService.getTraineesForSettlement(widget.settlement),
+      allTrainees = await TraineeAutocompleteService.getTraineesForSettlement(
+        widget.settlement,
+      );
+    } catch (e) {
+      debugPrint('Error loading trainees: $e');
+    }
+
+    try {
+      final crossResults = await Future.wait([
         FirebaseFirestore.instance
             .collection('cross_attendance')
             .where('homeSettlement', isEqualTo: widget.settlement)
@@ -17628,9 +17637,7 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
             .timeout(const Duration(seconds: 5)),
       ]);
 
-      allTrainees = results[0] as List<String>;
-
-      final homeDocs = (results[1] as QuerySnapshot<Map<String, dynamic>>).docs;
+      final homeDocs = crossResults[0].docs;
       for (final doc in homeDocs) {
         final data = doc.data();
         final traineeName = (data['traineeName'] as String?) ?? '';
@@ -17653,7 +17660,7 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
         }
       }
 
-      final hostDocs = (results[2] as QuerySnapshot<Map<String, dynamic>>).docs;
+      final hostDocs = crossResults[1].docs;
       for (final doc in hostDocs) {
         final data = doc.data();
         final traineeName = (data['traineeName'] as String?) ?? '';
@@ -18171,14 +18178,19 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
         final emoji = present ? (isGuest ? '🔵' : '✅') : (isCross ? '🔵' : '❌');
         final isExtra = !_allTrainees.contains(name);
         final isAdminYotam =
-            currentUser?.name == 'יותם אלון' &&
-            currentUser?.role == 'Admin';
+            currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
         // extra trainee present → assign to home settlement
-        final canTapMarkAsGuest = isAdminYotam && isExtra && present && !isGuest;
+        final canTapMarkAsGuest =
+            isAdminYotam && isExtra && present && !isGuest;
         // guest present here → allow removing the guest assignment
         final canTapRemoveGuest = isAdminYotam && isGuest && present;
         // official trainee absent from THIS session but attended others → assign cross
-        final canTapAbsent = isAdminYotam && !isExtra && !present && !isCross && _attendanceMap.containsKey(name);
+        final canTapAbsent =
+            isAdminYotam &&
+            !isExtra &&
+            !present &&
+            !isCross &&
+            _attendanceMap.containsKey(name);
         Widget cellChild = Text(emoji, style: const TextStyle(fontSize: 16));
         if (canTapMarkAsGuest) {
           cellChild = GestureDetector(
@@ -18288,9 +18300,9 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
     // רק יישובים שיש להם משובי 474 (יישובי הגולן)
     final settlements =
         feedbackStorage
-            .where((f) =>
-                f.folder.contains('474') ||
-                f.folderKey.contains('474'))
+            .where(
+              (f) => f.folder.contains('474') || f.folderKey.contains('474'),
+            )
             .map((f) => f.settlement)
             .where((s) => s.isNotEmpty && s != widget.settlement)
             .toSet()
@@ -18360,13 +18372,11 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       setState(() {
         _guestTraineesMap.putIfAbsent(traineeName, () => {});
         _guestTraineesMap[traineeName]!.add(sessionIndex);
-        // הסר את החניך מהטבלה — הוא שייך ליישוב אחר
-        _attendanceMap.remove(traineeName);
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$traineeName שויך ליישוב $homeSettlement והוסר מהטבלה')),
+          SnackBar(content: Text('$traineeName שויך ליישוב $homeSettlement')),
         );
       }
     } catch (e) {
@@ -18405,7 +18415,10 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
     }
   }
 
-  Future<void> _removeGuestAssignment(String traineeName, int sessionIndex) async {
+  Future<void> _removeGuestAssignment(
+    String traineeName,
+    int sessionIndex,
+  ) async {
     try {
       final session = _sessions[sessionIndex];
       final typeGroup = (session['typeGroup'] as String?) ?? '';
@@ -18439,28 +18452,34 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$traineeName הוסר מהאימון')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$traineeName הוסר מהאימון')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('שגיאה בהסרה: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בהסרה: $e')));
       }
     }
   }
 
   /// ❌ לחיץ — חניך רשמי שנעדר מאימון זה אך היה באחרים
-  Future<void> _showAbsentCrossDialog(String traineeName, int sessionIndex) async {
-    final settlements = feedbackStorage
-        .where((f) => f.folder.contains('474') || f.folderKey.contains('474'))
-        .map((f) => f.settlement)
-        .where((s) => s.isNotEmpty && s != widget.settlement)
-        .toSet()
-        .toList()
-      ..sort();
+  Future<void> _showAbsentCrossDialog(
+    String traineeName,
+    int sessionIndex,
+  ) async {
+    final settlements =
+        feedbackStorage
+            .where(
+              (f) => f.folder.contains('474') || f.folderKey.contains('474'),
+            )
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty && s != widget.settlement)
+            .toSet()
+            .toList()
+          ..sort();
 
     String? selectedSettlement;
 
@@ -18534,22 +18553,25 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('שגיאה בשמירה: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
       }
     }
   }
 
   /// ➕ סיידבר — הוסף חניך שלא היה בשום אימון לאימון ביישוב אחר
   Future<void> _showSidebarAddCrossDialog(String traineeName) async {
-    final settlements = feedbackStorage
-        .where((f) => f.folder.contains('474') || f.folderKey.contains('474'))
-        .map((f) => f.settlement)
-        .where((s) => s.isNotEmpty && s != widget.settlement)
-        .toSet()
-        .toList()
-      ..sort();
+    final settlements =
+        feedbackStorage
+            .where(
+              (f) => f.folder.contains('474') || f.folderKey.contains('474'),
+            )
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty && s != widget.settlement)
+            .toSet()
+            .toList()
+          ..sort();
 
     int? selectedSessionIndex;
     String? selectedSettlement;
@@ -18572,10 +18594,12 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                     final s = _sessions[i];
                     final date = s['date'] as DateTime?;
                     final typeGroup = (s['typeGroup'] as String?) ?? '';
-                    final label = '$typeGroup${date != null ? ' ${_formatDate(date)}' : ''}';
+                    final label =
+                        '$typeGroup${date != null ? ' ${_formatDate(date)}' : ''}';
                     return DropdownMenuItem(value: i, child: Text(label));
                   }),
-                  onChanged: (v) => setDialogState(() => selectedSessionIndex = v),
+                  onChanged: (v) =>
+                      setDialogState(() => selectedSessionIndex = v),
                 ),
                 const SizedBox(height: 12),
                 DropdownButton<String>(
@@ -18585,7 +18609,8 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                   items: settlements
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (v) => setDialogState(() => selectedSettlement = v),
+                  onChanged: (v) =>
+                      setDialogState(() => selectedSettlement = v),
                 ),
               ],
             ),
@@ -18595,7 +18620,8 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                 child: const Text('ביטול'),
               ),
               TextButton(
-                onPressed: selectedSessionIndex != null && selectedSettlement != null
+                onPressed:
+                    selectedSessionIndex != null && selectedSettlement != null
                     ? () => Navigator.of(ctx).pop(true)
                     : null,
                 child: const Text('אישור'),
@@ -18606,8 +18632,15 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       ),
     );
 
-    if (confirmed == true && selectedSessionIndex != null && selectedSettlement != null && mounted) {
-      await _saveSidebarCrossAttendance(traineeName, selectedSessionIndex!, selectedSettlement!);
+    if (confirmed == true &&
+        selectedSessionIndex != null &&
+        selectedSettlement != null &&
+        mounted) {
+      await _saveSidebarCrossAttendance(
+        traineeName,
+        selectedSessionIndex!,
+        selectedSettlement!,
+      );
     }
   }
 
@@ -18643,9 +18676,9 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('שגיאה בשמירה: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
       }
     }
   }
@@ -18708,7 +18741,8 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                       ),
                       if (isAdminYotam)
                         GestureDetector(
-                          onTap: () => _showSidebarAddCrossDialog(neverAttended[i]),
+                          onTap: () =>
+                              _showSidebarAddCrossDialog(neverAttended[i]),
                           child: Icon(
                             Icons.add_circle_outline,
                             color: Colors.red[400],
