@@ -3473,14 +3473,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           );
           _refreshFromFirestore();
         } else if (_pendingRefreshAfterDialog && _openDialogCount == 0) {
-          // A refresh was queued while a dialog was open.
-          // After a successful save, local state is already correct — no need to
-          // re-read from Firestore (which risks a race condition returning stale data).
-          // The listener will fire a new snapshot shortly and update via _mergeRemoteChanges.
+          // A refresh was queued while a dialog was open (remote update arrived during dialog).
+          // Now that the dialog is closed and our save completed, fetch the latest Firestore
+          // state so the other instructor's changes become visible.
+          // _refreshFromFirestore uses smart merge — it will not overwrite locally-touched cells.
           _pendingRefreshAfterDialog = false;
           debugPrint(
-            '🔄 REALTIME: Cleared pending refresh — local state is current after save, listener will sync',
+            '🔄 REALTIME: Executing deferred refresh after dialog close + save',
           );
+          _refreshFromFirestore();
         }
       } // end if (!needsResave)
     }
