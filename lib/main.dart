@@ -25305,7 +25305,8 @@ class _DryTrainingFeedbacksListPageState
                     child: InkWell(
                       onTap: () {
                         final module = (item['module'] as String?) ?? '';
-                        if (module == 'shooting_ranges') {
+                        if (module == 'shooting_ranges' ||
+                            module == 'training_summary') {
                           final feedback = FeedbackModel.fromMap(
                             Map<String, dynamic>.from(item)..remove('id'),
                             id: id,
