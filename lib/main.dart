@@ -4987,26 +4987,44 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
               if (trainingSummaryFolder == 'פלסר הגולן') ...[
                 // פלסר הגולן: fixed unit + free text team
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text('פלסר הגולן', style: TextStyle(fontSize: 16)),
+                  child: const Text(
+                    'פלסר הגולן',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextField(
-                  controller: TextEditingController(text: selectedSettlement == 'פלסר הגולן' ? '' : selectedSettlement)
-                    ..selection = TextSelection.collapsed(
-                      offset: (selectedSettlement == 'פלסר הגולן' ? '' : selectedSettlement).length,
-                    ),
+                  controller:
+                      TextEditingController(
+                          text: selectedSettlement == 'פלסר הגולן'
+                              ? ''
+                              : selectedSettlement,
+                        )
+                        ..selection = TextSelection.collapsed(
+                          offset:
+                              (selectedSettlement == 'פלסר הגולן'
+                                      ? ''
+                                      : selectedSettlement)
+                                  .length,
+                        ),
                   decoration: const InputDecoration(
                     labelText: 'צוות',
                     border: OutlineInputBorder(),
                     hintText: 'הזן שם צוות',
                   ),
                   onChanged: (v) {
-                    setState(() => selectedSettlement = v.isNotEmpty ? v : 'פלסר הגולן');
+                    setState(
+                      () =>
+                          selectedSettlement = v.isNotEmpty ? v : 'פלסר הגולן',
+                    );
                     _triggerAutosave();
                   },
                 ),
@@ -7045,6 +7063,26 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                                     ),
                                   );
                                 },
+                              )
+                            : isTrainingCategory
+                            ? FutureBuilder<int>(
+                                future: FirebaseFirestore.instance
+                                    .collection('feedbacks')
+                                    .where('folder', isEqualTo: 'פלסר הגולן')
+                                    .where('isTemporary', isEqualTo: false)
+                                    .count()
+                                    .get()
+                                    .timeout(const Duration(seconds: 5))
+                                    .then((s) => s.count ?? 0)
+                                    .catchError((_) => 0),
+                                builder: (context, snap) => Text(
+                                  '${snap.data ?? 0} משובים',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blueGrey,
+                                  ),
+                                ),
                               )
                             : Text(
                                 '$count משובים',
@@ -17534,6 +17572,10 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
   List<Map<String, dynamic>> _sessions = []; // כל האימונים ממוינים לפי תאריך
   // שם חניך -> Set<sessionIndex> (באיזה אימונים נוכח)
   Map<String, Set<int>> _attendanceMap = {};
+  // שם חניך -> Set<sessionIndex> (אימוני אורח ביישוב אחר)
+  Map<String, Set<int>> _crossAttendanceMap = {};
+  // חניך אורח ביישוב זה (הגיע ממחלקה אחרת) -> Set<sessionIndex>
+  Map<String, Set<int>> _guestTraineesMap = {};
 
   @override
   void initState() {
@@ -17567,16 +17609,74 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       }
     }
 
-    // 3. טען את כל חניכי היישוב מ-Firestore (עוקף cache לקבלת ספירה מדויקת)
+    // 3. טען חניכים + cross_attendance במקביל (Future.wait)
     List<String> allTrainees = [];
+    final crossMap = <String, Set<int>>{}; // home: חניך שהתאמן ביישוב אחר
+    final guestMap = <String, Set<int>>{}; // host: אורח מיישוב אחר שאימן כאן
     try {
-      // נקה cache ליישוב זה כדי לקבל נתון עדכני מ-Firestore
-      TraineeAutocompleteService.clearCacheForSettlement(widget.settlement);
-      allTrainees = await TraineeAutocompleteService.getTraineesForSettlement(
-        widget.settlement,
-      );
+      final results = await Future.wait([
+        TraineeAutocompleteService.getTraineesForSettlement(widget.settlement),
+        FirebaseFirestore.instance
+            .collection('cross_attendance')
+            .where('homeSettlement', isEqualTo: widget.settlement)
+            .get()
+            .timeout(const Duration(seconds: 5)),
+        FirebaseFirestore.instance
+            .collection('cross_attendance')
+            .where('hostSettlement', isEqualTo: widget.settlement)
+            .get()
+            .timeout(const Duration(seconds: 5)),
+      ]);
+
+      allTrainees = results[0] as List<String>;
+
+      final homeDocs = (results[1] as QuerySnapshot<Map<String, dynamic>>).docs;
+      for (final doc in homeDocs) {
+        final data = doc.data();
+        final traineeName = (data['traineeName'] as String?) ?? '';
+        final typeGroup = (data['typeGroup'] as String?) ?? '';
+        final sessionDate = (data['sessionDate'] as Timestamp?)?.toDate();
+        if (traineeName.isNotEmpty && sessionDate != null) {
+          for (int i = 0; i < allSessions.length; i++) {
+            final s = allSessions[i];
+            final sDate = s['date'] as DateTime?;
+            final sTypeGroup = (s['typeGroup'] as String?) ?? '';
+            if (sTypeGroup == typeGroup &&
+                sDate != null &&
+                sDate.year == sessionDate.year &&
+                sDate.month == sessionDate.month &&
+                sDate.day == sessionDate.day) {
+              crossMap.putIfAbsent(traineeName, () => {});
+              crossMap[traineeName]!.add(i);
+            }
+          }
+        }
+      }
+
+      final hostDocs = (results[2] as QuerySnapshot<Map<String, dynamic>>).docs;
+      for (final doc in hostDocs) {
+        final data = doc.data();
+        final traineeName = (data['traineeName'] as String?) ?? '';
+        final typeGroup = (data['typeGroup'] as String?) ?? '';
+        final sessionDate = (data['sessionDate'] as Timestamp?)?.toDate();
+        if (traineeName.isNotEmpty && sessionDate != null) {
+          for (int i = 0; i < allSessions.length; i++) {
+            final s = allSessions[i];
+            final sDate = s['date'] as DateTime?;
+            final sTypeGroup = (s['typeGroup'] as String?) ?? '';
+            if (sTypeGroup == typeGroup &&
+                sDate != null &&
+                sDate.year == sessionDate.year &&
+                sDate.month == sessionDate.month &&
+                sDate.day == sessionDate.day) {
+              guestMap.putIfAbsent(traineeName, () => {});
+              guestMap[traineeName]!.add(i);
+            }
+          }
+        }
+      }
     } catch (e) {
-      debugPrint('Error loading trainees: $e');
+      debugPrint('Error loading attendance data: $e');
     }
 
     if (mounted) {
@@ -17584,6 +17684,8 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
         _sessions = allSessions;
         _attendanceMap = attendanceMap;
         _allTrainees = allTrainees;
+        _crossAttendanceMap = crossMap;
+        _guestTraineesMap = guestMap;
         _isLoading = false;
       });
     }
@@ -17749,7 +17851,25 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
             .where((name) => !_allTrainees.contains(name))
             .toList()
           ..sort();
-    final tableTrainees = [...activeTrainees, ...extraTrainees];
+    final crossOnlyTrainees = _allTrainees
+        .where(
+          (n) =>
+              !_attendanceMap.containsKey(n) &&
+              _crossAttendanceMap.containsKey(n),
+        )
+        .toList();
+    final tableTrainees = [
+      ...activeTrainees,
+      ...crossOnlyTrainees,
+      ...extraTrainees,
+    ];
+    final neverAttended = _allTrainees
+        .where(
+          (n) =>
+              !_attendanceMap.containsKey(n) &&
+              !_crossAttendanceMap.containsKey(n),
+        )
+        .toList();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -17841,41 +17961,51 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                       ],
                     ),
                   ),
-                  // טבלה
+                  // טבלה + סיידבר
                   Expanded(
-                    child: _sessions.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'אין נתוני אימונים ליישוב זה',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                              ),
-                            ),
-                          )
-                        : LayoutBuilder(
-                            builder: (context, constraints) {
-                              const double nameColWidth = 130;
-                              const double sessionColWidth = 90;
-                              final double tableWidth =
-                                  nameColWidth +
-                                  _sessions.length * sessionColWidth;
-                              return SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Center(
-                                  child: SizedBox(
-                                    width: tableWidth > constraints.maxWidth
-                                        ? tableWidth
-                                        : tableWidth,
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.vertical,
-                                      child: _buildTable(tableTrainees),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _sessions.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'אין נתוני אימונים ליישוב זה',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 16,
                                     ),
                                   ),
+                                )
+                              : LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    const double nameColWidth = 130;
+                                    const double sessionColWidth = 90;
+                                    final double tableWidth =
+                                        nameColWidth +
+                                        _sessions.length * sessionColWidth;
+                                    return SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Center(
+                                        child: SizedBox(
+                                          width:
+                                              tableWidth > constraints.maxWidth
+                                              ? tableWidth
+                                              : tableWidth,
+                                          child: SingleChildScrollView(
+                                            scrollDirection: Axis.vertical,
+                                            child: _buildTable(tableTrainees),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
+                        ),
+                        if (neverAttended.isNotEmpty)
+                          _buildNeverAttendedSidebar(neverAttended),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -18036,6 +18166,36 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
 
       for (int ci = 0; ci < _sessions.length; ci++) {
         final present = attended.contains(ci);
+        final isGuest = (_guestTraineesMap[name] ?? {}).contains(ci);
+        final isCross = (_crossAttendanceMap[name] ?? {}).contains(ci);
+        final emoji = present ? (isGuest ? '🔵' : '✅') : (isCross ? '🔵' : '❌');
+        final isExtra = !_allTrainees.contains(name);
+        final isAdminYotam =
+            currentUser?.name == 'יותם אלון' &&
+            currentUser?.role == 'Admin';
+        // extra trainee present → assign to home settlement
+        final canTapMarkAsGuest = isAdminYotam && isExtra && present && !isGuest;
+        // guest present here → allow removing the guest assignment
+        final canTapRemoveGuest = isAdminYotam && isGuest && present;
+        // official trainee absent from THIS session but attended others → assign cross
+        final canTapAbsent = isAdminYotam && !isExtra && !present && !isCross && _attendanceMap.containsKey(name);
+        Widget cellChild = Text(emoji, style: const TextStyle(fontSize: 16));
+        if (canTapMarkAsGuest) {
+          cellChild = GestureDetector(
+            onTap: () => _showMarkAsGuestDialog(name, ci),
+            child: cellChild,
+          );
+        } else if (canTapRemoveGuest) {
+          cellChild = GestureDetector(
+            onTap: () => _confirmRemoveGuest(name, ci),
+            child: cellChild,
+          );
+        } else if (canTapAbsent) {
+          cellChild = GestureDetector(
+            onTap: () => _showAbsentCrossDialog(name, ci),
+            child: cellChild,
+          );
+        }
         cells.add(
           Container(
             width: sessionColWidth,
@@ -18050,10 +18210,7 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                     : BorderSide.none,
               ),
             ),
-            child: Text(
-              present ? '✅' : '❌',
-              style: const TextStyle(fontSize: 16),
-            ),
+            child: cellChild,
           ),
         );
       }
@@ -18114,110 +18271,458 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       );
     }
 
-    // חניכים שלא היו בשום אימון
-    final neverAttended = _allTrainees
-        .where((n) => !_attendanceMap.containsKey(n))
-        .toList();
-
-    final List<Widget> neverAttendedRows = [];
-    if (neverAttended.isNotEmpty) {
-      // שורת כותרת מפרידה
-      neverAttendedRows.add(
-        Row(
-          children: [
-            Container(
-              width: nameColWidth + _sessions.length * sessionColWidth,
-              height: 36,
-              alignment: Alignment.centerRight,
-              decoration: BoxDecoration(
-                color: Colors.red[50],
-                border: Border(
-                  top: BorderSide(color: Colors.red[200]!),
-                  bottom: BorderSide(color: Colors.red[200]!),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                'לא היו בשום אימון (${neverAttended.length})',
-                style: TextStyle(
-                  color: Colors.red[800],
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-      for (int ri = 0; ri < neverAttended.length; ri++) {
-        final name = neverAttended[ri];
-        final bg = ri.isEven ? Colors.red[25] ?? Colors.red[50]! : Colors.white;
-        final List<Widget> cells = [
-          Container(
-            width: nameColWidth,
-            height: 40,
-            alignment: Alignment.centerRight,
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border(
-                bottom: BorderSide(color: dividerColor),
-                left: BorderSide(color: dividerColor),
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Row(
-              children: [
-                Text(
-                  '${ri + 1}.',
-                  style: const TextStyle(color: Colors.black54, fontSize: 10),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    name,
-                    style: TextStyle(color: Colors.red[700], fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ];
-        for (int ci = 0; ci < _sessions.length; ci++) {
-          cells.add(
-            Container(
-              width: sessionColWidth,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: bg,
-                border: Border(
-                  bottom: BorderSide(color: dividerColor),
-                  left: ci < _sessions.length - 1
-                      ? BorderSide(color: dividerColor)
-                      : BorderSide.none,
-                ),
-              ),
-              child: Text(
-                '—',
-                style: TextStyle(color: Colors.red[300], fontSize: 14),
-              ),
-            ),
-          );
-        }
-        neverAttendedRows.add(Row(children: cells));
-      }
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: headerCells),
         ...dataRows,
         Row(children: summaryCells),
-        ...neverAttendedRows,
       ],
+    );
+  }
+
+  Future<void> _showMarkAsGuestDialog(
+    String traineeName,
+    int sessionIndex,
+  ) async {
+    // רק יישובים שיש להם משובי 474 (יישובי הגולן)
+    final settlements =
+        feedbackStorage
+            .where((f) =>
+                f.folder.contains('474') ||
+                f.folderKey.contains('474'))
+            .map((f) => f.settlement)
+            .where((s) => s.isNotEmpty && s != widget.settlement)
+            .toSet()
+            .toList()
+          ..sort();
+
+    String? selectedSettlement;
+
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text('$traineeName — לאיזה יישוב הוא שייך?'),
+            content: DropdownButton<String>(
+              isExpanded: true,
+              value: selectedSettlement,
+              hint: const Text('בחר יישוב מוצא'),
+              items: settlements
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: (v) => setDialogState(() => selectedSettlement = v),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('ביטול'),
+              ),
+              TextButton(
+                onPressed: selectedSettlement != null
+                    ? () => Navigator.of(ctx).pop(selectedSettlement)
+                    : null,
+                child: const Text('אישור'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != null && mounted) {
+      await _saveCrossAttendance(traineeName, sessionIndex, confirmed);
+    }
+  }
+
+  Future<void> _saveCrossAttendance(
+    String traineeName,
+    int sessionIndex,
+    String homeSettlement,
+  ) async {
+    try {
+      final session = _sessions[sessionIndex];
+      final typeGroup = (session['typeGroup'] as String?) ?? '';
+      final date = (session['date'] as DateTime?) ?? DateTime(2000);
+
+      await FirebaseFirestore.instance.collection('cross_attendance').add({
+        'traineeName': traineeName,
+        'homeSettlement': homeSettlement,
+        'hostSettlement': widget.settlement,
+        'typeGroup': typeGroup,
+        'sessionDate': Timestamp.fromDate(date),
+        'createdAt': Timestamp.now(),
+        'createdBy': currentUser?.name ?? '',
+      });
+
+      setState(() {
+        _guestTraineesMap.putIfAbsent(traineeName, () => {});
+        _guestTraineesMap[traineeName]!.add(sessionIndex);
+        // הסר את החניך מהטבלה — הוא שייך ליישוב אחר
+        _attendanceMap.remove(traineeName);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$traineeName שויך ליישוב $homeSettlement והוסר מהטבלה')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
+      }
+    }
+  }
+
+  /// הסרת שיוך אורח — לחיצה על 🔵 של חניך אורח
+  Future<void> _confirmRemoveGuest(String traineeName, int sessionIndex) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('הסרת שיוך אורח'),
+          content: Text('האם להסיר את $traineeName כאורח מאימון זה?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('הסר', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _removeGuestAssignment(traineeName, sessionIndex);
+    }
+  }
+
+  Future<void> _removeGuestAssignment(String traineeName, int sessionIndex) async {
+    try {
+      final session = _sessions[sessionIndex];
+      final typeGroup = (session['typeGroup'] as String?) ?? '';
+      final date = (session['date'] as DateTime?) ?? DateTime(2000);
+
+      final query = await FirebaseFirestore.instance
+          .collection('cross_attendance')
+          .where('traineeName', isEqualTo: traineeName)
+          .where('hostSettlement', isEqualTo: widget.settlement)
+          .get();
+
+      for (final doc in query.docs) {
+        final data = doc.data();
+        final docDate = (data['sessionDate'] as Timestamp?)?.toDate();
+        final docTypeGroup = (data['typeGroup'] as String?) ?? '';
+        if (docTypeGroup == typeGroup &&
+            docDate != null &&
+            docDate.year == date.year &&
+            docDate.month == date.month &&
+            docDate.day == date.day) {
+          await doc.reference.delete();
+          break;
+        }
+      }
+
+      setState(() {
+        _guestTraineesMap[traineeName]?.remove(sessionIndex);
+        if (_guestTraineesMap[traineeName]?.isEmpty == true) {
+          _guestTraineesMap.remove(traineeName);
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$traineeName הוסר מהאימון')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('שגיאה בהסרה: $e')),
+        );
+      }
+    }
+  }
+
+  /// ❌ לחיץ — חניך רשמי שנעדר מאימון זה אך היה באחרים
+  Future<void> _showAbsentCrossDialog(String traineeName, int sessionIndex) async {
+    final settlements = feedbackStorage
+        .where((f) => f.folder.contains('474') || f.folderKey.contains('474'))
+        .map((f) => f.settlement)
+        .where((s) => s.isNotEmpty && s != widget.settlement)
+        .toSet()
+        .toList()
+      ..sort();
+
+    String? selectedSettlement;
+
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text('$traineeName — איפה אימן בתאריך זה?'),
+            content: DropdownButton<String>(
+              isExpanded: true,
+              value: selectedSettlement,
+              hint: const Text('בחר יישוב מארח'),
+              items: settlements
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: (v) => setDialogState(() => selectedSettlement = v),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('ביטול'),
+              ),
+              TextButton(
+                onPressed: selectedSettlement != null
+                    ? () => Navigator.of(ctx).pop(selectedSettlement)
+                    : null,
+                child: const Text('אישור'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != null && mounted) {
+      await _saveAbsentCrossAttendance(traineeName, sessionIndex, confirmed);
+    }
+  }
+
+  Future<void> _saveAbsentCrossAttendance(
+    String traineeName,
+    int sessionIndex,
+    String hostSettlement,
+  ) async {
+    try {
+      final session = _sessions[sessionIndex];
+      final typeGroup = (session['typeGroup'] as String?) ?? '';
+      final date = (session['date'] as DateTime?) ?? DateTime(2000);
+
+      await FirebaseFirestore.instance.collection('cross_attendance').add({
+        'traineeName': traineeName,
+        'homeSettlement': widget.settlement,
+        'hostSettlement': hostSettlement,
+        'typeGroup': typeGroup,
+        'sessionDate': Timestamp.fromDate(date),
+        'createdAt': Timestamp.now(),
+        'createdBy': currentUser?.name ?? '',
+      });
+
+      setState(() {
+        _crossAttendanceMap.putIfAbsent(traineeName, () => {});
+        _crossAttendanceMap[traineeName]!.add(sessionIndex);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$traineeName סומן כמאמן ב$hostSettlement')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('שגיאה בשמירה: $e')),
+        );
+      }
+    }
+  }
+
+  /// ➕ סיידבר — הוסף חניך שלא היה בשום אימון לאימון ביישוב אחר
+  Future<void> _showSidebarAddCrossDialog(String traineeName) async {
+    final settlements = feedbackStorage
+        .where((f) => f.folder.contains('474') || f.folderKey.contains('474'))
+        .map((f) => f.settlement)
+        .where((s) => s.isNotEmpty && s != widget.settlement)
+        .toSet()
+        .toList()
+      ..sort();
+
+    int? selectedSessionIndex;
+    String? selectedSettlement;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text('הוסף נוכחות ל-$traineeName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButton<int>(
+                  isExpanded: true,
+                  value: selectedSessionIndex,
+                  hint: const Text('בחר אימון'),
+                  items: List.generate(_sessions.length, (i) {
+                    final s = _sessions[i];
+                    final date = s['date'] as DateTime?;
+                    final typeGroup = (s['typeGroup'] as String?) ?? '';
+                    final label = '$typeGroup${date != null ? ' ${_formatDate(date)}' : ''}';
+                    return DropdownMenuItem(value: i, child: Text(label));
+                  }),
+                  onChanged: (v) => setDialogState(() => selectedSessionIndex = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: selectedSettlement,
+                  hint: const Text('בחר יישוב מארח'),
+                  items: settlements
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => selectedSettlement = v),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('ביטול'),
+              ),
+              TextButton(
+                onPressed: selectedSessionIndex != null && selectedSettlement != null
+                    ? () => Navigator.of(ctx).pop(true)
+                    : null,
+                child: const Text('אישור'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed == true && selectedSessionIndex != null && selectedSettlement != null && mounted) {
+      await _saveSidebarCrossAttendance(traineeName, selectedSessionIndex!, selectedSettlement!);
+    }
+  }
+
+  Future<void> _saveSidebarCrossAttendance(
+    String traineeName,
+    int sessionIndex,
+    String hostSettlement,
+  ) async {
+    try {
+      final session = _sessions[sessionIndex];
+      final typeGroup = (session['typeGroup'] as String?) ?? '';
+      final date = (session['date'] as DateTime?) ?? DateTime(2000);
+
+      await FirebaseFirestore.instance.collection('cross_attendance').add({
+        'traineeName': traineeName,
+        'homeSettlement': widget.settlement,
+        'hostSettlement': hostSettlement,
+        'typeGroup': typeGroup,
+        'sessionDate': Timestamp.fromDate(date),
+        'createdAt': Timestamp.now(),
+        'createdBy': currentUser?.name ?? '',
+      });
+
+      setState(() {
+        _crossAttendanceMap.putIfAbsent(traineeName, () => {});
+        _crossAttendanceMap[traineeName]!.add(sessionIndex);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$traineeName הוסף כנוכח ב$hostSettlement')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('שגיאה בשמירה: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildNeverAttendedSidebar(List<String> neverAttended) {
+    final isAdminYotam =
+        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
+    return Container(
+      width: isAdminYotam ? 200 : 160,
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        border: Border(left: BorderSide(color: Colors.red[200]!)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            color: Colors.red[100],
+            child: Text(
+              'לא היו באף אימון (${neverAttended.length})',
+              style: TextStyle(
+                color: Colors.red[800],
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: neverAttended.length,
+              itemBuilder: (ctx, i) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: i.isEven ? Colors.white : Colors.red[50],
+                    border: Border(bottom: BorderSide(color: Colors.red[100]!)),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${i + 1}.',
+                        style: TextStyle(color: Colors.red[400], fontSize: 10),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          neverAttended[i],
+                          style: TextStyle(
+                            color: Colors.red[700],
+                            fontSize: 12,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isAdminYotam)
+                        GestureDetector(
+                          onTap: () => _showSidebarAddCrossDialog(neverAttended[i]),
+                          child: Icon(
+                            Icons.add_circle_outline,
+                            color: Colors.red[400],
+                            size: 18,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -25321,8 +25826,10 @@ class _DryTrainingFeedbacksListPageState
                         } else {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  _DryTrainingDetailsPage(docId: id, data: item),
+                              builder: (_) => _DryTrainingDetailsPage(
+                                docId: id,
+                                data: item,
+                              ),
                             ),
                           );
                         }
@@ -25437,7 +25944,8 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
     setState(() => _isExporting = true);
     try {
       final module = (widget.data['module'] as String?) ?? '';
-      final teamName = (widget.data['teamName'] as String?) ??
+      final teamName =
+          (widget.data['teamName'] as String?) ??
           (widget.data['name'] as String?) ??
           'export';
       final prefix = teamName.replaceAll(' ', '_');
@@ -25460,15 +25968,15 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
         );
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('הייצוא הושלם בהצלחה')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('הייצוא הושלם בהצלחה')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('שגיאה בייצוא: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('שגיאה בייצוא: $e')));
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
@@ -25480,8 +25988,7 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
     final categories =
         (widget.data['categories'] as List?)?.cast<String>() ?? [];
     final traineesRaw = (widget.data['trainees'] as List?) ?? [];
-    final trainees =
-        traineesRaw.map((t) => t as Map<String, dynamic>).toList();
+    final trainees = traineesRaw.map((t) => t as Map<String, dynamic>).toList();
     final teamName = (widget.data['teamName'] as String?) ?? '';
     final summary = (widget.data['trainingSummary'] as String?) ?? '';
     final date = _formatDate(widget.data['finalizedAt']);
@@ -25501,8 +26008,7 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 ),
               )
@@ -25528,22 +26034,38 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (date.isNotEmpty)
-                        _metaRow('תאריך', date),
-                      if ((widget.data['folder'] as String?)?.isNotEmpty == true)
+                      if (date.isNotEmpty) _metaRow('תאריך', date),
+                      if ((widget.data['folder'] as String?)?.isNotEmpty ==
+                          true)
                         _metaRow('יחידה', widget.data['folder'] as String),
-                      if ((widget.data['trainingType'] as String?)?.isNotEmpty == true)
-                        _metaRow('סוג אימון', widget.data['trainingType'] as String),
-                      if ((widget.data['instructorName'] as String?)?.isNotEmpty == true)
-                        _metaRow('מדריך', widget.data['instructorName'] as String),
-                      _metaRow('נוכחים', '${widget.data['attendeesCount'] ?? 0}'),
-                      _metaRow('מדריכים', '${widget.data['instructorsCount'] ?? 0}'),
+                      if ((widget.data['trainingType'] as String?)
+                              ?.isNotEmpty ==
+                          true)
+                        _metaRow(
+                          'סוג אימון',
+                          widget.data['trainingType'] as String,
+                        ),
+                      if ((widget.data['instructorName'] as String?)
+                              ?.isNotEmpty ==
+                          true)
+                        _metaRow(
+                          'מדריך',
+                          widget.data['instructorName'] as String,
+                        ),
+                      _metaRow(
+                        'נוכחים',
+                        '${widget.data['attendeesCount'] ?? 0}',
+                      ),
+                      _metaRow(
+                        'מדריכים',
+                        '${widget.data['instructorsCount'] ?? 0}',
+                      ),
                     ],
                   ),
                 ),
               ),
 
-              if (categories.isNotEmpty && trainees.isNotEmpty) ...[  
+              if (categories.isNotEmpty && trainees.isNotEmpty) ...[
                 const Text(
                   'טבלת הערכה',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -25553,7 +26075,7 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
                 const SizedBox(height: 20),
               ],
 
-              if (summary.isNotEmpty) ...[  
+              if (summary.isNotEmpty) ...[
                 const Text(
                   'סיכום אימון',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -25563,8 +26085,10 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
                   elevation: 1,
                   child: Padding(
                     padding: const EdgeInsets.all(14),
-                    child: Text(summary,
-                        style: const TextStyle(fontSize: 15, height: 1.5)),
+                    child: Text(
+                      summary,
+                      style: const TextStyle(fontSize: 15, height: 1.5),
+                    ),
                   ),
                 ),
               ],
@@ -25580,12 +26104,11 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Text('$label: ',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 15)),
-          Expanded(
-              child: Text(value,
-                  style: const TextStyle(fontSize: 15))),
+          Text(
+            '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 15))),
         ],
       ),
     );
