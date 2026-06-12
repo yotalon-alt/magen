@@ -4272,6 +4272,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         folderKey = 'training_summary_general';
       } else if (trainingSummaryFolder == 'תרגילים גזרתיים') {
         folderKey = 'training_summary_sectoral';
+      } else if (trainingSummaryFolder == 'פלסר הגולן') {
+        folderKey = 'placer_golan';
       } else {
         folderKey = 'training_summary_474';
       }
@@ -4760,6 +4762,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
         folderKey = 'training_summary_general';
       } else if (trainingSummaryFolder == 'תרגילים גזרתיים') {
         folderKey = 'training_summary_sectoral';
+      } else if (trainingSummaryFolder == 'פלסר הגולן') {
+        folderKey = 'placer_golan';
       } else {
         folderKey = 'training_summary_474';
       }
@@ -4960,6 +4964,10 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                     value: 'תרגילים גזרתיים',
                     child: Text('תרגילים גזרתיים'),
                   ),
+                  DropdownMenuItem(
+                    value: 'פלסר הגולן',
+                    child: Text('פלסר הגולן'),
+                  ),
                 ],
                 onChanged: (v) => setState(() {
                   trainingSummaryFolder = v;
@@ -4976,7 +4984,33 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              if (trainingSummaryFolder == 'סיכום אימון כללי') ...[
+              if (trainingSummaryFolder == 'פלסר הגולן') ...[
+                // פלסר הגולן: fixed unit + free text team
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('פלסר הגולן', style: TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: TextEditingController(text: selectedSettlement == 'פלסר הגולן' ? '' : selectedSettlement)
+                    ..selection = TextSelection.collapsed(
+                      offset: (selectedSettlement == 'פלסר הגולן' ? '' : selectedSettlement).length,
+                    ),
+                  decoration: const InputDecoration(
+                    labelText: 'צוות',
+                    border: OutlineInputBorder(),
+                    hintText: 'הזן שם צוות',
+                  ),
+                  onChanged: (v) {
+                    setState(() => selectedSettlement = v.isNotEmpty ? v : 'פלסר הגולן');
+                    _triggerAutosave();
+                  },
+                ),
+              ] else if (trainingSummaryFolder == 'סיכום אימון כללי') ...[
                 // General folder: free text input
                 TextField(
                   controller: TextEditingController(text: selectedSettlement)
@@ -11777,7 +11811,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   : [],
 
               // סיכום ופירוט מקצים למשובי מטווחים
-              ...feedback.folder == 'מטווחי ירי' &&
+              ...(feedback.folder == 'מטווחי ירי' ||
+                          (feedback.module == 'shooting_ranges' &&
+                              !is474Ranges)) &&
                       feedback.id != null &&
                       feedback.id!.isNotEmpty
                   ? <Widget>[
@@ -24979,7 +25015,6 @@ class _TrainingFolderSelectionPageState
                         FutureBuilder<int>(
                           future: FirebaseFirestore.instance
                               .collection('feedbacks')
-                              .where('module', isEqualTo: 'dry_training')
                               .where('folder', isEqualTo: internalValue)
                               .where('isTemporary', isEqualTo: false)
                               .count()
@@ -25269,12 +25304,27 @@ class _DryTrainingFeedbacksListPageState
                     margin: const EdgeInsets.only(bottom: 8),
                     child: InkWell(
                       onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                _DryTrainingDetailsPage(docId: id, data: item),
-                          ),
-                        );
+                        final module = (item['module'] as String?) ?? '';
+                        if (module == 'shooting_ranges') {
+                          final feedback = FeedbackModel.fromMap(
+                            Map<String, dynamic>.from(item)..remove('id'),
+                            id: id,
+                          );
+                          if (feedback == null) return;
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  FeedbackDetailsPage(feedback: feedback),
+                            ),
+                          );
+                        } else {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  _DryTrainingDetailsPage(docId: id, data: item),
+                            ),
+                          );
+                        }
                       },
                       child: Padding(
                         padding: const EdgeInsets.all(14),
