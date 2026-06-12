@@ -1703,10 +1703,13 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // ✅ IMPROVED: Accept valid loadedFolderKey even if rangeFolder UI is not set
     if (_rangeType == 'ארוכים' && widget.mode == 'range') {
       final hasValidUIFolder =
-          rangeFolder == 'מטווחים 474' || rangeFolder == 'מטווחי ירי';
+          rangeFolder == 'מטווחים 474' ||
+          rangeFolder == 'מטווחי ירי' ||
+          rangeFolder == 'פלסר הגולן';
       final hasValidDraftFolder =
           loadedFolderKey == 'ranges_474' ||
-          loadedFolderKey == 'shooting_ranges';
+          loadedFolderKey == 'shooting_ranges' ||
+          loadedFolderKey == 'placer_golan';
 
       if (!hasValidUIFolder && !hasValidDraftFolder) {
         debugPrint(
@@ -1714,7 +1717,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('אנא בחר תיקייה תקינה: מטווחים 474 או מטווחי ירי'),
+            content: Text(
+              'אנא בחר תיקייה תקינה: מטווחים 474, מטווחי ירי או פלסר הגולן',
+            ),
           ),
         );
         return;
@@ -1952,6 +1957,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           folderKey = 'shooting_ranges';
           folderLabel = 'מטווחי ירי';
           folderId = 'shooting_ranges';
+        } else if (uiFolderValue == 'פלסר הגולן') {
+          folderKey = 'placer_golan';
+          folderLabel = 'פלסר הגולן';
+          folderId = 'placer_golan';
         } else {
           // Should never reach here due to validation above
           debugPrint(
@@ -2187,6 +2196,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         'attendeesCount': attendeesCount,
         'instructorsCount': instructorsCount, // מספר מדריכים
         'instructors': _collectInstructorNames(), // רשימת מדריכים
+        'teamName': rangeFolder == 'פלסר הגולן' ? manualSettlementText : '',
         'stations': stationsData,
         'trainees': traineesData,
         'summary': trainingSummary, // ✅ סיכום האימון מהמדריך
@@ -3130,6 +3140,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             rangeFolder == 'Shooting Ranges') {
           draftFolderKey = 'shooting_ranges';
           draftFolderLabel = 'מטווחי ירי';
+        } else if (rangeFolder == 'פלסר הגולן') {
+          draftFolderKey = 'placer_golan';
+          draftFolderLabel = 'פלסר הגולן';
         } else {
           draftFolderKey = 'shooting_ranges';
           draftFolderLabel = 'מטווחי ירי';
@@ -4118,6 +4131,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               rangeFolder = 'מטווחים 474';
             } else if (rawFolderKey == 'shooting_ranges') {
               rangeFolder = 'מטווחי ירי';
+            } else if (rawFolderKey == 'placer_golan') {
+              rangeFolder = 'פלסר הגולן';
             } else {
               // Unknown folderKey, use folderLabel or rawRangeFolder as fallback
               rangeFolder = rawFolderLabel ?? rawRangeFolder;
@@ -4488,16 +4503,28 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       value: 'מטווחי ירי',
                       child: Text('מטווחי ירי'),
                     ),
+                    DropdownMenuItem(
+                      value: 'פלסר הגולן',
+                      child: Text('פלסר הגולן'),
+                    ),
                   ],
                   onChanged: (value) {
                     setState(() {
                       rangeFolder = value;
-                      // Clear settlement when folder changes
-                      settlementName = '';
-                      selectedSettlement = null;
-                      _settlementDisplayText = '';
-                      // Clear autocomplete when folder changes
+                      isManualSettlement = false;
                       _autocompleteTrainees = [];
+                      if (value == 'פלסר הגולן') {
+                        // Auto-set unit; keep manualSettlementText for צוות
+                        settlementName = 'פלסר הגולן';
+                        selectedSettlement = 'פלסר הגולן';
+                        _settlementDisplayText = 'פלסר הגולן';
+                        manualSettlementText = '';
+                      } else {
+                        settlementName = '';
+                        selectedSettlement = null;
+                        _settlementDisplayText = '';
+                        manualSettlementText = '';
+                      }
                     });
                     _scheduleAutoSave();
                   },
@@ -4635,6 +4662,35 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       setState(() {
                         settlementName = value;
                       });
+                      _scheduleAutoSave();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ] else if (rangeFolder == 'פלסר הגולן') ...[
+                  // Fixed unit — always "פלסר הגולן"
+                  TextField(
+                    readOnly: true,
+                    controller: TextEditingController(text: 'פלסר הגולן'),
+                    decoration: const InputDecoration(
+                      labelText: 'יחידה',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Manual team name
+                  TextField(
+                    controller:
+                        TextEditingController(text: manualSettlementText)
+                          ..selection = TextSelection.collapsed(
+                            offset: manualSettlementText.length,
+                          ),
+                    decoration: const InputDecoration(
+                      labelText: 'צוות',
+                      border: OutlineInputBorder(),
+                      hintText: 'הזן שם צוות',
+                    ),
+                    onChanged: (value) {
+                      setState(() => manualSettlementText = value);
                       _scheduleAutoSave();
                     },
                   ),
@@ -4959,50 +5015,70 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                     setState(() {
                       if (newIndex > oldIndex) newIndex--;
                       // Move stage in list
-                      final movedStage = shortRangeStagesList.removeAt(oldIndex);
+                      final movedStage = shortRangeStagesList.removeAt(
+                        oldIndex,
+                      );
                       shortRangeStagesList.insert(newIndex, movedStage);
                       // Move trainee data columns to match new stage order
                       for (final row in traineeRows) {
                         final oldVal = row.values.remove(oldIndex);
                         final oldTime = row.timeValues.remove(oldIndex);
                         final oldTouched = row.valuesTouched.remove(oldIndex);
-                        final oldTimeTouched = row.timeValuesTouched.remove(oldIndex);
+                        final oldTimeTouched = row.timeValuesTouched.remove(
+                          oldIndex,
+                        );
                         // Shift indices between oldIndex and newIndex
                         final updatedValues = <int, int>{};
                         final updatedTimes = <int, double>{};
                         final updatedTouched = <int, bool>{};
                         final updatedTimeTouched = <int, bool>{};
                         row.values.forEach((k, v) {
-                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                          if (oldIndex < newIndex &&
+                              k > oldIndex &&
+                              k <= newIndex) {
                             updatedValues[k - 1] = v;
-                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                          } else if (oldIndex > newIndex &&
+                              k >= newIndex &&
+                              k < oldIndex) {
                             updatedValues[k + 1] = v;
                           } else {
                             updatedValues[k] = v;
                           }
                         });
                         row.timeValues.forEach((k, v) {
-                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                          if (oldIndex < newIndex &&
+                              k > oldIndex &&
+                              k <= newIndex) {
                             updatedTimes[k - 1] = v;
-                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                          } else if (oldIndex > newIndex &&
+                              k >= newIndex &&
+                              k < oldIndex) {
                             updatedTimes[k + 1] = v;
                           } else {
                             updatedTimes[k] = v;
                           }
                         });
                         row.valuesTouched.forEach((k, v) {
-                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                          if (oldIndex < newIndex &&
+                              k > oldIndex &&
+                              k <= newIndex) {
                             updatedTouched[k - 1] = v;
-                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                          } else if (oldIndex > newIndex &&
+                              k >= newIndex &&
+                              k < oldIndex) {
                             updatedTouched[k + 1] = v;
                           } else {
                             updatedTouched[k] = v;
                           }
                         });
                         row.timeValuesTouched.forEach((k, v) {
-                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                          if (oldIndex < newIndex &&
+                              k > oldIndex &&
+                              k <= newIndex) {
                             updatedTimeTouched[k - 1] = v;
-                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                          } else if (oldIndex > newIndex &&
+                              k >= newIndex &&
+                              k < oldIndex) {
                             updatedTimeTouched[k + 1] = v;
                           } else {
                             updatedTimeTouched[k] = v;
@@ -5020,123 +5096,108 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         row.timeValuesTouched
                           ..clear()
                           ..addAll(updatedTimeTouched);
-                        if (oldVal != null) row.values[newIndex] = oldVal;
-                        if (oldTime != null) row.timeValues[newIndex] = oldTime;
-                        if (oldTouched != null) row.valuesTouched[newIndex] = oldTouched;
-                        if (oldTimeTouched != null) row.timeValuesTouched[newIndex] = oldTimeTouched;
+                        if (oldVal != null) {
+                          row.values[newIndex] = oldVal;
+                        }
+                        if (oldTime != null) {
+                          row.timeValues[newIndex] = oldTime;
+                        }
+                        if (oldTouched != null) {
+                          row.valuesTouched[newIndex] = oldTouched;
+                        }
+                        if (oldTimeTouched != null) {
+                          row.timeValuesTouched[newIndex] = oldTimeTouched;
+                        }
                       }
                     });
                     _scheduleAutoSave();
                   },
                   children: shortRangeStagesList.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final stage = entry.value;
-                  return Card(
-                    key: ValueKey(index),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Header with stage number and delete button
-                          Row(
-                            children: [
-                              // Drag handle
-                              ReorderableDragStartListener(
-                                index: index,
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4),
-                                  child: Icon(Icons.drag_handle, color: Colors.grey),
-                                ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'מקצה ${index + 1}: ${stage.displayName}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
+                    final index = entry.key;
+                    final stage = entry.value;
+                    return Card(
+                      key: ValueKey(index),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header with stage number and delete button
+                            Row(
+                              children: [
+                                // Drag handle
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 4,
                                     ),
-                                    if (stage.bulletsCount > 0)
+                                    child: Icon(
+                                      Icons.drag_handle,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Text(
-                                        '${stage.bulletsCount} כדורים',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey.shade700,
-                                          fontWeight: FontWeight.w600,
+                                        'מקצה ${index + 1}: ${stage.displayName}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
                                         ),
                                       ),
-                                  ],
+                                      if (stage.bulletsCount > 0)
+                                        Text(
+                                          '${stage.bulletsCount} כדורים',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade700,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.red,
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () =>
+                                      _removeShortRangeStage(index),
+                                  tooltip: 'מחק מקצה',
                                 ),
-                                onPressed: () => _removeShortRangeStage(index),
-                                tooltip: 'מחק מקצה',
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Stage dropdown
-                          DropdownButtonFormField<String>(
-                            initialValue: stage.selectedStage,
-                            decoration: const InputDecoration(
-                              labelText: 'בחר מקצה',
-                              border: OutlineInputBorder(),
+                              ],
                             ),
-                            items: shortRangeStages.map((stageName) {
-                              return DropdownMenuItem(
-                                value: stageName,
-                                child: Text(stageName),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                shortRangeStagesList[index] =
-                                    ShortRangeStageModel(
-                                      selectedStage: value,
-                                      manualName: value == 'מקצה ידני'
-                                          ? stage.manualName
-                                          : '',
-                                      isManual: value == 'מקצה ידני',
-                                      bulletsCount: stage.bulletsCount,
-                                      timeLimit:
-                                          stage.timeLimit, // Preserve timeLimit
-                                    );
-                              });
-                              _scheduleAutoSave();
-                            },
-                          ),
-
-                          // Manual stage name input (shown only when "מקצה ידני" selected)
-                          if (stage.isManual) ...[
                             const SizedBox(height: 12),
-                            TextField(
-                              controller:
-                                  TextEditingController(text: stage.manualName)
-                                    ..selection = TextSelection.collapsed(
-                                      offset: stage.manualName.length,
-                                    ),
+
+                            // Stage dropdown
+                            DropdownButtonFormField<String>(
+                              initialValue: stage.selectedStage,
                               decoration: const InputDecoration(
-                                labelText: 'שם מקצה ידני',
+                                labelText: 'בחר מקצה',
                                 border: OutlineInputBorder(),
-                                hintText: 'הזן שם מקצה',
                               ),
+                              items: shortRangeStages.map((stageName) {
+                                return DropdownMenuItem(
+                                  value: stageName,
+                                  child: Text(stageName),
+                                );
+                              }).toList(),
                               onChanged: (value) {
                                 setState(() {
                                   shortRangeStagesList[index] =
                                       ShortRangeStageModel(
-                                        selectedStage: stage.selectedStage,
-                                        manualName: value,
-                                        isManual: true,
+                                        selectedStage: value,
+                                        manualName: value == 'מקצה ידני'
+                                            ? stage.manualName
+                                            : '',
+                                        isManual: value == 'מקצה ידני',
                                         bulletsCount: stage.bulletsCount,
                                         timeLimit: stage
                                             .timeLimit, // Preserve timeLimit
@@ -5145,53 +5206,86 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                 _scheduleAutoSave();
                               },
                             ),
-                          ],
 
-                          // Bullets count input
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller:
-                                TextEditingController(
-                                    text: stage.bulletsCount > 0
-                                        ? stage.bulletsCount.toString()
-                                        : '',
-                                  )
-                                  ..selection = TextSelection.collapsed(
-                                    offset:
-                                        (stage.bulletsCount > 0
-                                                ? stage.bulletsCount.toString()
-                                                : '')
-                                            .length,
-                                  ),
-                            decoration: const InputDecoration(
-                              labelText: 'מס׳ כדורים',
-                              border: OutlineInputBorder(),
-                              hintText: 'הזן מספר כדורים',
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
+                            // Manual stage name input (shown only when "מקצה ידני" selected)
+                            if (stage.isManual) ...[
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller:
+                                    TextEditingController(
+                                        text: stage.manualName,
+                                      )
+                                      ..selection = TextSelection.collapsed(
+                                        offset: stage.manualName.length,
+                                      ),
+                                decoration: const InputDecoration(
+                                  labelText: 'שם מקצה ידני',
+                                  border: OutlineInputBorder(),
+                                  hintText: 'הזן שם מקצה',
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    shortRangeStagesList[index] =
+                                        ShortRangeStageModel(
+                                          selectedStage: stage.selectedStage,
+                                          manualName: value,
+                                          isManual: true,
+                                          bulletsCount: stage.bulletsCount,
+                                          timeLimit: stage
+                                              .timeLimit, // Preserve timeLimit
+                                        );
+                                  });
+                                  _scheduleAutoSave();
+                                },
+                              ),
                             ],
-                            onChanged: (value) {
-                              setState(() {
-                                shortRangeStagesList[index] =
-                                    ShortRangeStageModel(
-                                      selectedStage: stage.selectedStage,
-                                      manualName: stage.manualName,
-                                      isManual: stage.isManual,
-                                      bulletsCount: int.tryParse(value) ?? 0,
-                                      timeLimit:
-                                          stage.timeLimit, // Preserve timeLimit
-                                    );
-                              });
-                              _scheduleAutoSave();
-                            },
-                          ),
-                        ],
+
+                            // Bullets count input
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller:
+                                  TextEditingController(
+                                      text: stage.bulletsCount > 0
+                                          ? stage.bulletsCount.toString()
+                                          : '',
+                                    )
+                                    ..selection = TextSelection.collapsed(
+                                      offset:
+                                          (stage.bulletsCount > 0
+                                                  ? stage.bulletsCount
+                                                        .toString()
+                                                  : '')
+                                              .length,
+                                    ),
+                              decoration: const InputDecoration(
+                                labelText: 'מס׳ כדורים',
+                                border: OutlineInputBorder(),
+                                hintText: 'הזן מספר כדורים',
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  shortRangeStagesList[index] =
+                                      ShortRangeStageModel(
+                                        selectedStage: stage.selectedStage,
+                                        manualName: stage.manualName,
+                                        isManual: stage.isManual,
+                                        bulletsCount: int.tryParse(value) ?? 0,
+                                        timeLimit: stage
+                                            .timeLimit, // Preserve timeLimit
+                                      );
+                                });
+                                _scheduleAutoSave();
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
                 ),
 
                 // כפתור הוסף מקצה/עיקרון - מתחת לרשימת המקצים
@@ -5259,18 +5353,26 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         final updatedValues = <int, int>{};
                         final updatedTouched = <int, bool>{};
                         row.values.forEach((k, v) {
-                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                          if (oldIndex < newIndex &&
+                              k > oldIndex &&
+                              k <= newIndex) {
                             updatedValues[k - 1] = v;
-                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                          } else if (oldIndex > newIndex &&
+                              k >= newIndex &&
+                              k < oldIndex) {
                             updatedValues[k + 1] = v;
                           } else {
                             updatedValues[k] = v;
                           }
                         });
                         row.valuesTouched.forEach((k, v) {
-                          if (oldIndex < newIndex && k > oldIndex && k <= newIndex) {
+                          if (oldIndex < newIndex &&
+                              k > oldIndex &&
+                              k <= newIndex) {
                             updatedTouched[k - 1] = v;
-                          } else if (oldIndex > newIndex && k >= newIndex && k < oldIndex) {
+                          } else if (oldIndex > newIndex &&
+                              k >= newIndex &&
+                              k < oldIndex) {
                             updatedTouched[k + 1] = v;
                           } else {
                             updatedTouched[k] = v;
@@ -5282,231 +5384,241 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         row.valuesTouched
                           ..clear()
                           ..addAll(updatedTouched);
-                        if (oldVal != null) row.values[newIndex] = oldVal;
-                        if (oldTouched != null) row.valuesTouched[newIndex] = oldTouched;
+                        if (oldVal != null) {
+                          row.values[newIndex] = oldVal;
+                        }
+                        if (oldTouched != null) {
+                          row.valuesTouched[newIndex] = oldTouched;
+                        }
                       }
                     });
                     _scheduleAutoSave();
                   },
                   children: longRangeStagesList.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final stage = entry.value;
+                    final index = entry.key;
+                    final stage = entry.value;
 
-                  return Card(
-                    key: ValueKey(index),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Header row with stage name and delete button
-                          Row(
-                            children: [
-                              // Drag handle
-                              ReorderableDragStartListener(
-                                index: index,
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4),
-                                  child: Icon(Icons.drag_handle, color: Colors.grey),
-                                ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'מקצה ${index + 1}: ${stage.name}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
+                    return Card(
+                      key: ValueKey(index),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header row with stage name and delete button
+                            Row(
+                              children: [
+                                // Drag handle
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 4,
                                     ),
-                                    if (stage.maxPoints > 0)
+                                    child: Icon(
+                                      Icons.drag_handle,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Text(
-                                        'מקסימום: ${stage.maxPoints} נק׳',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey.shade700,
-                                          fontWeight: FontWeight.w600,
+                                        'מקצה ${index + 1}: ${stage.name}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
                                         ),
                                       ),
-                                    if (stage.bulletsCount > 0)
-                                      Text(
-                                        'כדורים: ${stage.bulletsCount}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                      if (stage.maxPoints > 0)
+                                        Text(
+                                          'מקסימום: ${stage.maxPoints} נק׳',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade700,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                      ),
-                                  ],
+                                      if (stage.bulletsCount > 0)
+                                        Text(
+                                          'כדורים: ${stage.bulletsCount}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.red,
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () => _removeLongRangeStage(index),
+                                  tooltip: 'מחק מקצה',
                                 ),
-                                onPressed: () => _removeLongRangeStage(index),
-                                tooltip: 'מחק מקצה',
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Stage name dropdown (like Short Range)
-                          DropdownButtonFormField<String>(
-                            initialValue:
-                                longRangeStageNames.contains(stage.name)
-                                ? stage.name
-                                : (stage.isManual ? 'מקצה ידני' : null),
-                            decoration: const InputDecoration(
-                              labelText: 'בחר מקצה',
-                              border: OutlineInputBorder(),
+                              ],
                             ),
-                            hint: const Text('בחר מקצה'),
-                            items: longRangeStageNames.map((stageName) {
-                              return DropdownMenuItem(
-                                value: stageName,
-                                child: Text(stageName),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                final isManual = value == 'מקצה ידני';
-                                stage.name = isManual
-                                    ? stage.name
-                                    : (value ?? '');
-                                stage.isManual = isManual;
-                              });
-                              _scheduleAutoSave();
-                            },
-                          ),
-
-                          // Manual stage name input (shown only when "מקצה ידני" selected)
-                          if (stage.isManual) ...[
                             const SizedBox(height: 12),
-                            TextField(
-                              controller:
-                                  TextEditingController(
-                                      text: stage.name == 'מקצה ידני'
-                                          ? ''
-                                          : stage.name,
-                                    )
-                                    ..selection = TextSelection.collapsed(
-                                      offset:
-                                          (stage.name == 'מקצה ידני'
-                                                  ? ''
-                                                  : stage.name)
-                                              .length,
-                                    ),
+
+                            // Stage name dropdown (like Short Range)
+                            DropdownButtonFormField<String>(
+                              initialValue:
+                                  longRangeStageNames.contains(stage.name)
+                                  ? stage.name
+                                  : (stage.isManual ? 'מקצה ידני' : null),
                               decoration: const InputDecoration(
-                                labelText: 'שם מקצה ידני',
+                                labelText: 'בחר מקצה',
                                 border: OutlineInputBorder(),
-                                hintText: 'הזן שם מקצה',
                               ),
+                              hint: const Text('בחר מקצה'),
+                              items: longRangeStageNames.map((stageName) {
+                                return DropdownMenuItem(
+                                  value: stageName,
+                                  child: Text(stageName),
+                                );
+                              }).toList(),
                               onChanged: (value) {
                                 setState(() {
-                                  stage.name = value.isNotEmpty
-                                      ? value
-                                      : 'מקצה ידני';
+                                  final isManual = value == 'מקצה ידני';
+                                  stage.name = isManual
+                                      ? stage.name
+                                      : (value ?? '');
+                                  stage.isManual = isManual;
                                 });
                                 _scheduleAutoSave();
                               },
                             ),
-                          ],
 
-                          // Max score input (direct entry, no multiplication)
-                          const SizedBox(height: 12),
-                          // Side-by-side layout for max score and bullets (RTL: right to left)
-                          Row(
-                            children: [
-                              // Right side (50%): Max Score
-                              Expanded(
-                                flex: 1,
-                                child: TextField(
-                                  controller:
-                                      TextEditingController(
-                                          text: stage.maxPoints > 0
-                                              ? stage.maxPoints.toString()
-                                              : '',
-                                        )
-                                        ..selection = TextSelection.collapsed(
-                                          offset:
-                                              (stage.maxPoints > 0
-                                                      ? stage.maxPoints
-                                                            .toString()
-                                                      : '')
-                                                  .length,
-                                        ),
-                                  decoration: const InputDecoration(
-                                    labelText: 'ציון מקסימלי',
-                                    border: OutlineInputBorder(),
-                                    hintText: 'ציון מקס',
-                                    helperText: 'ציון מקסימלי במקצה',
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      stage.maxPoints =
-                                          int.tryParse(value) ?? 0;
-                                    });
-                                    _scheduleAutoSave();
-                                  },
+                            // Manual stage name input (shown only when "מקצה ידני" selected)
+                            if (stage.isManual) ...[
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller:
+                                    TextEditingController(
+                                        text: stage.name == 'מקצה ידני'
+                                            ? ''
+                                            : stage.name,
+                                      )
+                                      ..selection = TextSelection.collapsed(
+                                        offset:
+                                            (stage.name == 'מקצה ידני'
+                                                    ? ''
+                                                    : stage.name)
+                                                .length,
+                                      ),
+                                decoration: const InputDecoration(
+                                  labelText: 'שם מקצה ידני',
+                                  border: OutlineInputBorder(),
+                                  hintText: 'הזן שם מקצה',
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Left side (50%): Bullet tracking
-                              Expanded(
-                                flex: 1,
-                                child: TextField(
-                                  controller:
-                                      TextEditingController(
-                                          text: stage.bulletsCount > 0
-                                              ? stage.bulletsCount.toString()
-                                              : '',
-                                        )
-                                        ..selection = TextSelection.collapsed(
-                                          offset:
-                                              (stage.bulletsCount > 0
-                                                      ? stage.bulletsCount
-                                                            .toString()
-                                                      : '')
-                                                  .length,
-                                        ),
-                                  decoration: const InputDecoration(
-                                    labelText: 'כדורים (מעקב)',
-                                    border: OutlineInputBorder(),
-                                    hintText: 'מספר כדורים',
-                                    helperText: 'למעקב בלבד',
-                                    suffixIcon: Icon(
-                                      Icons.info_outline,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      stage.bulletsCount =
-                                          int.tryParse(value) ?? 0;
-                                    });
-                                    _scheduleAutoSave();
-                                  },
-                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    stage.name = value.isNotEmpty
+                                        ? value
+                                        : 'מקצה ידני';
+                                  });
+                                  _scheduleAutoSave();
+                                },
                               ),
                             ],
-                          ),
-                        ],
+
+                            // Max score input (direct entry, no multiplication)
+                            const SizedBox(height: 12),
+                            // Side-by-side layout for max score and bullets (RTL: right to left)
+                            Row(
+                              children: [
+                                // Right side (50%): Max Score
+                                Expanded(
+                                  flex: 1,
+                                  child: TextField(
+                                    controller:
+                                        TextEditingController(
+                                            text: stage.maxPoints > 0
+                                                ? stage.maxPoints.toString()
+                                                : '',
+                                          )
+                                          ..selection = TextSelection.collapsed(
+                                            offset:
+                                                (stage.maxPoints > 0
+                                                        ? stage.maxPoints
+                                                              .toString()
+                                                        : '')
+                                                    .length,
+                                          ),
+                                    decoration: const InputDecoration(
+                                      labelText: 'ציון מקסימלי',
+                                      border: OutlineInputBorder(),
+                                      hintText: 'ציון מקס',
+                                      helperText: 'ציון מקסימלי במקצה',
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    onChanged: (value) {
+                                      setState(() {
+                                        stage.maxPoints =
+                                            int.tryParse(value) ?? 0;
+                                      });
+                                      _scheduleAutoSave();
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Left side (50%): Bullet tracking
+                                Expanded(
+                                  flex: 1,
+                                  child: TextField(
+                                    controller:
+                                        TextEditingController(
+                                            text: stage.bulletsCount > 0
+                                                ? stage.bulletsCount.toString()
+                                                : '',
+                                          )
+                                          ..selection = TextSelection.collapsed(
+                                            offset:
+                                                (stage.bulletsCount > 0
+                                                        ? stage.bulletsCount
+                                                              .toString()
+                                                        : '')
+                                                    .length,
+                                          ),
+                                    decoration: const InputDecoration(
+                                      labelText: 'כדורים (מעקב)',
+                                      border: OutlineInputBorder(),
+                                      hintText: 'מספר כדורים',
+                                      helperText: 'למעקב בלבד',
+                                      suffixIcon: Icon(
+                                        Icons.info_outline,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    onChanged: (value) {
+                                      setState(() {
+                                        stage.bulletsCount =
+                                            int.tryParse(value) ?? 0;
+                                      });
+                                      _scheduleAutoSave();
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
                 ),
 
                 // כפתור הוסף מקצה - מתחת לרשימת המקצים
@@ -8285,7 +8397,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                                           );
                                                           _openDialogCount--;
                                                           // Force rebuild after dialog closes so timeValue Text widget appears
-                                                          if (mounted) setState(() {});
+                                                          if (mounted) {
+                                                            setState(() {});
+                                                          }
                                                           if (_openDialogCount ==
                                                                   0 &&
                                                               _pendingRefreshAfterDialog) {

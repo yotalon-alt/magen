@@ -2170,6 +2170,167 @@ class FeedbackExportService {
     }
   }
 
+  /// Export dry-training (יבשים) feedback to Excel
+  /// Sheet: trainees × categories with scores and average
+  static Future<void> exportDryTrainingDetails({
+    required Map<String, dynamic> feedbackData,
+    required String fileNamePrefix,
+  }) async {
+    try {
+      debugPrint('\n📊 ===== EXPORT DRY TRAINING DETAILS =====');
+
+      final excel = Excel.createExcel();
+      final sheet = excel['יבשים'];
+      excel.delete('Sheet1');
+
+      // ── meta ──────────────────────────────────────────────────────────────
+      final createdAt = feedbackData['finalizedAt'] ?? feedbackData['createdAt'];
+      String dateStr = '';
+      if (createdAt is Timestamp) {
+        final dt = createdAt.toDate();
+        dateStr = '${dt.day}/${dt.month}/${dt.year}';
+      }
+
+      final metaRows = <List<String>>[
+        ['תאריך', dateStr],
+        ['יחידה', (feedbackData['folder'] ?? '').toString()],
+        ['צוות', (feedbackData['teamName'] ?? '').toString()],
+        ['סוג אימון', (feedbackData['trainingType'] ?? '').toString()],
+        ['מדריך', (feedbackData['instructorName'] ?? '').toString()],
+        ['נוכחים', (feedbackData['attendeesCount'] ?? 0).toString()],
+      ];
+
+      int rowIdx = 0;
+      for (final row in metaRows) {
+        final labelCell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIdx),
+        );
+        labelCell.value = TextCellValue(row[0]);
+        labelCell.cellStyle = CellStyle(bold: true);
+
+        final valueCell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIdx),
+        );
+        valueCell.value = TextCellValue(row[1]);
+        rowIdx++;
+      }
+
+      rowIdx++; // blank row
+
+      // ── categories & trainees table ────────────────────────────────────────
+      final categories =
+          (feedbackData['categories'] as List?)?.cast<String>() ?? [];
+      final traineesRaw =
+          (feedbackData['trainees'] as List?) ?? [];
+
+      // Header row: שם | cat1 | cat2 | ... | ממוצע
+      final headers = ['שם', ...categories, 'ממוצע'];
+      for (int ci = 0; ci < headers.length; ci++) {
+        final cell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: ci, rowIndex: rowIdx),
+        );
+        cell.value = TextCellValue(headers[ci]);
+        cell.cellStyle = CellStyle(
+          bold: true,
+          backgroundColorHex: ExcelColor.blue,
+          fontColorHex: ExcelColor.white,
+        );
+      }
+      rowIdx++;
+
+      // Trainee rows
+      for (final tRaw in traineesRaw) {
+        final t = tRaw as Map<String, dynamic>;
+        final name = (t['name'] as String?) ?? '';
+        final scoresMap = (t['scores'] as Map<String, dynamic>?) ?? {};
+
+        final scores = <int, int>{};
+        scoresMap.forEach((k, v) {
+          if (k.startsWith('cat_')) {
+            final i = int.tryParse(k.replaceFirst('cat_', ''));
+            if (i != null) scores[i] = (v as num).toInt();
+          }
+        });
+
+        final avg = scores.isEmpty
+            ? null
+            : scores.values.fold(0, (a, b) => a + b) / scores.length;
+
+        final nameCell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIdx),
+        );
+        nameCell.value = TextCellValue(name);
+
+        for (int ci = 0; ci < categories.length; ci++) {
+          final score = scores[ci];
+          final cell = sheet.cell(
+            CellIndex.indexByColumnRow(columnIndex: ci + 1, rowIndex: rowIdx),
+          );
+          cell.value =
+              score != null ? IntCellValue(score) : TextCellValue('–');
+        }
+
+        final avgCell = sheet.cell(
+          CellIndex.indexByColumnRow(
+              columnIndex: categories.length + 1, rowIndex: rowIdx),
+        );
+        avgCell.value = avg != null
+            ? DoubleCellValue(double.parse(avg.toStringAsFixed(1)))
+            : TextCellValue('–');
+
+        rowIdx++;
+      }
+
+      // ── training summary ───────────────────────────────────────────────────
+      final summary = (feedbackData['trainingSummary'] ?? '').toString();
+      if (summary.isNotEmpty) {
+        rowIdx++;
+        final labelCell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIdx),
+        );
+        labelCell.value = TextCellValue('סיכום אימון');
+        labelCell.cellStyle = CellStyle(bold: true);
+        rowIdx++;
+        final summaryCell = sheet.cell(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIdx),
+        );
+        summaryCell.value = TextCellValue(summary);
+      }
+
+      // Auto-size
+      sheet.setColumnWidth(0, 22);
+      for (int i = 1; i <= categories.length + 1; i++) {
+        sheet.setColumnWidth(i, 14);
+      }
+
+      // Download
+      _setRTLForAllSheets(excel);
+      final fileBytes = _injectRtlIntoXlsx(excel.encode());
+      if (fileBytes == null) throw Exception('Failed to encode Excel');
+
+      final fileName =
+          '${fileNamePrefix}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+
+      if (kIsWeb) {
+        final blob = html.Blob([fileBytes]);
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final filePath = '${directory.path}/$fileName';
+        await File(filePath).writeAsBytes(fileBytes);
+      }
+
+      debugPrint('✅ exportDryTrainingDetails completed');
+    } catch (e) {
+      debugPrint('❌ exportDryTrainingDetails error: $e');
+      rethrow;
+    }
+  }
+
   /// Export training summary feedback to Excel/Google Sheets
   /// Dedicated structure for "משוב סיכום אימון 474"
   /// Headers: תאריך, מדריך, תיקייה, יישוב, סוג אימון, מספר נוכחים, רשימת נוכחים, סיכום

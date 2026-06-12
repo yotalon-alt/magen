@@ -20,6 +20,7 @@ import 'training_summary_entry_page.dart';
 import 'weapon_reset_page.dart';
 import 'widgets/standard_back_button.dart';
 import 'range_training_page.dart';
+import 'dry_training_page.dart';
 import 'widgets/connectivity_banner.dart';
 import 'widgets/feedback_list_tile_card.dart';
 import 'widgets/trainee_selection_dialog.dart';
@@ -140,6 +141,11 @@ _feedbackFoldersConfig = <Map<String, dynamic>>[
     'title': 'עבודה במבנה',
     'isHidden': true,
   }, // ✅ SOFT DELETE: Unused folder removed from UI
+  {
+    'title': 'הכשרות',
+    'isHidden': false,
+    'isTrainingCategory': true,
+  }, // הכשרות יבשים — פלסר הגולן
 ];
 
 // Helper: Get all folder titles (including hidden) for backwards compatibility
@@ -1816,6 +1822,11 @@ class _MainScreenState extends State<MainScreen> {
                 builder: (_) => const PersonalFeedbacksPage(),
                 settings: settings,
               );
+            case '/dry_training_entry':
+              return MaterialPageRoute(
+                builder: (_) => const DryTrainingEntryPage(),
+                settings: settings,
+              );
             case '/feedback_form':
               final exercise = settings.arguments as String?;
               return MaterialPageRoute(
@@ -2471,6 +2482,7 @@ class ExercisesPage extends StatelessWidget {
       'משובים אישיים',
       'סיכום אימון',
       'מיונים לקורס מדריכים',
+      'הכשרות',
     ];
 
     return Directionality(
@@ -2511,6 +2523,8 @@ class ExercisesPage extends StatelessWidget {
                     Navigator.of(context).pushNamed('/training_summary');
                   } else if (ex == 'משובים אישיים') {
                     Navigator.of(context).pushNamed('/personal_feedbacks');
+                  } else if (ex == 'הכשרות') {
+                    Navigator.of(context).pushNamed('/dry_training_entry');
                   } else {
                     Navigator.of(
                       context,
@@ -6896,6 +6910,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                   folderConfig['isSpecialCategory'] == true;
               final isGeneralCategory =
                   folderConfig['isGeneralCategory'] == true;
+              final isTrainingCategory =
+                  folderConfig['isTrainingCategory'] == true;
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -6921,6 +6937,13 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                           builder: (_) => const GeneralFolderSelectionPage(),
                         ),
                       );
+                    } else if (isTrainingCategory) {
+                      // הכשרות: show sub-folder selection page
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TrainingFolderSelectionPage(),
+                        ),
+                      );
                     } else {
                       // Use internal value for navigation/filtering
                       setState(() => _selectedFolder = internalValue);
@@ -6935,6 +6958,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               ? Icons.shield
                               : isGeneralCategory
                               ? Icons.folder_special
+                              : isTrainingCategory
+                              ? Icons.fitness_center
                               : (isInstructorCourse
                                     ? Icons.school
                                     : Icons.folder),
@@ -6943,6 +6968,8 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
                               ? Colors.deepOrange
                               : isGeneralCategory
                               ? Colors.teal
+                              : isTrainingCategory
+                              ? Colors.indigo
                               : (isInstructorCourse
                                     ? Colors.purple
                                     : Colors.orangeAccent),
@@ -17621,6 +17648,30 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       summaryRow.add(TextCellValue(''));
       sheet.appendRow(summaryRow);
 
+      // חניכים שלא היו בשום אימון
+      final neverAttendedExport = _allTrainees
+          .where((name) => !_attendanceMap.containsKey(name))
+          .toList();
+      if (neverAttendedExport.isNotEmpty) {
+        sheet.appendRow(<CellValue>[TextCellValue('')]);
+        final neverHeader = <CellValue>[
+          TextCellValue('לא היו בשום אימון (${neverAttendedExport.length})'),
+        ];
+        for (int i = 0; i < _sessions.length; i++) {
+          neverHeader.add(TextCellValue(''));
+        }
+        neverHeader.add(TextCellValue(''));
+        sheet.appendRow(neverHeader);
+        for (final name in neverAttendedExport) {
+          final row = <CellValue>[TextCellValue(name)];
+          for (int i = 0; i < _sessions.length; i++) {
+            row.add(TextCellValue('-'));
+          }
+          row.add(TextCellValue('0/${_sessions.length}'));
+          sheet.appendRow(row);
+        }
+      }
+
       excel.delete('Sheet1');
       final rawBytes = excel.encode();
       if (rawBytes == null) throw Exception('שגיאה ביצירת XLSX');
@@ -17746,6 +17797,11 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                               ? '-'
                               : (total / _sessions.length).round().toString();
                         }(), Colors.lightBlue[700]!),
+                        _buildStat(
+                          'לא השתתפו',
+                          '${_allTrainees.where((n) => !_attendanceMap.containsKey(n)).length}',
+                          Colors.red[700]!,
+                        ),
                       ],
                     ),
                   ),
@@ -18022,12 +18078,109 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       );
     }
 
+    // חניכים שלא היו בשום אימון
+    final neverAttended = _allTrainees
+        .where((n) => !_attendanceMap.containsKey(n))
+        .toList();
+
+    final List<Widget> neverAttendedRows = [];
+    if (neverAttended.isNotEmpty) {
+      // שורת כותרת מפרידה
+      neverAttendedRows.add(
+        Row(
+          children: [
+            Container(
+              width: nameColWidth + _sessions.length * sessionColWidth,
+              height: 36,
+              alignment: Alignment.centerRight,
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                border: Border(
+                  top: BorderSide(color: Colors.red[200]!),
+                  bottom: BorderSide(color: Colors.red[200]!),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                'לא היו בשום אימון (${neverAttended.length})',
+                style: TextStyle(
+                  color: Colors.red[800],
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      for (int ri = 0; ri < neverAttended.length; ri++) {
+        final name = neverAttended[ri];
+        final bg = ri.isEven ? Colors.red[25] ?? Colors.red[50]! : Colors.white;
+        final List<Widget> cells = [
+          Container(
+            width: nameColWidth,
+            height: 40,
+            alignment: Alignment.centerRight,
+            decoration: BoxDecoration(
+              color: bg,
+              border: Border(
+                bottom: BorderSide(color: dividerColor),
+                left: BorderSide(color: dividerColor),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(
+              children: [
+                Text(
+                  '${ri + 1}.',
+                  style: const TextStyle(color: Colors.black54, fontSize: 10),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: TextStyle(color: Colors.red[700], fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ];
+        for (int ci = 0; ci < _sessions.length; ci++) {
+          cells.add(
+            Container(
+              width: sessionColWidth,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: bg,
+                border: Border(
+                  bottom: BorderSide(color: dividerColor),
+                  left: ci < _sessions.length - 1
+                      ? BorderSide(color: dividerColor)
+                      : BorderSide.none,
+                ),
+              ),
+              child: Text(
+                '—',
+                style: TextStyle(color: Colors.red[300], fontSize: 14),
+              ),
+            ),
+          );
+        }
+        neverAttendedRows.add(Row(children: cells));
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: headerCells),
         ...dataRows,
         Row(children: summaryCells),
+        ...neverAttendedRows,
       ],
     );
   }
@@ -24708,6 +24861,876 @@ class _TraineeAttendanceStatisticsPageState
                   ],
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/* ================== TRAINING (הכשרות) FOLDER SELECTION ================== */
+
+class TrainingFolderSelectionPage extends StatefulWidget {
+  const TrainingFolderSelectionPage({super.key});
+
+  @override
+  State<TrainingFolderSelectionPage> createState() =>
+      _TrainingFolderSelectionPageState();
+}
+
+class _TrainingFolderSelectionPageState
+    extends State<TrainingFolderSelectionPage> {
+  bool _isRefreshing = false;
+
+  Future<void> _refreshFeedbacks() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      final isAdmin = currentUser?.role == 'Admin';
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('רשימת המשובים עודכנה')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('שגיאה בטעינת משובים')));
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Sub-folders inside הכשרות — extend here in the future
+    final subFolders = [
+      {
+        'title': 'פלסר הגולן',
+        'internalValue': 'פלסר הגולן',
+        'icon': Icons.directions_walk,
+        'color': Colors.brown,
+      },
+    ];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('הכשרות'),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refreshFeedbacks,
+              tooltip: 'רענן רשימה',
+            ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ListView.builder(
+            itemCount: subFolders.length,
+            itemBuilder: (ctx, i) {
+              final folder = subFolders[i];
+              final title = folder['title'] as String;
+              final internalValue = folder['internalValue'] as String;
+              final icon = folder['icon'] as IconData;
+              final color = folder['color'] as Color;
+
+              // Count from dry_training_feedbacks collection (future: could stream)
+              // For now use a FutureBuilder
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            _PlacerGolanFolderPage(folder: internalValue),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 32, color: color),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        FutureBuilder<int>(
+                          future: FirebaseFirestore.instance
+                              .collection('feedbacks')
+                              .where('module', isEqualTo: 'dry_training')
+                              .where('folder', isEqualTo: internalValue)
+                              .where('isTemporary', isEqualTo: false)
+                              .count()
+                              .get()
+                              .timeout(const Duration(seconds: 5))
+                              .then((s) => s.count ?? 0)
+                              .catchError((_) => 0),
+                          builder: (context, snap) => Text(
+                            '${snap.data ?? 0} משובים',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/* ── List of dry-training feedbacks for a specific folder ── */
+
+/* ── Placer Golan sub-folder page with 3 category cards ── */
+
+class _PlacerGolanFolderPage extends StatelessWidget {
+  final String folder;
+  const _PlacerGolanFolderPage({required this.folder});
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = [
+      {
+        'title': 'יבשים',
+        'module': 'dry_training',
+        'icon': Icons.fitness_center,
+        'color': Colors.indigo,
+      },
+      {
+        'title': 'מטווחים',
+        'module': 'shooting_ranges',
+        'icon': Icons.gps_fixed,
+        'color': Colors.blueGrey,
+      },
+      {
+        'title': 'סיכום אימון',
+        'module': 'training_summary',
+        'icon': Icons.assessment,
+        'color': Colors.teal,
+      },
+    ];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(folder),
+          leading: const StandardBackButton(),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(12),
+          child: ListView.builder(
+            itemCount: categories.length,
+            itemBuilder: (ctx, i) {
+              final cat = categories[i];
+              final title = cat['title'] as String;
+              final module = cat['module'] as String;
+              final icon = cat['icon'] as IconData;
+              final color = cat['color'] as Color;
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => _DryTrainingFeedbacksListPage(
+                        folder: folder,
+                        module: module,
+                        title: title,
+                      ),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 32, color: color),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        FutureBuilder<int>(
+                          future: FirebaseFirestore.instance
+                              .collection('feedbacks')
+                              .where('module', isEqualTo: module)
+                              .where('folder', isEqualTo: folder)
+                              .where('isTemporary', isEqualTo: false)
+                              .count()
+                              .get()
+                              .timeout(const Duration(seconds: 5))
+                              .then((s) => s.count ?? 0)
+                              .catchError((_) => 0),
+                          builder: (context, snap) => Text(
+                            '${snap.data ?? 0} משובים',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/* ── Generic training feedbacks list page ── */
+
+class _DryTrainingFeedbacksListPage extends StatefulWidget {
+  final String folder;
+  final String module;
+  final String title;
+  const _DryTrainingFeedbacksListPage({
+    required this.folder,
+    this.module = 'dry_training',
+    this.title = '',
+  });
+
+  @override
+  State<_DryTrainingFeedbacksListPage> createState() =>
+      _DryTrainingFeedbacksListPageState();
+}
+
+class _DryTrainingFeedbacksListPageState
+    extends State<_DryTrainingFeedbacksListPage> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    setState(() => _loading = true);
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('module', isEqualTo: widget.module)
+          .where('folder', isEqualTo: widget.folder)
+          .where('isTemporary', isEqualTo: false)
+          .get();
+
+      if (!mounted) return;
+      final items = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      items.sort((a, b) {
+        final ta = a['finalizedAt'];
+        final tb = b['finalizedAt'];
+        if (ta is Timestamp && tb is Timestamp) return tb.compareTo(ta);
+        return 0;
+      });
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ DRY_LIST: $e');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _formatDate(dynamic ts) {
+    if (ts is Timestamp) {
+      final d = ts.toDate();
+      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+    }
+    return '';
+  }
+
+  Future<void> _deleteItem(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('מחיקת משוב'),
+          content: const Text('האם למחוק את המשוב לצמיתות?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('ביטול'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('מחק'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
+      if (mounted) {
+        setState(() => _items.removeWhere((d) => d['id'] == id));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('המשוב נמחק')));
+      }
+    } catch (e) {
+      debugPrint('❌ DRY_FINAL_DELETE: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.title.isNotEmpty ? widget.title : widget.folder),
+          leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadItems,
+              tooltip: 'רענן',
+            ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _items.isEmpty
+            ? const Center(child: Text('אין משובים עדיין'))
+            : ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _items.length,
+                itemBuilder: (ctx, i) {
+                  final item = _items[i];
+                  final id = item['id'] as String;
+                  final teamName =
+                      (item['teamName'] as String?)?.isNotEmpty == true
+                      ? item['teamName'] as String
+                      : (item['name'] as String?)?.isNotEmpty == true
+                      ? item['name'] as String
+                      : 'ללא שם';
+                  final date = _formatDate(item['finalizedAt']);
+                  final traineesCount =
+                      (item['trainees'] as List?)?.length ?? 0;
+                  final instructorName =
+                      (item['instructorName'] as String?) ?? '';
+                  final folder = (item['folder'] as String?) ?? '';
+                  final trainingType = (item['trainingType'] as String?) ?? '';
+                  final isAdmin = currentUser?.uid == kDeleteFeedbackAllowedUid;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                _DryTrainingDetailsPage(docId: id, data: item),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.fitness_center,
+                              color: Colors.indigo,
+                              size: 28,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    teamName,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  if (folder.isNotEmpty)
+                                    Text(
+                                      'יחידה: $folder',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  if (trainingType.isNotEmpty)
+                                    Text(
+                                      'סוג אימון: $trainingType',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  if (instructorName.isNotEmpty)
+                                    Text(
+                                      'מדריך: $instructorName',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  Text(
+                                    '$traineesCount חניכים${date.isNotEmpty ? " · $date" : ""}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (isAdmin)
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                tooltip: 'מחק משוב',
+                                onPressed: () => _deleteItem(id),
+                              )
+                            else
+                              const Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+}
+
+/* ── Details page for a dry-training feedback ── */
+
+class _DryTrainingDetailsPage extends StatefulWidget {
+  final String docId;
+  final Map<String, dynamic> data;
+
+  const _DryTrainingDetailsPage({required this.docId, required this.data});
+
+  @override
+  State<_DryTrainingDetailsPage> createState() =>
+      _DryTrainingDetailsPageState();
+}
+
+class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
+  bool _isExporting = false;
+
+  String _formatDate(dynamic ts) {
+    if (ts is Timestamp) {
+      final d = ts.toDate();
+      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+    }
+    return '';
+  }
+
+  Future<void> _export() async {
+    setState(() => _isExporting = true);
+    try {
+      final module = (widget.data['module'] as String?) ?? '';
+      final teamName = (widget.data['teamName'] as String?) ??
+          (widget.data['name'] as String?) ??
+          'export';
+      final prefix = teamName.replaceAll(' ', '_');
+
+      if (module == 'dry_training') {
+        await FeedbackExportService.exportDryTrainingDetails(
+          feedbackData: widget.data,
+          fileNamePrefix: 'יבשים_$prefix',
+        );
+      } else if (module == 'training_summary') {
+        await FeedbackExportService.exportTrainingSummaryDetails(
+          feedbackData: widget.data,
+          fileNamePrefix: 'סיכום_אימון_$prefix',
+        );
+      } else {
+        // shooting_ranges: use export474RangesFeedbacks with single item
+        await FeedbackExportService.export474RangesFeedbacks(
+          feedbacksData: [widget.data],
+          fileNamePrefix: 'מטווחים_$prefix',
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('הייצוא הושלם בהצלחה')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('שגיאה בייצוא: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categories =
+        (widget.data['categories'] as List?)?.cast<String>() ?? [];
+    final traineesRaw = (widget.data['trainees'] as List?) ?? [];
+    final trainees =
+        traineesRaw.map((t) => t as Map<String, dynamic>).toList();
+    final teamName = (widget.data['teamName'] as String?) ?? '';
+    final summary = (widget.data['trainingSummary'] as String?) ?? '';
+    final date = _formatDate(widget.data['finalizedAt']);
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(teamName.isNotEmpty ? teamName : 'פרטי הכשרה'),
+          leading: const StandardBackButton(),
+          actions: [
+            if (_isExporting)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.download),
+                tooltip: 'ייצוא Excel',
+                onPressed: _export,
+              ),
+          ],
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Meta info card ─────────────────────────
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 20),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (date.isNotEmpty)
+                        _metaRow('תאריך', date),
+                      if ((widget.data['folder'] as String?)?.isNotEmpty == true)
+                        _metaRow('יחידה', widget.data['folder'] as String),
+                      if ((widget.data['trainingType'] as String?)?.isNotEmpty == true)
+                        _metaRow('סוג אימון', widget.data['trainingType'] as String),
+                      if ((widget.data['instructorName'] as String?)?.isNotEmpty == true)
+                        _metaRow('מדריך', widget.data['instructorName'] as String),
+                      _metaRow('נוכחים', '${widget.data['attendeesCount'] ?? 0}'),
+                      _metaRow('מדריכים', '${widget.data['instructorsCount'] ?? 0}'),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (categories.isNotEmpty && trainees.isNotEmpty) ...[  
+                const Text(
+                  'טבלת הערכה',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                _buildDetailsTable(categories, trainees),
+                const SizedBox(height: 20),
+              ],
+
+              if (summary.isNotEmpty) ...[  
+                const Text(
+                  'סיכום אימון',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Text(summary,
+                        style: const TextStyle(fontSize: 15, height: 1.5)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _metaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text('$label: ',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 15)),
+          Expanded(
+              child: Text(value,
+                  style: const TextStyle(fontSize: 15))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailsTable(
+    List<String> categories,
+    List<Map<String, dynamic>> trainees,
+  ) {
+    const double nameW = 130;
+    const double scoreW = 80;
+    const double avgW = 70;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: nameW + categories.length * scoreW + avgW,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              color: Colors.grey.shade200,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: nameW,
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Text(
+                        'שם',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  ...categories.asMap().entries.map(
+                    (e) => SizedBox(
+                      width: scoreW,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Text(
+                          e.value,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: avgW,
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Text(
+                        'ממוצע',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...trainees.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final t = entry.value;
+              final name = (t['name'] as String?) ?? '';
+              final scoresRaw = (t['scores'] as Map<String, dynamic>?) ?? {};
+              final notesRaw = (t['notes'] as Map<String, dynamic>?) ?? {};
+
+              final scores = <int, int>{};
+              scoresRaw.forEach((k, v) {
+                if (k.startsWith('cat_')) {
+                  final i = int.tryParse(k.replaceFirst('cat_', ''));
+                  if (i != null) scores[i] = (v as num).toInt();
+                }
+              });
+
+              final avg = scores.isEmpty
+                  ? null
+                  : scores.values.fold(0, (a, b) => a + b) / scores.length;
+              final avgText = avg != null ? avg.toStringAsFixed(1) : '–';
+              Color avgColor = Colors.black;
+              if (avg != null) {
+                if (avg >= 8) {
+                  avgColor = Colors.green.shade700;
+                } else if (avg >= 6) {
+                  avgColor = Colors.orange.shade700;
+                } else {
+                  avgColor = Colors.red;
+                }
+              }
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: idx.isEven ? Colors.white : Colors.grey.shade50,
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: nameW,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(
+                          name.isNotEmpty ? name : 'חניך ${idx + 1}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ),
+                    ...categories.asMap().entries.map((catEntry) {
+                      final catIdx = catEntry.key;
+                      final score = scores[catIdx];
+                      final note = notesRaw['cat_$catIdx'] as String? ?? '';
+                      return SizedBox(
+                        width: scoreW,
+                        height: 44,
+                        child: Tooltip(
+                          message: note.isNotEmpty
+                              ? '${catEntry.value}: $note'
+                              : '',
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 2,
+                            ),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: score != null
+                                  ? (score >= 8
+                                        ? Colors.green.shade100
+                                        : score >= 6
+                                        ? Colors.orange.shade100
+                                        : Colors.red.shade100)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  score != null ? '$score' : '–',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: score != null
+                                        ? (score >= 8
+                                              ? Colors.green.shade800
+                                              : score >= 6
+                                              ? Colors.orange.shade800
+                                              : Colors.red.shade800)
+                                        : Colors.grey,
+                                  ),
+                                ),
+                                if (note.isNotEmpty)
+                                  const Icon(
+                                    Icons.note_alt,
+                                    size: 9,
+                                    color: Colors.blueGrey,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    SizedBox(
+                      width: avgW,
+                      height: 44,
+                      child: Center(
+                        child: Text(
+                          avgText,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: avgColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
