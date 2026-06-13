@@ -7209,6 +7209,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
       filteredFeedbacks = feedbackStorage.where((f) {
         if (f.isTemporary == true) return false;
 
+        // Exclude פלסר הגולן feedbacks – they belong to their own folder
+        if (f.folder == 'פלסר הגולן' || f.folderKey == 'placer_golan') {
+          return false;
+        }
+
         // Prefer canonical folderKey when present
         if (f.folderKey.isNotEmpty) return f.folderKey == 'shooting_ranges';
 
@@ -7252,6 +7257,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           return false;
         }
         if (f.folder == 'משוב סיכום אימון 474') {
+          return false;
+        }
+
+        // Exclude פלסר הגולן feedbacks – they belong to their own folder
+        if (f.folder == 'פלסר הגולן' || f.folderKey == 'placer_golan') {
           return false;
         }
 
