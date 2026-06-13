@@ -25586,6 +25586,42 @@ class _DryTrainingDetailsPage extends StatefulWidget {
 class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
   bool _isExporting = false;
 
+  // ── table scroll controllers ──────────────────────────
+  final _bodyHorizCtrl = ScrollController();
+  final _headerHorizCtrl = ScrollController();
+  final _bodyVertCtrl = ScrollController();
+  final _nameVertCtrl = ScrollController();
+
+  void _onHorizScroll() {
+    if (_headerHorizCtrl.hasClients &&
+        _headerHorizCtrl.offset != _bodyHorizCtrl.offset) {
+      _headerHorizCtrl.jumpTo(_bodyHorizCtrl.offset);
+    }
+  }
+
+  void _onVertScroll() {
+    if (_nameVertCtrl.hasClients &&
+        _nameVertCtrl.offset != _bodyVertCtrl.offset) {
+      _nameVertCtrl.jumpTo(_bodyVertCtrl.offset);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bodyHorizCtrl.addListener(_onHorizScroll);
+    _bodyVertCtrl.addListener(_onVertScroll);
+  }
+
+  @override
+  void dispose() {
+    _bodyHorizCtrl.dispose();
+    _headerHorizCtrl.dispose();
+    _bodyVertCtrl.dispose();
+    _nameVertCtrl.dispose();
+    super.dispose();
+  }
+
   String _formatDate(dynamic ts) {
     if (ts is Timestamp) {
       final d = ts.toDate();
@@ -25675,29 +25711,79 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
           ],
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Banner ────────────────────────────────
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 20,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.brown.shade700, Colors.brown.shade400],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.directions_walk,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        teamName.isNotEmpty ? teamName : 'הכשרה יבשים',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (date.isNotEmpty)
+                      Text(
+                        date,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
               // ── Meta info card ─────────────────────────
               Card(
                 elevation: 2,
-                margin: const EdgeInsets.only(bottom: 20),
+                margin: const EdgeInsets.only(bottom: 16),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (date.isNotEmpty) _metaRow('תאריך', date),
                       if ((widget.data['folder'] as String?)?.isNotEmpty ==
                           true)
-                        _metaRow('יחידה', widget.data['folder'] as String),
+                        _metaRow(
+                          'יחידה',
+                          widget.data['folder'] as String,
+                          icon: Icons.folder_outlined,
+                        ),
                       if ((widget.data['trainingType'] as String?)
                               ?.isNotEmpty ==
                           true)
                         _metaRow(
                           'סוג אימון',
                           widget.data['trainingType'] as String,
+                          icon: Icons.fitness_center,
                         ),
                       if ((widget.data['instructorName'] as String?)
                               ?.isNotEmpty ==
@@ -25705,14 +25791,17 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
                         _metaRow(
                           'מדריך',
                           widget.data['instructorName'] as String,
+                          icon: Icons.person_outline,
                         ),
                       _metaRow(
                         'נוכחים',
                         '${widget.data['attendeesCount'] ?? 0}',
+                        icon: Icons.group_outlined,
                       ),
                       _metaRow(
                         'מדריכים',
                         '${widget.data['instructorsCount'] ?? 0}',
+                        icon: Icons.supervisor_account_outlined,
                       ),
                     ],
                   ),
@@ -25720,28 +25809,60 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
               ),
 
               if (categories.isNotEmpty && trainees.isNotEmpty) ...[
-                const Text(
-                  'טבלת הערכה',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.table_chart_outlined,
+                        color: Colors.brown.shade600,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'טבלת הערכה',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 10),
                 _buildDetailsTable(categories, trainees),
                 const SizedBox(height: 20),
               ],
 
               if (summary.isNotEmpty) ...[
-                const Text(
-                  'סיכום אימון',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.notes_outlined,
+                        color: Colors.brown.shade600,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'סיכום אימון',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
                 Card(
                   elevation: 1,
+                  color: Colors.brown.shade50,
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(16),
                     child: Text(
                       summary,
-                      style: const TextStyle(fontSize: 15, height: 1.5),
+                      style: const TextStyle(fontSize: 15, height: 1.6),
+                      textDirection: TextDirection.rtl,
                     ),
                   ),
                 ),
@@ -25753,16 +25874,20 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
     );
   }
 
-  Widget _metaRow(String label, String value) {
+  Widget _metaRow(String label, String value, {IconData? icon}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: Colors.brown.shade400),
+            const SizedBox(width: 8),
+          ],
           Text(
             '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
           ),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 15))),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 14))),
         ],
       ),
     );
@@ -25775,188 +25900,332 @@ class _DryTrainingDetailsPageState extends State<_DryTrainingDetailsPage> {
     const double nameW = 130;
     const double scoreW = 80;
     const double avgW = 70;
+    const double noteW = 110;
+    const double rowH = 44.0;
+    const double headerH = 44.0;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    final double dataColsW = categories.length * scoreW + avgW + noteW;
+    final double bodyH = (trainees.length * rowH).clamp(0.0, rowH * 6);
+    final double tableH = headerH + bodyH;
+
+    return Card(
+      elevation: 2,
+      clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        width: nameW + categories.length * scoreW + avgW,
-        child: Column(
+        height: tableH,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            Container(
-              color: Colors.grey.shade200,
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: nameW,
-                    child: const Padding(
-                      padding: EdgeInsets.all(6),
-                      child: Text(
-                        'שם',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                      ),
+            // ── Frozen name column ────────────────────
+            Column(
+              children: [
+                Container(
+                  width: nameW,
+                  height: headerH,
+                  color: Colors.brown.shade100,
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'שם',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                SizedBox(
+                  height: bodyH,
+                  child: SingleChildScrollView(
+                    controller: _nameVertCtrl,
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Column(
+                      children: trainees.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final t = entry.value;
+                        final name = (t['name'] as String?) ?? '';
+                        return Container(
+                          width: nameW,
+                          height: rowH,
+                          decoration: BoxDecoration(
+                            color: idx.isEven
+                                ? Colors.white
+                                : Colors.grey.shade50,
+                            border: Border(
+                              bottom: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            name.isNotEmpty ? name : 'חניך ${idx + 1}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
-                  ...categories.asMap().entries.map(
-                    (e) => SizedBox(
-                      width: scoreW,
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Text(
-                          e.value,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
+                ),
+              ],
+            ),
+
+            // ── Scrollable right area ─────────────────
+            Expanded(
+              child: Column(
+                children: [
+                  // Frozen category header
+                  SizedBox(
+                    height: headerH,
+                    child: SingleChildScrollView(
+                      controller: _headerHorizCtrl,
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: SizedBox(
+                        width: dataColsW,
+                        child: Container(
+                          color: Colors.brown.shade100,
+                          child: Row(
+                            children: [
+                              ...categories.asMap().entries.map(
+                                (e) => SizedBox(
+                                  width: scoreW,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Text(
+                                      e.value,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: avgW,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Text(
+                                    'ממוצע',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: noteW,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Text(
+                                    'הערה כללית',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                   ),
+
+                  // Body rows
                   SizedBox(
-                    width: avgW,
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Text(
-                        'ממוצע',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                    height: bodyH,
+                    child: SingleChildScrollView(
+                      controller: _bodyVertCtrl,
+                      child: SingleChildScrollView(
+                        controller: _bodyHorizCtrl,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: dataColsW,
+                          child: Column(
+                            children: trainees.asMap().entries.map((entry) {
+                              final idx = entry.key;
+                              final t = entry.value;
+                              final scoresRaw =
+                                  (t['scores'] as Map<String, dynamic>?) ?? {};
+                              final notesRaw =
+                                  (t['notes'] as Map<String, dynamic>?) ?? {};
+                              final generalNote =
+                                  (t['generalNote'] as String?) ?? '';
+
+                              final scores = <int, int>{};
+                              scoresRaw.forEach((k, v) {
+                                if (k.startsWith('cat_')) {
+                                  final i = int.tryParse(
+                                    k.replaceFirst('cat_', ''),
+                                  );
+                                  if (i != null) scores[i] = (v as num).toInt();
+                                }
+                              });
+
+                              final avg = scores.isEmpty
+                                  ? null
+                                  : scores.values.fold(0, (a, b) => a + b) /
+                                        scores.length;
+                              final avgText = avg != null
+                                  ? avg.toStringAsFixed(1)
+                                  : '–';
+                              Color avgColor = Colors.black;
+                              if (avg != null) {
+                                if (avg >= 8) {
+                                  avgColor = Colors.green.shade700;
+                                } else if (avg >= 6) {
+                                  avgColor = Colors.orange.shade700;
+                                } else {
+                                  avgColor = Colors.red;
+                                }
+                              }
+
+                              return Container(
+                                height: rowH,
+                                decoration: BoxDecoration(
+                                  color: idx.isEven
+                                      ? Colors.white
+                                      : Colors.grey.shade50,
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    ...categories.asMap().entries.map((
+                                      catEntry,
+                                    ) {
+                                      final catIdx = catEntry.key;
+                                      final score = scores[catIdx];
+                                      final note =
+                                          notesRaw['cat_$catIdx'] as String? ??
+                                          '';
+                                      return SizedBox(
+                                        width: scoreW,
+                                        height: rowH,
+                                        child: Tooltip(
+                                          message: note.isNotEmpty
+                                              ? '${catEntry.value}: $note'
+                                              : '',
+                                          child: Container(
+                                            margin: const EdgeInsets.symmetric(
+                                              horizontal: 2,
+                                              vertical: 2,
+                                            ),
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: score != null
+                                                  ? (score >= 8
+                                                        ? Colors.green.shade100
+                                                        : score >= 6
+                                                        ? Colors.orange.shade100
+                                                        : Colors.red.shade100)
+                                                  : Colors.grey.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  score != null
+                                                      ? '$score'
+                                                      : '–',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                    color: score != null
+                                                        ? (score >= 8
+                                                              ? Colors
+                                                                    .green
+                                                                    .shade800
+                                                              : score >= 6
+                                                              ? Colors
+                                                                    .orange
+                                                                    .shade800
+                                                              : Colors
+                                                                    .red
+                                                                    .shade800)
+                                                        : Colors.grey,
+                                                  ),
+                                                ),
+                                                if (note.isNotEmpty)
+                                                  const Icon(
+                                                    Icons.note_alt,
+                                                    size: 9,
+                                                    color: Colors.blueGrey,
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                    SizedBox(
+                                      width: avgW,
+                                      height: rowH,
+                                      child: Center(
+                                        child: Text(
+                                          avgText,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: avgColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: noteW,
+                                      height: rowH,
+                                      child: Container(
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                          vertical: 2,
+                                        ),
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: generalNote.isNotEmpty
+                                              ? Colors.blue.shade50
+                                              : Colors.grey.shade50,
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: generalNote.isNotEmpty
+                                            ? Text(
+                                                generalNote,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                textAlign: TextAlign.center,
+                                                textDirection:
+                                                    TextDirection.rtl,
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                ),
+                                              )
+                                            : const SizedBox.shrink(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            ...trainees.asMap().entries.map((entry) {
-              final idx = entry.key;
-              final t = entry.value;
-              final name = (t['name'] as String?) ?? '';
-              final scoresRaw = (t['scores'] as Map<String, dynamic>?) ?? {};
-              final notesRaw = (t['notes'] as Map<String, dynamic>?) ?? {};
-
-              final scores = <int, int>{};
-              scoresRaw.forEach((k, v) {
-                if (k.startsWith('cat_')) {
-                  final i = int.tryParse(k.replaceFirst('cat_', ''));
-                  if (i != null) scores[i] = (v as num).toInt();
-                }
-              });
-
-              final avg = scores.isEmpty
-                  ? null
-                  : scores.values.fold(0, (a, b) => a + b) / scores.length;
-              final avgText = avg != null ? avg.toStringAsFixed(1) : '–';
-              Color avgColor = Colors.black;
-              if (avg != null) {
-                if (avg >= 8) {
-                  avgColor = Colors.green.shade700;
-                } else if (avg >= 6) {
-                  avgColor = Colors.orange.shade700;
-                } else {
-                  avgColor = Colors.red;
-                }
-              }
-
-              return Container(
-                decoration: BoxDecoration(
-                  color: idx.isEven ? Colors.white : Colors.grey.shade50,
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade300),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: nameW,
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Text(
-                          name.isNotEmpty ? name : 'חניך ${idx + 1}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                    ),
-                    ...categories.asMap().entries.map((catEntry) {
-                      final catIdx = catEntry.key;
-                      final score = scores[catIdx];
-                      final note = notesRaw['cat_$catIdx'] as String? ?? '';
-                      return SizedBox(
-                        width: scoreW,
-                        height: 44,
-                        child: Tooltip(
-                          message: note.isNotEmpty
-                              ? '${catEntry.value}: $note'
-                              : '',
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 2,
-                              vertical: 2,
-                            ),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: score != null
-                                  ? (score >= 8
-                                        ? Colors.green.shade100
-                                        : score >= 6
-                                        ? Colors.orange.shade100
-                                        : Colors.red.shade100)
-                                  : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  score != null ? '$score' : '–',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: score != null
-                                        ? (score >= 8
-                                              ? Colors.green.shade800
-                                              : score >= 6
-                                              ? Colors.orange.shade800
-                                              : Colors.red.shade800)
-                                        : Colors.grey,
-                                  ),
-                                ),
-                                if (note.isNotEmpty)
-                                  const Icon(
-                                    Icons.note_alt,
-                                    size: 9,
-                                    color: Colors.blueGrey,
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                    SizedBox(
-                      width: avgW,
-                      height: 44,
-                      child: Center(
-                        child: Text(
-                          avgText,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: avgColor,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
           ],
         ),
       ),
