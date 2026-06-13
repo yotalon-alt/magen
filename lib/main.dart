@@ -14660,7 +14660,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
   Set<String> selectedInstructors = {}; // Multi-select for instructors
   Set<String> selectedSettlements = {}; // Multi-select for settlements
   Set<String> selectedStations = {}; // Multi-select for stations
-  String selectedFolder = 'הכל'; // Range folder filter
+  String selectedFolder = 'מטווחים 474'; // Range folder filter
   String selectedRangeType = 'הכל'; // Range type filter
   DateTime? dateFrom;
   DateTime? dateTo;
@@ -14730,7 +14730,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
       selectedInstructors.clear();
       selectedSettlements.clear();
       selectedStations.clear();
-      selectedFolder = 'הכל';
+      selectedFolder = 'מטווחים 474';
       selectedRangeType = 'הכל';
       dateFrom = null;
       dateTo = null;
@@ -15142,7 +15142,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
                                 if (selectedInstructors.isNotEmpty ||
                                     selectedSettlements.isNotEmpty ||
                                     selectedStations.isNotEmpty ||
-                                    selectedFolder != 'הכל' ||
+                                    selectedFolder != 'מטווחים 474' ||
                                     selectedRangeType != 'הכל' ||
                                     dateFrom != null ||
                                     dateTo != null) ...[
@@ -18800,7 +18800,7 @@ class _SurpriseDrillsStatisticsPageState
   Set<String> selectedInstructors = {};
   Set<String> selectedSettlements = {};
   Set<String> selectedPrinciples = {};
-  String selectedFolder = 'הכל';
+  String selectedFolder = 'משוב תרגילי הפתעה';
   DateTime? dateFrom;
   DateTime? dateTo;
   bool _isFiltersExpanded = false; // Collapsible filters state
@@ -18868,7 +18868,7 @@ class _SurpriseDrillsStatisticsPageState
       selectedInstructors.clear();
       selectedSettlements.clear();
       selectedPrinciples.clear();
-      selectedFolder = 'הכל';
+      selectedFolder = 'משוב תרגילי הפתעה';
       dateFrom = null;
       dateTo = null;
     });
@@ -19353,7 +19353,7 @@ class _SurpriseDrillsStatisticsPageState
                                 if (selectedInstructors.isNotEmpty ||
                                     selectedSettlements.isNotEmpty ||
                                     selectedPrinciples.isNotEmpty ||
-                                    selectedFolder != 'הכל' ||
+                                    selectedFolder != 'משוב תרגילי הפתעה' ||
                                     dateFrom != null ||
                                     dateTo != null) ...[
                                   const SizedBox(width: 8),
