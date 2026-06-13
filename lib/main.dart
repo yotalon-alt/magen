@@ -17686,6 +17686,49 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       debugPrint('Error loading attendance data: $e');
     }
 
+    // טעינת crossTrainees משדה crossTrainees בתוך מסמכי feedbacks
+    try {
+      // בנה מיפוי feedbackId → sessionIndex
+      final idToIndex = <String, int>{};
+      for (int i = 0; i < allSessions.length; i++) {
+        final fid = (allSessions[i]['feedbackId'] as String?) ?? '';
+        if (fid.isNotEmpty) idToIndex[fid] = i;
+      }
+      final feedbackIds = idToIndex.keys.toList();
+
+      // קרא בנתחים של 10 (מגבלת whereIn)
+      const chunkSize = 10;
+      for (int start = 0; start < feedbackIds.length; start += chunkSize) {
+        final chunk = feedbackIds.sublist(
+          start,
+          (start + chunkSize).clamp(0, feedbackIds.length),
+        );
+        final snapshot = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get()
+            .timeout(const Duration(seconds: 10));
+
+        for (final doc in snapshot.docs) {
+          final si = idToIndex[doc.id];
+          if (si == null) continue;
+          final raw = doc.data();
+          final crosses =
+              (raw['crossTrainees'] as List?)?.cast<Map<String, dynamic>>() ??
+              [];
+          for (final ct in crosses) {
+            final name = (ct['name'] as String?) ?? '';
+            if (name.isNotEmpty) {
+              crossMap.putIfAbsent(name, () => {});
+              crossMap[name]!.add(si);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading crossTrainees from feedbacks: $e');
+    }
+
     if (mounted) {
       setState(() {
         _sessions = allSessions;
@@ -17951,14 +17994,17 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                           Colors.orange[700]!,
                         ),
                         _buildStat('ממוצע לאימון', () {
-                          final total = _sessions.fold<int>(
-                            0,
-                            (acc, s) =>
-                                acc + ((s['trainees'] as List?)?.length ?? 0),
-                          );
-                          return _sessions.isEmpty
-                              ? '-'
-                              : (total / _sessions.length).round().toString();
+                          if (_sessions.isEmpty) return '-';
+                          int total = 0;
+                          for (int ci = 0; ci < _sessions.length; ci++) {
+                            for (final s in _attendanceMap.values) {
+                              if (s.contains(ci)) total++;
+                            }
+                            for (final s in _crossAttendanceMap.values) {
+                              if (s.contains(ci)) total++;
+                            }
+                          }
+                          return (total / _sessions.length).round().toString();
                         }(), Colors.lightBlue[700]!),
                         _buildStat(
                           'לא השתתפו',
@@ -18176,38 +18222,10 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
         final isGuest = (_guestTraineesMap[name] ?? {}).contains(ci);
         final isCross = (_crossAttendanceMap[name] ?? {}).contains(ci);
         final emoji = present ? (isGuest ? '🔵' : '✅') : (isCross ? '🔵' : '❌');
-        final isExtra = !_allTrainees.contains(name);
-        final isAdminYotam =
-            currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
-        // extra trainee present → assign to home settlement
-        final canTapMarkAsGuest =
-            isAdminYotam && isExtra && present && !isGuest;
-        // guest present here → allow removing the guest assignment
-        final canTapRemoveGuest = isAdminYotam && isGuest && present;
-        // official trainee absent from THIS session but attended others → assign cross
-        final canTapAbsent =
-            isAdminYotam &&
-            !isExtra &&
-            !present &&
-            !isCross &&
-            _attendanceMap.containsKey(name);
-        Widget cellChild = Text(emoji, style: const TextStyle(fontSize: 16));
-        if (canTapMarkAsGuest) {
-          cellChild = GestureDetector(
-            onTap: () => _showMarkAsGuestDialog(name, ci),
-            child: cellChild,
-          );
-        } else if (canTapRemoveGuest) {
-          cellChild = GestureDetector(
-            onTap: () => _confirmRemoveGuest(name, ci),
-            child: cellChild,
-          );
-        } else if (canTapAbsent) {
-          cellChild = GestureDetector(
-            onTap: () => _showAbsentCrossDialog(name, ci),
-            child: cellChild,
-          );
-        }
+        final Widget cellChild = Text(
+          emoji,
+          style: const TextStyle(fontSize: 16),
+        );
         cells.add(
           Container(
             width: sessionColWidth,
@@ -18257,6 +18275,10 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
       for (final attended in _attendanceMap.values) {
         if (attended.contains(ci)) count++;
       }
+      // כולל חניכים שהתאמנו ביישוב אחר (🔵 crossTrainees)
+      for (final crossed in _crossAttendanceMap.values) {
+        if (crossed.contains(ci)) count++;
+      }
       summaryCells.add(
         Container(
           width: sessionColWidth,
@@ -18293,401 +18315,9 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
     );
   }
 
-  Future<void> _showMarkAsGuestDialog(
-    String traineeName,
-    int sessionIndex,
-  ) async {
-    // רק יישובים שיש להם משובי 474 (יישובי הגולן)
-    final settlements =
-        feedbackStorage
-            .where(
-              (f) => f.folder.contains('474') || f.folderKey.contains('474'),
-            )
-            .map((f) => f.settlement)
-            .where((s) => s.isNotEmpty && s != widget.settlement)
-            .toSet()
-            .toList()
-          ..sort();
-
-    String? selectedSettlement;
-
-    final confirmed = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text('$traineeName — לאיזה יישוב הוא שייך?'),
-            content: DropdownButton<String>(
-              isExpanded: true,
-              value: selectedSettlement,
-              hint: const Text('בחר יישוב מוצא'),
-              items: settlements
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (v) => setDialogState(() => selectedSettlement = v),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('ביטול'),
-              ),
-              TextButton(
-                onPressed: selectedSettlement != null
-                    ? () => Navigator.of(ctx).pop(selectedSettlement)
-                    : null,
-                child: const Text('אישור'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (confirmed != null && mounted) {
-      await _saveCrossAttendance(traineeName, sessionIndex, confirmed);
-    }
-  }
-
-  Future<void> _saveCrossAttendance(
-    String traineeName,
-    int sessionIndex,
-    String homeSettlement,
-  ) async {
-    try {
-      final session = _sessions[sessionIndex];
-      final typeGroup = (session['typeGroup'] as String?) ?? '';
-      final date = (session['date'] as DateTime?) ?? DateTime(2000);
-
-      await FirebaseFirestore.instance.collection('cross_attendance').add({
-        'traineeName': traineeName,
-        'homeSettlement': homeSettlement,
-        'hostSettlement': widget.settlement,
-        'typeGroup': typeGroup,
-        'sessionDate': Timestamp.fromDate(date),
-        'createdAt': Timestamp.now(),
-        'createdBy': currentUser?.name ?? '',
-      });
-
-      setState(() {
-        _guestTraineesMap.putIfAbsent(traineeName, () => {});
-        _guestTraineesMap[traineeName]!.add(sessionIndex);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$traineeName שויך ליישוב $homeSettlement')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
-      }
-    }
-  }
-
-  /// הסרת שיוך אורח — לחיצה על 🔵 של חניך אורח
-  Future<void> _confirmRemoveGuest(String traineeName, int sessionIndex) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('הסרת שיוך אורח'),
-          content: Text('האם להסיר את $traineeName כאורח מאימון זה?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('ביטול'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('הסר', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (confirmed == true && mounted) {
-      await _removeGuestAssignment(traineeName, sessionIndex);
-    }
-  }
-
-  Future<void> _removeGuestAssignment(
-    String traineeName,
-    int sessionIndex,
-  ) async {
-    try {
-      final session = _sessions[sessionIndex];
-      final typeGroup = (session['typeGroup'] as String?) ?? '';
-      final date = (session['date'] as DateTime?) ?? DateTime(2000);
-
-      final query = await FirebaseFirestore.instance
-          .collection('cross_attendance')
-          .where('traineeName', isEqualTo: traineeName)
-          .where('hostSettlement', isEqualTo: widget.settlement)
-          .get();
-
-      for (final doc in query.docs) {
-        final data = doc.data();
-        final docDate = (data['sessionDate'] as Timestamp?)?.toDate();
-        final docTypeGroup = (data['typeGroup'] as String?) ?? '';
-        if (docTypeGroup == typeGroup &&
-            docDate != null &&
-            docDate.year == date.year &&
-            docDate.month == date.month &&
-            docDate.day == date.day) {
-          await doc.reference.delete();
-          break;
-        }
-      }
-
-      setState(() {
-        _guestTraineesMap[traineeName]?.remove(sessionIndex);
-        if (_guestTraineesMap[traineeName]?.isEmpty == true) {
-          _guestTraineesMap.remove(traineeName);
-        }
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$traineeName הוסר מהאימון')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('שגיאה בהסרה: $e')));
-      }
-    }
-  }
-
-  /// ❌ לחיץ — חניך רשמי שנעדר מאימון זה אך היה באחרים
-  Future<void> _showAbsentCrossDialog(
-    String traineeName,
-    int sessionIndex,
-  ) async {
-    final settlements =
-        feedbackStorage
-            .where(
-              (f) => f.folder.contains('474') || f.folderKey.contains('474'),
-            )
-            .map((f) => f.settlement)
-            .where((s) => s.isNotEmpty && s != widget.settlement)
-            .toSet()
-            .toList()
-          ..sort();
-
-    String? selectedSettlement;
-
-    final confirmed = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text('$traineeName — איפה אימן בתאריך זה?'),
-            content: DropdownButton<String>(
-              isExpanded: true,
-              value: selectedSettlement,
-              hint: const Text('בחר יישוב מארח'),
-              items: settlements
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (v) => setDialogState(() => selectedSettlement = v),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('ביטול'),
-              ),
-              TextButton(
-                onPressed: selectedSettlement != null
-                    ? () => Navigator.of(ctx).pop(selectedSettlement)
-                    : null,
-                child: const Text('אישור'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (confirmed != null && mounted) {
-      await _saveAbsentCrossAttendance(traineeName, sessionIndex, confirmed);
-    }
-  }
-
-  Future<void> _saveAbsentCrossAttendance(
-    String traineeName,
-    int sessionIndex,
-    String hostSettlement,
-  ) async {
-    try {
-      final session = _sessions[sessionIndex];
-      final typeGroup = (session['typeGroup'] as String?) ?? '';
-      final date = (session['date'] as DateTime?) ?? DateTime(2000);
-
-      await FirebaseFirestore.instance.collection('cross_attendance').add({
-        'traineeName': traineeName,
-        'homeSettlement': widget.settlement,
-        'hostSettlement': hostSettlement,
-        'typeGroup': typeGroup,
-        'sessionDate': Timestamp.fromDate(date),
-        'createdAt': Timestamp.now(),
-        'createdBy': currentUser?.name ?? '',
-      });
-
-      setState(() {
-        _crossAttendanceMap.putIfAbsent(traineeName, () => {});
-        _crossAttendanceMap[traineeName]!.add(sessionIndex);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$traineeName סומן כמאמן ב$hostSettlement')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
-      }
-    }
-  }
-
-  /// ➕ סיידבר — הוסף חניך שלא היה בשום אימון לאימון ביישוב אחר
-  Future<void> _showSidebarAddCrossDialog(String traineeName) async {
-    final settlements =
-        feedbackStorage
-            .where(
-              (f) => f.folder.contains('474') || f.folderKey.contains('474'),
-            )
-            .map((f) => f.settlement)
-            .where((s) => s.isNotEmpty && s != widget.settlement)
-            .toSet()
-            .toList()
-          ..sort();
-
-    int? selectedSessionIndex;
-    String? selectedSettlement;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text('הוסף נוכחות ל-$traineeName'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButton<int>(
-                  isExpanded: true,
-                  value: selectedSessionIndex,
-                  hint: const Text('בחר אימון'),
-                  items: List.generate(_sessions.length, (i) {
-                    final s = _sessions[i];
-                    final date = s['date'] as DateTime?;
-                    final typeGroup = (s['typeGroup'] as String?) ?? '';
-                    final label =
-                        '$typeGroup${date != null ? ' ${_formatDate(date)}' : ''}';
-                    return DropdownMenuItem(value: i, child: Text(label));
-                  }),
-                  onChanged: (v) =>
-                      setDialogState(() => selectedSessionIndex = v),
-                ),
-                const SizedBox(height: 12),
-                DropdownButton<String>(
-                  isExpanded: true,
-                  value: selectedSettlement,
-                  hint: const Text('בחר יישוב מארח'),
-                  items: settlements
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
-                  onChanged: (v) =>
-                      setDialogState(() => selectedSettlement = v),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('ביטול'),
-              ),
-              TextButton(
-                onPressed:
-                    selectedSessionIndex != null && selectedSettlement != null
-                    ? () => Navigator.of(ctx).pop(true)
-                    : null,
-                child: const Text('אישור'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (confirmed == true &&
-        selectedSessionIndex != null &&
-        selectedSettlement != null &&
-        mounted) {
-      await _saveSidebarCrossAttendance(
-        traineeName,
-        selectedSessionIndex!,
-        selectedSettlement!,
-      );
-    }
-  }
-
-  Future<void> _saveSidebarCrossAttendance(
-    String traineeName,
-    int sessionIndex,
-    String hostSettlement,
-  ) async {
-    try {
-      final session = _sessions[sessionIndex];
-      final typeGroup = (session['typeGroup'] as String?) ?? '';
-      final date = (session['date'] as DateTime?) ?? DateTime(2000);
-
-      await FirebaseFirestore.instance.collection('cross_attendance').add({
-        'traineeName': traineeName,
-        'homeSettlement': widget.settlement,
-        'hostSettlement': hostSettlement,
-        'typeGroup': typeGroup,
-        'sessionDate': Timestamp.fromDate(date),
-        'createdAt': Timestamp.now(),
-        'createdBy': currentUser?.name ?? '',
-      });
-
-      setState(() {
-        _crossAttendanceMap.putIfAbsent(traineeName, () => {});
-        _crossAttendanceMap[traineeName]!.add(sessionIndex);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$traineeName הוסף כנוכח ב$hostSettlement')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('שגיאה בשמירה: $e')));
-      }
-    }
-  }
-
   Widget _buildNeverAttendedSidebar(List<String> neverAttended) {
-    final isAdminYotam =
-        currentUser?.name == 'יותם אלון' && currentUser?.role == 'Admin';
     return Container(
-      width: isAdminYotam ? 200 : 160,
+      width: 160,
       decoration: BoxDecoration(
         color: Colors.red[50],
         border: Border(left: BorderSide(color: Colors.red[200]!)),
@@ -18739,16 +18369,6 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (isAdminYotam)
-                        GestureDetector(
-                          onTap: () =>
-                              _showSidebarAddCrossDialog(neverAttended[i]),
-                          child: Icon(
-                            Icons.add_circle_outline,
-                            color: Colors.red[400],
-                            size: 18,
-                          ),
-                        ),
                     ],
                   ),
                 );
