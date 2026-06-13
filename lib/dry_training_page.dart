@@ -1697,208 +1697,302 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
     final double bodyHeight = (_trainees.length * rowHeight).clamp(0.0, 288.0);
     final double tableHeight = headerHeight + bodyHeight;
 
-    return SizedBox(
-      height: tableHeight,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Left: frozen name column ───────────────────
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Corner header cell
-              Container(
-                width: nameColWidth,
-                height: headerHeight,
-                color: Colors.grey.shade200,
-                alignment: Alignment.center,
-                child: const Text(
-                  'שם',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              // Name cells – driven by _tableNameVertCtrl (NeverScrollable)
-              SizedBox(
-                height: bodyHeight,
-                child: SingleChildScrollView(
-                  controller: _tableNameVertCtrl,
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Column(
-                    children: _trainees.asMap().entries.map((entry) {
-                      final traineeIdx = entry.key;
-                      return Container(
-                        width: nameColWidth,
-                        height: rowHeight,
-                        decoration: BoxDecoration(
-                          color: traineeIdx.isEven
-                              ? Colors.white
-                              : Colors.grey.shade50,
-                          border: Border(
-                            bottom: BorderSide(color: Colors.grey.shade300),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: TextField(
-                            controller: _nameControllers[traineeIdx],
-                            textDirection: TextDirection.rtl,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 12),
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              hintText: 'שם חניך',
-                              hintStyle: TextStyle(fontSize: 11),
-                            ),
-                            onChanged: (_) => _scheduleAutoSave(),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+    return Card(
+      elevation: 2,
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: SizedBox(
+        height: tableHeight,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Left: frozen name column ───────────────────
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Corner header cell
+                Container(
+                  width: nameColWidth,
+                  height: headerHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    border: Border(
+                      right: BorderSide(color: Colors.grey.shade400),
+                      bottom: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'שם',
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          // ── Right: scrollable area ─────────────────────
-          Expanded(
-            child: Column(
-              children: [
-                // Category header row – frozen vertically, scrolls
-                // horizontally in sync with body (_tableHeaderHorizCtrl)
+                // Name cells – driven by _tableNameVertCtrl (NeverScrollable)
                 SizedBox(
-                  height: headerHeight,
+                  height: bodyHeight,
                   child: SingleChildScrollView(
-                    controller: _tableHeaderHorizCtrl,
-                    scrollDirection: Axis.horizontal,
+                    controller: _tableNameVertCtrl,
                     physics: const NeverScrollableScrollPhysics(),
-                    child: SizedBox(
-                      width: dataColsWidth,
-                      child: Container(
-                        color: Colors.grey.shade200,
-                        child: Row(
-                          children: [
-                            ..._categories.asMap().entries.map(
-                              (e) => SizedBox(
-                                width: scoreColWidth,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: Text(
-                                    e.value,
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
+                    child: Column(
+                      children: _trainees.asMap().entries.map((entry) {
+                        final traineeIdx = entry.key;
+                        return Container(
+                          width: nameColWidth,
+                          height: rowHeight,
+                          decoration: BoxDecoration(
+                            color: traineeIdx.isEven
+                                ? Colors.white
+                                : Colors.grey.shade50,
+                            border: Border(
+                              bottom: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: TextField(
+                              controller: _nameControllers[traineeIdx],
+                              textDirection: TextDirection.rtl,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 12),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                hintText: 'שם חניך',
+                                hintStyle: TextStyle(fontSize: 11),
+                              ),
+                              onChanged: (_) => _scheduleAutoSave(),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Right: scrollable area ─────────────────────
+            Expanded(
+              child: Column(
+                children: [
+                  // Category header row – frozen vertically, scrolls
+                  // horizontally in sync with body (_tableHeaderHorizCtrl)
+                  SizedBox(
+                    height: headerHeight,
+                    child: SingleChildScrollView(
+                      controller: _tableHeaderHorizCtrl,
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: SizedBox(
+                        width: dataColsWidth,
+                        child: Container(
+                          color: Colors.grey.shade200,
+                          child: Row(
+                            children: [
+                              ..._categories.asMap().entries.map(
+                                (e) => SizedBox(
+                                  width: scoreColWidth,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Text(
+                                      e.value,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            SizedBox(
-                              width: avgColWidth,
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Text(
-                                  'ממוצע',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                              SizedBox(
+                                width: avgColWidth,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Text(
+                                    'ממוצע',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
                               ),
-                            ),
-                            SizedBox(
-                              width: noteColWidth,
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Text(
-                                  'הערה כללית',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
+                              SizedBox(
+                                width: noteColWidth,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Text(
+                                    'הערה כללית',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                // Body – scrolls vertically (_tableBodyVertCtrl) and
-                // horizontally (_tableBodyHorizCtrl)
-                SizedBox(
-                  height: bodyHeight,
-                  child: SingleChildScrollView(
-                    controller: _tableBodyVertCtrl,
+                  // Body – scrolls vertically (_tableBodyVertCtrl) and
+                  // horizontally (_tableBodyHorizCtrl)
+                  SizedBox(
+                    height: bodyHeight,
                     child: SingleChildScrollView(
-                      controller: _tableBodyHorizCtrl,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: dataColsWidth,
-                        child: Column(
-                          children: _trainees.asMap().entries.map((entry) {
-                            final traineeIdx = entry.key;
-                            final trainee = entry.value;
-                            final avg = trainee.average;
-                            final avgText = trainee.scores.isEmpty
-                                ? '–'
-                                : avg.toStringAsFixed(1);
+                      controller: _tableBodyVertCtrl,
+                      child: SingleChildScrollView(
+                        controller: _tableBodyHorizCtrl,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: dataColsWidth,
+                          child: Column(
+                            children: _trainees.asMap().entries.map((entry) {
+                              final traineeIdx = entry.key;
+                              final trainee = entry.value;
+                              final avg = trainee.average;
+                              final avgText = trainee.scores.isEmpty
+                                  ? '–'
+                                  : avg.toStringAsFixed(1);
 
-                            Color avgColor = Colors.black;
-                            if (trainee.scores.isNotEmpty) {
-                              if (avg >= 8) {
-                                avgColor = Colors.green.shade700;
-                              } else if (avg >= 6) {
-                                avgColor = Colors.orange.shade700;
-                              } else {
-                                avgColor = Colors.red;
+                              Color avgColor = Colors.black;
+                              if (trainee.scores.isNotEmpty) {
+                                if (avg >= 8) {
+                                  avgColor = Colors.green.shade700;
+                                } else if (avg >= 6) {
+                                  avgColor = Colors.orange.shade700;
+                                } else {
+                                  avgColor = Colors.red;
+                                }
                               }
-                            }
 
-                            return Container(
-                              height: rowHeight,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: Colors.grey.shade300,
+                              return Container(
+                                height: rowHeight,
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
                                   ),
+                                  color: traineeIdx.isEven
+                                      ? Colors.white
+                                      : Colors.grey.shade50,
                                 ),
-                                color: traineeIdx.isEven
-                                    ? Colors.white
-                                    : Colors.grey.shade50,
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  // Score cells
-                                  ..._categories.asMap().entries.map((
-                                    catEntry,
-                                  ) {
-                                    final catIdx = catEntry.key;
-                                    final score = trainee.scores[catIdx];
-                                    final hasNote =
-                                        (trainee.notes[catIdx] ?? '')
-                                            .isNotEmpty;
-                                    return SizedBox(
-                                      width: scoreColWidth,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    // Score cells
+                                    ..._categories.asMap().entries.map((
+                                      catEntry,
+                                    ) {
+                                      final catIdx = catEntry.key;
+                                      final score = trainee.scores[catIdx];
+                                      final hasNote =
+                                          (trainee.notes[catIdx] ?? '')
+                                              .isNotEmpty;
+                                      return SizedBox(
+                                        width: scoreColWidth,
+                                        height: rowHeight,
+                                        child: InkWell(
+                                          onTap: () => _showScoreDialog(
+                                            traineeIdx: traineeIdx,
+                                            categoryIdx: catIdx,
+                                            traineeName:
+                                                _nameControllers[traineeIdx]
+                                                    ?.text ??
+                                                '',
+                                            categoryName: catEntry.value,
+                                          ),
+                                          child: Container(
+                                            margin: const EdgeInsets.symmetric(
+                                              horizontal: 2,
+                                              vertical: 2,
+                                            ),
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: score != null
+                                                  ? (score >= 8
+                                                        ? Colors.green.shade100
+                                                        : score >= 6
+                                                        ? Colors.orange.shade100
+                                                        : Colors.red.shade100)
+                                                  : Colors.grey.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: score != null
+                                                    ? Colors.transparent
+                                                    : Colors.grey.shade300,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  score != null
+                                                      ? '$score'
+                                                      : '–',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                    color: score != null
+                                                        ? (score >= 8
+                                                              ? Colors
+                                                                    .green
+                                                                    .shade800
+                                                              : score >= 6
+                                                              ? Colors
+                                                                    .orange
+                                                                    .shade800
+                                                              : Colors
+                                                                    .red
+                                                                    .shade800)
+                                                        : Colors.grey,
+                                                  ),
+                                                ),
+                                                if (hasNote)
+                                                  const Icon(
+                                                    Icons.note_alt,
+                                                    size: 10,
+                                                    color: Colors.blueGrey,
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+
+                                    // Average column
+                                    SizedBox(
+                                      width: avgColWidth,
+                                      height: rowHeight,
+                                      child: Center(
+                                        child: Text(
+                                          avgText,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                            color: avgColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                    // General note column
+                                    SizedBox(
+                                      width: noteColWidth,
                                       height: rowHeight,
                                       child: InkWell(
-                                        onTap: () => _showScoreDialog(
-                                          traineeIdx: traineeIdx,
-                                          categoryIdx: catIdx,
-                                          traineeName:
-                                              _nameControllers[traineeIdx]
-                                                  ?.text ??
-                                              '',
-                                          categoryName: catEntry.value,
-                                        ),
+                                        onTap: () =>
+                                            _showGeneralNoteDialog(traineeIdx),
                                         child: Container(
                                           margin: const EdgeInsets.symmetric(
                                             horizontal: 2,
@@ -1906,132 +2000,52 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
                                           ),
                                           alignment: Alignment.center,
                                           decoration: BoxDecoration(
-                                            color: score != null
-                                                ? (score >= 8
-                                                      ? Colors.green.shade100
-                                                      : score >= 6
-                                                      ? Colors.orange.shade100
-                                                      : Colors.red.shade100)
+                                            color:
+                                                trainee.generalNote.isNotEmpty
+                                                ? Colors.blue.shade50
                                                 : Colors.grey.shade100,
                                             borderRadius: BorderRadius.circular(
                                               6,
                                             ),
                                             border: Border.all(
-                                              color: score != null
-                                                  ? Colors.transparent
-                                                  : Colors.grey.shade300,
+                                              color: Colors.grey.shade300,
                                             ),
                                           ),
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                score != null ? '$score' : '–',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                  color: score != null
-                                                      ? (score >= 8
-                                                            ? Colors
-                                                                  .green
-                                                                  .shade800
-                                                            : score >= 6
-                                                            ? Colors
-                                                                  .orange
-                                                                  .shade800
-                                                            : Colors
-                                                                  .red
-                                                                  .shade800)
-                                                      : Colors.grey,
+                                          child: trainee.generalNote.isNotEmpty
+                                              ? Text(
+                                                  trainee.generalNote,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  textAlign: TextAlign.center,
+                                                  textDirection:
+                                                      TextDirection.rtl,
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons.add_comment_outlined,
+                                                  size: 16,
+                                                  color: Colors.grey,
                                                 ),
-                                              ),
-                                              if (hasNote)
-                                                const Icon(
-                                                  Icons.note_alt,
-                                                  size: 10,
-                                                  color: Colors.blueGrey,
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-
-                                  // Average column
-                                  SizedBox(
-                                    width: avgColWidth,
-                                    height: rowHeight,
-                                    child: Center(
-                                      child: Text(
-                                        avgText,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                          color: avgColor,
                                         ),
                                       ),
                                     ),
-                                  ),
-
-                                  // General note column
-                                  SizedBox(
-                                    width: noteColWidth,
-                                    height: rowHeight,
-                                    child: InkWell(
-                                      onTap: () =>
-                                          _showGeneralNoteDialog(traineeIdx),
-                                      child: Container(
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 2,
-                                          vertical: 2,
-                                        ),
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: trainee.generalNote.isNotEmpty
-                                              ? Colors.blue.shade50
-                                              : Colors.grey.shade100,
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.grey.shade300,
-                                          ),
-                                        ),
-                                        child: trainee.generalNote.isNotEmpty
-                                            ? Text(
-                                                trainee.generalNote,
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                textAlign: TextAlign.center,
-                                                textDirection:
-                                                    TextDirection.rtl,
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                ),
-                                              )
-                                            : const Icon(
-                                                Icons.add_comment_outlined,
-                                                size: 16,
-                                                color: Colors.grey,
-                                              ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

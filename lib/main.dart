@@ -17783,11 +17783,16 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
           : (totalPresences / _sessions.length).round().toString();
 
       // שורת נתוני סיכום (מה שמוצג בבר העליון)
+      final neverAttendedCount = _allTrainees
+          .where((n) => !_attendanceMap.containsKey(n))
+          .length;
       sheet.appendRow(<CellValue>[
         TextCellValue('סה"כ חניכים'),
         TextCellValue('${_allTrainees.length}'),
         TextCellValue('סה"כ מתאמנים'),
         TextCellValue('${tableTrainees.length}'),
+        TextCellValue('לא השתתפו'),
+        TextCellValue('$neverAttendedCount'),
         TextCellValue('מס\' אימונים'),
         TextCellValue('${_sessions.length}'),
         TextCellValue('ממוצע לאימון'),
@@ -18016,21 +18021,22 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                   ),
                   // טבלה + סיידבר
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _sessions.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'אין נתוני אימונים ליישוב זה',
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                )
-                              : LayoutBuilder(
+                    child: _sessions.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'אין נתוני אימונים ליישוב זה',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Main attendance table
+                              Expanded(
+                                child: LayoutBuilder(
                                   builder: (context, constraints) {
                                     const double nameColWidth = 130;
                                     const double sessionColWidth = 90;
@@ -18054,11 +18060,12 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
                                     );
                                   },
                                 ),
-                        ),
-                        if (neverAttended.isNotEmpty)
-                          _buildNeverAttendedSidebar(neverAttended),
-                      ],
-                    ),
+                              ),
+                              // Never-attended section below the table
+                              if (neverAttended.isNotEmpty)
+                                _buildNeverAttendedSection(neverAttended),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -18315,66 +18322,52 @@ class _SettlementAttendancePageState extends State<SettlementAttendancePage> {
     );
   }
 
-  Widget _buildNeverAttendedSidebar(List<String> neverAttended) {
+  Widget _buildNeverAttendedSection(List<String> neverAttended) {
     return Container(
-      width: 160,
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
         color: Colors.red[50],
-        border: Border(left: BorderSide(color: Colors.red[200]!)),
+        border: Border(top: BorderSide(color: Colors.red[200]!)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             color: Colors.red[100],
             child: Text(
               'לא היו באף אימון (${neverAttended.length})',
               style: TextStyle(
                 color: Colors.red[800],
                 fontWeight: FontWeight.bold,
-                fontSize: 12,
+                fontSize: 14,
               ),
               textAlign: TextAlign.center,
             ),
           ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: neverAttended.length,
-              itemBuilder: (ctx, i) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: neverAttended.asMap().entries.map((entry) {
+              final i = entry.key;
+              final name = entry.value;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Chip(
+                  backgroundColor: Colors.red[100],
+                  label: Text(
+                    '${i + 1}. $name',
+                    style: TextStyle(color: Colors.red[800], fontSize: 12),
                   ),
-                  decoration: BoxDecoration(
-                    color: i.isEven ? Colors.white : Colors.red[50],
-                    border: Border(bottom: BorderSide(color: Colors.red[100]!)),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        '${i + 1}.',
-                        style: TextStyle(color: Colors.red[400], fontSize: 10),
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          neverAttended[i],
-                          style: TextStyle(
-                            color: Colors.red[700],
-                            fontSize: 12,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                  side: BorderSide(color: Colors.red[300]!),
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              );
+            }).toList(),
           ),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -25207,9 +25200,29 @@ class _TrainingFolderSelectionPageState
 
 /* ── Placer Golan sub-folder page with 3 category cards ── */
 
-class _PlacerGolanFolderPage extends StatelessWidget {
+class _PlacerGolanFolderPage extends StatefulWidget {
   final String folder;
   const _PlacerGolanFolderPage({required this.folder});
+
+  @override
+  State<_PlacerGolanFolderPage> createState() => _PlacerGolanFolderPageState();
+}
+
+class _PlacerGolanFolderPageState extends State<_PlacerGolanFolderPage> {
+  // Changing this key forces all FutureBuilders to re-run
+  int _refreshKey = 0;
+  bool _isRefreshing = false;
+
+  Future<void> _refresh() async {
+    setState(() {
+      _isRefreshing = true;
+      _refreshKey++;
+    });
+    // Wait a short moment so the spinners have time to appear,
+    // then let the FutureBuilders finish naturally.
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (mounted) setState(() => _isRefreshing = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25238,8 +25251,24 @@ class _PlacerGolanFolderPage extends StatelessWidget {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(folder),
+          title: Text(widget.folder),
           leading: const StandardBackButton(),
+          actions: [
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _isRefreshing ? null : _refresh,
+              tooltip: 'רענן',
+            ),
+          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(12),
@@ -25255,15 +25284,17 @@ class _PlacerGolanFolderPage extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 elevation: 2,
                 child: InkWell(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => _DryTrainingFeedbacksListPage(
-                        folder: folder,
-                        module: module,
-                        title: title,
-                      ),
-                    ),
-                  ),
+                  onTap: () => Navigator.of(context)
+                      .push(
+                        MaterialPageRoute(
+                          builder: (_) => _DryTrainingFeedbacksListPage(
+                            folder: widget.folder,
+                            module: module,
+                            title: title,
+                          ),
+                        ),
+                      )
+                      .then((_) => _refresh()),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
@@ -25280,24 +25311,36 @@ class _PlacerGolanFolderPage extends StatelessWidget {
                           ),
                         ),
                         FutureBuilder<int>(
+                          key: ValueKey('$module-$_refreshKey'),
                           future: FirebaseFirestore.instance
                               .collection('feedbacks')
                               .where('module', isEqualTo: module)
-                              .where('folder', isEqualTo: folder)
+                              .where('folder', isEqualTo: widget.folder)
                               .where('isTemporary', isEqualTo: false)
                               .count()
                               .get()
                               .timeout(const Duration(seconds: 5))
                               .then((s) => s.count ?? 0)
                               .catchError((_) => 0),
-                          builder: (context, snap) => Text(
-                            '${snap.data ?? 0} משובים',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueGrey,
-                            ),
-                          ),
+                          builder: (context, snap) {
+                            if (!snap.hasData) {
+                              return const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              );
+                            }
+                            return Text(
+                              '${snap.data} משובים',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blueGrey,
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(width: 8),
                         const Icon(
@@ -25428,8 +25471,17 @@ class _DryTrainingFeedbacksListPageState
           leading: const StandardBackButton(),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _loadItems,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              onPressed: _loading ? null : _loadItems,
               tooltip: 'רענן',
             ),
           ],
