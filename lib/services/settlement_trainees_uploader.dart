@@ -1333,5 +1333,38 @@ class SettlementTraineesUploader {
       'סאלח סעב',
       'ואעד עזאם',
     ],
+    'פלסר הגולן': [
+      'אוריאל מנחם',
+      'אלישע טבול',
+      'אלרועי טובולסקי',
+      'בן ציון ויתקון',
+      'גור אריה',
+      'דוד שרון',
+      'יאיר הארונוביץ',
+      'יגל סבן',
+      'יוסף בוזגלו',
+      'יצחק קליין',
+      'ישראל מלכה',
+      'מעיין שטיין',
+      'משה מנסבך',
+      'נריה חריף',
+      'צור בלסברג',
+      'שימעון פורטל',
+    ],
   };
+
+  /// העלאת יישוב בודד ל-Firestore (לשימוש חד-פעמי)
+  static Future<void> uploadSingleSettlement(String settlementName) async {
+    final trainees = _settlementData[settlementName];
+    if (trainees == null) return;
+    await FirebaseFirestore.instance
+        .collection('settlement_trainees')
+        .doc(settlementName)
+        .set({
+          'settlementName': settlementName,
+          'trainees': trainees,
+          'traineeCount': trainees.length,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+  }
 }

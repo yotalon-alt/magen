@@ -621,6 +621,7 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
     // ✅ Determine if should show autocomplete
     final bool shouldShowAutocomplete =
         (widget.mode == 'range' && rangeFolder == 'מטווחים 474') ||
+        (widget.mode == 'range' && rangeFolder == 'פלסר הגולן') ||
         (widget.mode == 'surprise' &&
             surpriseDrillsFolder == 'משוב תרגילי הפתעה');
 
@@ -4526,6 +4527,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         manualSettlementText = '';
                       }
                     });
+                    if (value == 'פלסר הגולן') {
+                      _loadTraineesForAutocomplete('פלסר הגולן');
+                    }
                     _scheduleAutoSave();
                   },
                 ),

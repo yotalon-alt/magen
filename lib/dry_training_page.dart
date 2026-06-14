@@ -6,6 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'
     show currentUser, brigade474Instructors, kDeleteFeedbackAllowedUid;
 import 'widgets/standard_back_button.dart';
+import 'widgets/trainee_selection_dialog.dart';
+import 'services/trainee_autocomplete_service.dart';
+import 'services/settlement_trainees_uploader.dart';
 
 // ─────────────────────────────────────────────
 // Constants
@@ -602,6 +605,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
   // ── top-level fields ──────────────────────────────────
   String? _selectedFolder;
   final _teamNameController = TextEditingController();
+  final _topicController = TextEditingController();
   final _attendeesCountController = TextEditingController();
   final _trainingSummaryController = TextEditingController();
 
@@ -615,7 +619,9 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
 
   // ── trainees ─────────────────────────────────────────
   List<DryTraineeModel> _trainees = [];
+  List<String> _autocompleteTrainees = [];
   final Map<int, TextEditingController> _nameControllers = {};
+  final Map<int, FocusNode> _nameFocusNodes = {};
 
   // ── state flags ───────────────────────────────────────
   bool _isSaving = false;
@@ -627,6 +633,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
   final _tableHeaderHorizCtrl = ScrollController();
   final _tableBodyVertCtrl = ScrollController();
   final _tableNameVertCtrl = ScrollController();
+  final _tableNumVertCtrl = ScrollController();
 
   void _onTableHorizScroll() {
     if (_tableHeaderHorizCtrl.hasClients &&
@@ -636,9 +643,12 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
   }
 
   void _onTableVertScroll() {
-    if (_tableNameVertCtrl.hasClients &&
-        _tableNameVertCtrl.offset != _tableBodyVertCtrl.offset) {
-      _tableNameVertCtrl.jumpTo(_tableBodyVertCtrl.offset);
+    final offset = _tableBodyVertCtrl.offset;
+    if (_tableNameVertCtrl.hasClients && _tableNameVertCtrl.offset != offset) {
+      _tableNameVertCtrl.jumpTo(offset);
+    }
+    if (_tableNumVertCtrl.hasClients && _tableNumVertCtrl.offset != offset) {
+      _tableNumVertCtrl.jumpTo(offset);
     }
   }
 
@@ -646,6 +656,22 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
   void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(milliseconds: 700), _saveTemporarily);
+  }
+
+  /// טוען רשימת חניכים מ-Firestore; אם אין מסמך - מעלה אותומטית
+  Future<void> _loadFalsarTrainees() async {
+    var trainees = await TraineeAutocompleteService.getTraineesForSettlement(
+      'פלסר הגולן',
+    );
+    if (trainees.isEmpty) {
+      // מסמך לא קיים - נעלה אותומטית
+      await SettlementTraineesUploader.uploadSingleSettlement('פלסר הגולן');
+      TraineeAutocompleteService.clearCacheForSettlement('פלסר הגולן');
+      trainees = await TraineeAutocompleteService.getTraineesForSettlement(
+        'פלסר הגולן',
+      );
+    }
+    if (mounted) setState(() => _autocompleteTrainees = trainees);
   }
 
   // ─────────────────────────────────────────────────────
@@ -671,7 +697,9 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
     _tableHeaderHorizCtrl.dispose();
     _tableBodyVertCtrl.dispose();
     _tableNameVertCtrl.dispose();
+    _tableNumVertCtrl.dispose();
     _teamNameController.dispose();
+    _topicController.dispose();
     _instructorsCountController.dispose();
     _attendeesCountController.dispose();
     _trainingSummaryController.dispose();
@@ -680,6 +708,9 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
     }
     for (final c in _nameControllers.values) {
       c.dispose();
+    }
+    for (final f in _nameFocusNodes.values) {
+      f.dispose();
     }
     super.dispose();
   }
@@ -699,6 +730,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
       setState(() {
         _selectedFolder = data['folder'] as String?;
         _teamNameController.text = (data['teamName'] as String?) ?? '';
+        _topicController.text = (data['topic'] as String?) ?? '';
         // instructors
         final instrCount = (data['instructorsCount'] as num?)?.toInt() ?? 0;
         _instructorsCount = instrCount;
@@ -727,6 +759,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
             .toList();
         _rebuildNameControllers();
       });
+      if (data['folder'] == 'פלסר הגולן') _loadFalsarTrainees();
     } catch (e) {
       debugPrint('❌ DRY_LOAD: $e');
     }
@@ -737,9 +770,19 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
       c.dispose();
     }
     _nameControllers.clear();
+    for (final f in _nameFocusNodes.values) {
+      f.dispose();
+    }
+    _nameFocusNodes.clear();
     for (int i = 0; i < _trainees.length; i++) {
       _nameControllers[i] = TextEditingController(text: _trainees[i].name);
+      _nameFocusNodes[i] = FocusNode();
     }
+  }
+
+  FocusNode _getNameFocusNode(int idx) {
+    _nameFocusNodes[idx] ??= FocusNode();
+    return _nameFocusNodes[idx]!;
   }
 
   // ─────────────────────────────────────────────────────
@@ -781,11 +824,14 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
         final idx = _trainees.length;
         _trainees.add(DryTraineeModel(name: ''));
         _nameControllers[idx] = TextEditingController();
+        _nameFocusNodes[idx] = FocusNode();
       }
       while (_trainees.length > count) {
         final idx = _trainees.length - 1;
         _nameControllers[idx]?.dispose();
         _nameControllers.remove(idx);
+        _nameFocusNodes[idx]?.dispose();
+        _nameFocusNodes.remove(idx);
         _trainees.removeLast();
       }
     });
@@ -827,6 +873,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
         'feedbackType': 'dry_training',
         'trainingType': widget.trainingType,
         'teamName': _teamNameController.text.trim(),
+        'topic': _topicController.text.trim(),
         'instructorsCount': _instructorsCount,
         'instructors': _collectInstructorNames(),
         'attendeesCount': int.tryParse(_attendeesCountController.text) ?? 0,
@@ -895,6 +942,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
         'feedbackType': 'dry_training',
         'trainingType': widget.trainingType,
         'teamName': _teamNameController.text.trim(),
+        'topic': _topicController.text.trim(),
         'instructorsCount': _instructorsCount,
         'instructors': _collectInstructorNames(),
         'attendeesCount': int.tryParse(_attendeesCountController.text) ?? 0,
@@ -1431,6 +1479,7 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
                     .toList(),
                 onChanged: (v) {
                   setState(() => _selectedFolder = v);
+                  if (v == 'פלסר הגולן') _loadFalsarTrainees();
                   _scheduleAutoSave();
                 },
               ),
@@ -1455,6 +1504,16 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
                 textDirection: TextDirection.rtl,
                 decoration: const InputDecoration(
                   labelText: 'צוות',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _topicController,
+                textDirection: TextDirection.rtl,
+                decoration: const InputDecoration(
+                  labelText: 'נושא',
                   border: OutlineInputBorder(),
                 ),
                 onChanged: (_) => _scheduleAutoSave(),
@@ -1631,6 +1690,56 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
               ),
               const SizedBox(height: 20),
 
+              // ── Select trainees button (Falsar Golan only) ──
+              if (_selectedFolder == 'פלסר הגולן') ...[
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.people),
+                  label: const Text('בחר חניכים'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    final currentNames = _trainees.map((t) => t.name).toList();
+                    final selected = await showDialog<List<String>>(
+                      context: context,
+                      builder: (_) => TraineeSelectionDialog(
+                        settlementName: 'פלסר הגולן',
+                        availableTrainees: _autocompleteTrainees,
+                        preSelectedTrainees: currentNames
+                            .where((n) => n.isNotEmpty)
+                            .toList(),
+                      ),
+                    );
+                    if (selected == null || selected.isEmpty) return;
+                    setState(() {
+                      // Resize trainees list to match selection
+                      while (_trainees.length < selected.length) {
+                        final idx = _trainees.length;
+                        _trainees.add(DryTraineeModel(name: ''));
+                        _nameControllers[idx] = TextEditingController();
+                      }
+                      while (_trainees.length > selected.length) {
+                        final idx = _trainees.length - 1;
+                        _nameControllers[idx]?.dispose();
+                        _nameControllers.remove(idx);
+                        _trainees.removeLast();
+                      }
+                      // Fill names
+                      for (int i = 0; i < selected.length; i++) {
+                        _nameControllers[i]?.text = selected[i];
+                      }
+                      // Sync attendees count field
+                      _attendeesCountController.text = selected.length
+                          .toString();
+                    });
+                    _scheduleAutoSave();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+
               // ── Table ──────────────────────────────────────
               if (_trainees.isNotEmpty) ...[
                 const Text(
@@ -1685,7 +1794,8 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
   // Table widget
   // ─────────────────────────────────────────────────────
   Widget _buildTable() {
-    const double nameColWidth = 100;
+    const double numColWidth = 44;
+    const double nameColWidth = 150;
     const double scoreColWidth = 72;
     const double avgColWidth = 64;
     const double noteColWidth = 90;
@@ -1706,6 +1816,64 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Left: frozen number column ──────────────────
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Number header cell
+                Container(
+                  width: numColWidth,
+                  height: headerHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    border: Border(
+                      right: BorderSide(color: Colors.grey.shade300),
+                      bottom: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'מס\'',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                // Number cells
+                SizedBox(
+                  height: bodyHeight,
+                  child: SingleChildScrollView(
+                    controller: _tableNumVertCtrl,
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Column(
+                      children: _trainees.asMap().entries.map((entry) {
+                        final traineeIdx = entry.key;
+                        return Container(
+                          width: numColWidth,
+                          height: rowHeight,
+                          decoration: BoxDecoration(
+                            color: traineeIdx.isEven
+                                ? Colors.white
+                                : Colors.grey.shade50,
+                            border: Border(
+                              right: BorderSide(color: Colors.grey.shade300),
+                              bottom: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${traineeIdx + 1}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
             // ── Left: frozen name column ───────────────────
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1749,18 +1917,88 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: TextField(
-                              controller: _nameControllers[traineeIdx],
-                              textDirection: TextDirection.rtl,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 12),
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                hintText: 'שם חניך',
-                                hintStyle: TextStyle(fontSize: 11),
-                              ),
-                              onChanged: (_) => _scheduleAutoSave(),
-                            ),
+                            child: _selectedFolder == 'פלסר הגולן'
+                                ? RawAutocomplete<String>(
+                                    textEditingController:
+                                        _nameControllers[traineeIdx]!,
+                                    focusNode: _getNameFocusNode(traineeIdx),
+                                    optionsBuilder: (tv) {
+                                      if (tv.text.isEmpty) {
+                                        return _autocompleteTrainees.take(8);
+                                      }
+                                      return _autocompleteTrainees.where(
+                                        (n) => n.contains(tv.text),
+                                      );
+                                    },
+                                    onSelected: (s) {
+                                      _nameControllers[traineeIdx]?.text = s;
+                                      _scheduleAutoSave();
+                                    },
+                                    fieldViewBuilder:
+                                        (ctx, ctrl, fn, onSubmit) => TextField(
+                                          controller: ctrl,
+                                          focusNode: fn,
+                                          textDirection: TextDirection.rtl,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontSize: 12),
+                                          decoration: const InputDecoration(
+                                            border: InputBorder.none,
+                                            hintText: 'שם חניך',
+                                            hintStyle: TextStyle(fontSize: 11),
+                                          ),
+                                          onChanged: (_) => _scheduleAutoSave(),
+                                        ),
+                                    optionsViewBuilder: (ctx, onSel, options) =>
+                                        Align(
+                                          alignment: Alignment.topRight,
+                                          child: Material(
+                                            elevation: 4,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            child: ConstrainedBox(
+                                              constraints: const BoxConstraints(
+                                                maxHeight: 200,
+                                                maxWidth: 180,
+                                              ),
+                                              child: ListView.builder(
+                                                padding: EdgeInsets.zero,
+                                                shrinkWrap: true,
+                                                itemCount: options.length,
+                                                itemBuilder: (ctx, i) {
+                                                  final opt = options.elementAt(
+                                                    i,
+                                                  );
+                                                  return ListTile(
+                                                    dense: true,
+                                                    title: Text(
+                                                      opt,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.right,
+                                                    ),
+                                                    onTap: () => onSel(opt),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                  )
+                                : TextField(
+                                    controller: _nameControllers[traineeIdx],
+                                    textDirection: TextDirection.rtl,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 12),
+                                    decoration: const InputDecoration(
+                                      border: InputBorder.none,
+                                      hintText: 'שם חניך',
+                                      hintStyle: TextStyle(fontSize: 11),
+                                    ),
+                                    onChanged: (_) => _scheduleAutoSave(),
+                                  ),
                           ),
                         );
                       }).toList(),
