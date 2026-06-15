@@ -4013,7 +4013,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
     // ✅ CRITICAL: Load trainees on init if settlement already selected (from draft)
     Future.microtask(() {
-      if (trainingSummaryFolder == 'משוב סיכום אימון 474' &&
+      if ((trainingSummaryFolder == 'משוב סיכום אימון 474' ||
+              trainingSummaryFolder == 'פלסר הגולן') &&
           selectedSettlement.isNotEmpty) {
         _loadTraineesForAutocomplete(selectedSettlement);
       }
@@ -4157,7 +4158,8 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
 
       // Load trainees for autocomplete if needed
       if (selectedSettlement.isNotEmpty &&
-          trainingSummaryFolder == 'משוב סיכום אימון 474') {
+          (trainingSummaryFolder == 'משוב סיכום אימון 474' ||
+              trainingSummaryFolder == 'פלסר הגולן')) {
         _loadTraineesForAutocomplete(selectedSettlement);
       }
 
@@ -4339,14 +4341,22 @@ class _TrainingSummaryFormPageState extends State<TrainingSummaryFormPage> {
   Future<void> _loadTraineesForAutocomplete(String settlement) async {
     if (settlement.isEmpty ||
         (trainingSummaryFolder != 'משוב סיכום אימון 474' &&
-            trainingSummaryFolder != 'תרגילים גזרתיים')) {
+            trainingSummaryFolder != 'תרגילים גזרתיים' &&
+            trainingSummaryFolder != 'פלסר הגולן')) {
       setState(() => _autocompleteTrainees = []);
       return;
     }
 
+    // For פלסר הגולן folder, trainees are stored under 'פלסר הגולן' key in Firestore
+    final firestoreKey = trainingSummaryFolder == 'פלסר הגולן'
+        ? 'פלסר הגולן'
+        : settlement;
+
     try {
       final trainees =
-          await TraineeAutocompleteService.getTraineesForSettlement(settlement);
+          await TraineeAutocompleteService.getTraineesForSettlement(
+            firestoreKey,
+          );
       if (mounted) {
         setState(() {
           _autocompleteTrainees = trainees;

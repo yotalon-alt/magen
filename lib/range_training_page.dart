@@ -4942,12 +4942,15 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                 const SizedBox(height: 16),
               ],
 
-              // ✨ בחירת חניכים - כפתור מרכזי (רק למטווחים 474 ותרגילי הפתעה 474)
+              // ✨ בחירת חניכים - כפתור מרכזי (רק למטווחים 474, פלסר הגולן ותרגילי הפתעה 474)
               // ✅ FIX: Use selectedSettlement OR settlementName to catch both new drafts and loaded ones
               if ((widget.mode == 'range' &&
                       rangeFolder == 'מטווחים 474' &&
                       (settlementName.isNotEmpty ||
                           (selectedSettlement?.isNotEmpty ?? false)) &&
+                      _autocompleteTrainees.isNotEmpty) ||
+                  (widget.mode == 'range' &&
+                      rangeFolder == 'פלסר הגולן' &&
                       _autocompleteTrainees.isNotEmpty) ||
                   (widget.mode == 'surprise' &&
                       surpriseDrillsFolder == 'משוב תרגילי הפתעה' &&
