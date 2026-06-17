@@ -11938,6 +11938,16 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           int totalValue = 0;
                           int totalMax = 0;
 
+                          // ✅ FIX: Calculate performers count for both long and short range
+                          int traineesWhoPerformed = 0;
+                          for (final trainee in trainees) {
+                            final traineePoints =
+                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                            if (traineePoints > 0) {
+                              traineesWhoPerformed++;
+                            }
+                          }
+
                           if (isLongRange) {
                             // LONG RANGE: Use points (raw values as stored)
                             for (final trainee in trainees) {
@@ -11945,11 +11955,12 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   (trainee['totalHits'] as num?)?.toInt() ??
                                   0; // Raw points stored in totalHits
                             }
-                            // Sum maxPoints from stations
+                            // Sum maxPoints from stations (use only performers)
                             for (final station in stations) {
                               final stationMaxPoints =
                                   (station['maxPoints'] as num?)?.toInt() ?? 0;
-                              totalMax += stationMaxPoints * trainees.length;
+                              totalMax +=
+                                  stationMaxPoints * traineesWhoPerformed;
                             }
                           } else {
                             // SHORT RANGE: Use hits/bullets (existing logic)
@@ -11957,14 +11968,26 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               totalValue +=
                                   (trainee['totalHits'] as num?)?.toInt() ?? 0;
                             }
-                            // ✅ חישוב נכון: מספר חניכים × סך כדורים בכל המקצים
-                            int totalBulletsPerTrainee = 0;
-                            for (final station in stations) {
-                              totalBulletsPerTrainee +=
-                                  (station['bulletsCount'] as num?)?.toInt() ??
+                            // ✅ FIX: Count max bullets per station based on actual performers
+                            totalMax = 0;
+                            for (int i = 0; i < stations.length; i++) {
+                              int traineesWhoPerformedPerStation = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null &&
+                                    hits.containsKey('station_$i')) {
+                                  traineesWhoPerformedPerStation++;
+                                }
+                              }
+                              final bulletsPerStation =
+                                  (stations[i]['bulletsCount'] as num?)
+                                      ?.toInt() ??
                                   0;
+                              totalMax +=
+                                  traineesWhoPerformedPerStation *
+                                  bulletsPerStation;
                             }
-                            totalMax = trainees.length * totalBulletsPerTrainee;
                           }
 
                           // חישוב אחוז כללי
