@@ -865,6 +865,12 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
         }
       }
 
+      // Build local trainees payload before transaction (snapshot of current local state)
+      final localTraineesPayload = _trainees
+          .map((t) => t.toFirestore())
+          .toList();
+
+      // Non-trainee fields (no concurrency issue — last writer wins is acceptable here)
       final patch = <String, dynamic>{
         'status': 'temporary',
         'isTemporary': true,
@@ -879,17 +885,83 @@ class _DryTrainingPageState extends State<DryTrainingPage> {
         'attendeesCount': int.tryParse(_attendeesCountController.text) ?? 0,
         'trainingSummary': _trainingSummaryController.text,
         'categories': _categories,
-        'trainees': _trainees.map((t) => t.toFirestore()).toList(),
-        'instructorId': uid,
         'updatedByUid': uid,
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedByName': currentUser?.name ?? '',
       };
 
-      await FirebaseFirestore.instance
+      final docRef = FirebaseFirestore.instance
           .collection('feedbacks')
-          .doc(docId)
-          .set(patch, SetOptions(merge: true));
+          .doc(docId);
+      bool isNewDocument = false;
+
+      // ✅ ATOMIC TRANSACTION: get + merge + set in one operation.
+      // Eliminates race-condition where two instructors overwrite each other's
+      // trainee scores by each saving their full local trainees array.
+      await FirebaseFirestore.instance.runTransaction((txn) async {
+        final existingDoc = await txn.get(docRef);
+        isNewDocument = !existingDoc.exists;
+
+        // Work on a fresh copy each retry so merges don't stack
+        final txnTrainees = localTraineesPayload
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+
+        // ✅ CONCURRENT EDIT FIX: Merge remote trainee scores/notes with local.
+        // Problem: two instructors editing different trainees simultaneously each
+        // save their full local trainees array, overwriting the other's changes.
+        // Solution: read existing Firestore state atomically, use remote as base,
+        // then overlay local values (local always wins on conflict).
+        if (!isNewDocument) {
+          final remoteTraineesRaw =
+              existingDoc.data()?['trainees'] as List?;
+          if (remoteTraineesRaw != null &&
+              remoteTraineesRaw.length == txnTrainees.length) {
+            for (int i = 0; i < txnTrainees.length; i++) {
+              final remoteTrainee =
+                  remoteTraineesRaw[i] as Map<String, dynamic>?;
+              if (remoteTrainee == null) continue;
+
+              // Merge scores: remote base, local overlays (local wins same key)
+              final remoteScores =
+                  (remoteTrainee['scores'] as Map<String, dynamic>?) ?? {};
+              final localScores = Map<String, dynamic>.from(
+                txnTrainees[i]['scores'] as Map? ?? {},
+              );
+              txnTrainees[i]['scores'] =
+                  Map<String, dynamic>.from(remoteScores)..addAll(localScores);
+
+              // Merge notes: same pattern
+              final remoteNotes =
+                  (remoteTrainee['notes'] as Map<String, dynamic>?) ?? {};
+              final localNotes = Map<String, dynamic>.from(
+                txnTrainees[i]['notes'] as Map? ?? {},
+              );
+              txnTrainees[i]['notes'] =
+                  Map<String, dynamic>.from(remoteNotes)..addAll(localNotes);
+
+              debugPrint(
+                'DRY_SAVE: ✅ CONCURRENT_MERGE trainee[$i]: '
+                'scores(remote=${remoteScores.length} local=${localScores.length}) '
+                'notes(remote=${remoteNotes.length} local=${localNotes.length})',
+              );
+            }
+          }
+        }
+
+        final txnPatch = Map<String, dynamic>.from(patch);
+
+        // ✅ Set creator fields ONLY for new documents (preserve original creator)
+        if (isNewDocument) {
+          txnPatch['instructorId'] = uid;
+          txnPatch['createdByName'] = currentUser?.name ?? '';
+          txnPatch['createdByUid'] = uid;
+          txnPatch['createdAt'] = FieldValue.serverTimestamp();
+        }
+
+        txnPatch['trainees'] = txnTrainees;
+        txn.set(docRef, txnPatch, SetOptions(merge: true));
+      });
 
       if (_editingFeedbackId == null && mounted) {
         setState(() => _editingFeedbackId = docId);

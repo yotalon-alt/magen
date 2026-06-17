@@ -11997,6 +11997,34 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 )
                               : '0.0';
 
+                          // ✅ SHORT RANGE: Total bullets fired including shared targets (shooting ranges)
+                          int totalBulletsFiredShortRange = 0;
+                          if (!isLongRange) {
+                            for (int si = 0; si < stations.length; si++) {
+                              final isSharedSt =
+                                  (stations[si]['isSharedTarget'] as bool?) ??
+                                  false;
+                              int performers = 0;
+                              for (final trainee in trainees) {
+                                final hits =
+                                    trainee['hits'] as Map<String, dynamic>?;
+                                if (hits != null &&
+                                    hits.containsKey('station_$si')) {
+                                  performers++;
+                                }
+                              }
+                              final effectivePerformers = isSharedSt
+                                  ? trainees.length
+                                  : performers;
+                              final bulletsPerStation =
+                                  (stations[si]['bulletsCount'] as num?)
+                                      ?.toInt() ??
+                                  0;
+                              totalBulletsFiredShortRange +=
+                                  effectivePerformers * bulletsPerStation;
+                            }
+                          }
+
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -12057,52 +12085,76 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                   ),
                                                 ],
                                               )
-                                            : Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceAround,
+                                            : Column(
                                                 children: [
-                                                  Column(
+                                                  Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .spaceAround,
                                                     children: [
-                                                      const Text(
-                                                        'סך פגיעות/כדורים',
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                        ),
+                                                      Column(
+                                                        children: [
+                                                          const Text(
+                                                            'סך פגיעות/כדורים',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 4,
+                                                          ),
+                                                          Text(
+                                                            '$totalMax/$totalValue',
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 24,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .orangeAccent,
+                                                                ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        '$totalMax/$totalValue',
-                                                        style: const TextStyle(
-                                                          fontSize: 24,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color: Colors
-                                                              .orangeAccent,
-                                                        ),
+                                                      Column(
+                                                        children: [
+                                                          const Text(
+                                                            'אחוז פגיעה כללי',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 4,
+                                                          ),
+                                                          Text(
+                                                            '$percentage%',
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 32,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .greenAccent,
+                                                                ),
+                                                          ),
+                                                        ],
                                                       ),
                                                     ],
                                                   ),
-                                                  Column(
-                                                    children: [
-                                                      const Text(
-                                                        'אחוז פגיעה כללי',
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        '$percentage%',
-                                                        style: const TextStyle(
-                                                          fontSize: 32,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color: Colors
-                                                              .greenAccent,
-                                                        ),
-                                                      ),
-                                                    ],
+                                                  const SizedBox(height: 10),
+                                                  Text(
+                                                    'סהכ כדורים שנורו: $totalBulletsFiredShortRange',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.white70,
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                    ),
                                                   ),
                                                 ],
                                               ),
@@ -12197,9 +12249,9 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                         ? ((station['maxPoints'] as num?)
                                                   ?.toInt() ??
                                               0)
-                                        : (trainees.isNotEmpty
-                                              ? (stationMax ~/ trainees.length)
-                                              : 0);
+                                        : ((station['bulletsCount'] as num?)
+                                                  ?.toInt() ??
+                                              0);
                                     _showStationDetailsModal(
                                       context,
                                       index,
