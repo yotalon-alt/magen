@@ -11221,13 +11221,31 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                           int totalValue = 0;
                           int totalMax = 0;
 
+                          // ✅ FIX: Calculate performers count for both long and short range
+                          int traineesWhoPerformed = 0;
+                          for (final trainee in trainees) {
+                            final traineePoints =
+                                (trainee['totalHits'] as num?)?.toInt() ?? 0;
+                            if (traineePoints > 0) {
+                              traineesWhoPerformed++;
+                            }
+                          }
+
+                          debugPrint('\n   👥 PERFORMER COUNT:');
+                          debugPrint(
+                            '      Total trainees in list: ${trainees.length}',
+                          );
+                          debugPrint(
+                            '      Trainees who performed: $traineesWhoPerformed',
+                          );
+
                           if (isLongRange) {
                             // LONG RANGE: Use points-based calculation
                             debugPrint(
                               '\n   📊 LONG RANGE CALCULATION (POINTS):',
                             );
 
-                            // Sum achieved points from trainees
+                            // ✅ FIX: Count only trainees who actually performed (have score data)
                             for (final trainee in trainees) {
                               final traineePoints =
                                   (trainee['totalHits'] as num?)?.toInt() ?? 0;
@@ -11235,6 +11253,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             }
 
                             // Calculate totalMax from N * SUM(maxScorePoints)
+                            // Use only PERFORMERS, not total trainees
                             int sumMaxScorePoints = 0;
                             for (int i = 0; i < stations.length; i++) {
                               final station = stations[i];
@@ -11266,16 +11285,16 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                               sumMaxScorePoints += maxScorePoints;
                             }
 
-                            totalMax = trainees.length * sumMaxScorePoints;
+                            totalMax = traineesWhoPerformed * sumMaxScorePoints;
                             debugPrint('\n   📐 TOTAL MAX CALCULATION:');
                             debugPrint(
-                              '      N (trainees): ${trainees.length}',
+                              '      N (performers only): $traineesWhoPerformed',
                             );
                             debugPrint(
                               '      SUM(maxScorePoints): $sumMaxScorePoints',
                             );
                             debugPrint(
-                              '      totalMax = N × SUM = ${trainees.length} × $sumMaxScorePoints = $totalMax',
+                              '      totalMax = N × SUM = $traineesWhoPerformed × $sumMaxScorePoints = $totalMax',
                             );
                             debugPrint(
                               '      totalValue (achieved): $totalValue',
@@ -11283,6 +11302,10 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                             debugPrint('      RESULT: $totalValue / $totalMax');
                           } else {
                             // SHORT RANGE: Use hits/bullets (existing logic)
+                            // Trainees performed already calculated above
+                            debugPrint(
+                              '\n   📊 SHORT RANGE CALCULATION (HITS):',
+                            );
                             for (final trainee in trainees) {
                               totalValue +=
                                   (trainee['totalHits'] as num?)?.toInt() ?? 0;
@@ -11316,7 +11339,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                 )
                               : '0.0';
 
-                          // ✅ LONG RANGE: Calculate total bullets fired (tracking only)
+                          // ✅ LONG RANGE: Calculate total bullets fired (tracking only, using performers)
                           int totalBulletsFired = 0;
                           if (isLongRange) {
                             for (final station in stations) {
@@ -11324,7 +11347,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                   (station['bulletsCount'] as num?)?.toInt() ??
                                   0;
                               totalBulletsFired +=
-                                  bulletsTracking * trainees.length;
+                                  bulletsTracking * traineesWhoPerformed;
                             }
                           }
 
