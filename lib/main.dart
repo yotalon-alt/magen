@@ -7139,6 +7139,11 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           return false;
         }
 
+        // Exclude פלסר הגולן surprise drills – they belong to their own folder
+        if (f.folder == 'פלסר הגולן' || f.folderKey == 'placer_golan') {
+          return false;
+        }
+
         // NEW SCHEMA: Has module field populated
         if (f.module.isNotEmpty) {
           return f.module == 'surprise_drill';
@@ -8974,6 +8979,198 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     );
   }
 
+  /// ✨ Edit trainee name (Yotam only)
+  Future<void> _editName() async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+    final controller = TextEditingController(text: feedback.name);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('עריכת שם'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'שם'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('שמור'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result == null || result.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({'name': result});
+      setState(() {
+        feedback = feedback.copyWith(name: result);
+      });
+      final index = feedbackStorage.indexWhere((f) => f.id == feedback.id);
+      if (index != -1) feedbackStorage[index] = feedback;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('שם עודכן'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// ✨ Edit scores and notes (Yotam only)
+  Future<void> _editScores() async {
+    if (feedback.id == null || feedback.id!.isEmpty) return;
+
+    // Build the criteria list to edit
+    final List<String> criteria = feedback.criteriaList.isNotEmpty
+        ? feedback.criteriaList
+        : feedback.scores.keys.toList();
+
+    if (criteria.isEmpty) return;
+
+    // Copy current scores and notes for editing
+    final editedScores = Map<String, int>.from(feedback.scores);
+    final editedNotes = Map<String, String>.from(feedback.notes);
+
+    // Create text controllers for notes
+    final noteControllers = {
+      for (final c in criteria)
+        c: TextEditingController(text: editedNotes[c] ?? ''),
+    };
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('עריכת ציונים והערות'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: criteria.map((criterion) {
+                    final current = editedScores[criterion] ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            criterion,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            children: [1, 2, 3, 4, 5].map((v) {
+                              return ChoiceChip(
+                                label: Text(v.toString()),
+                                selected: current == v,
+                                onSelected: (_) => setDialogState(
+                                  () => editedScores[criterion] = v,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: noteControllers[criterion],
+                            decoration: const InputDecoration(
+                              labelText: 'הערה',
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                            maxLines: 2,
+                            onChanged: (v) => editedNotes[criterion] = v,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('ביטול'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  // Sync note controllers to map before closing
+                  for (final c in criteria) {
+                    editedNotes[c] = noteControllers[c]?.text ?? '';
+                  }
+                  Navigator.of(ctx).pop();
+                  try {
+                    await FirebaseFirestore.instance
+                        .collection('feedbacks')
+                        .doc(feedback.id)
+                        .update({'scores': editedScores, 'notes': editedNotes});
+                    setState(() {
+                      feedback = feedback.copyWith(
+                        scores: editedScores,
+                        notes: editedNotes,
+                      );
+                    });
+                    final index = feedbackStorage.indexWhere(
+                      (f) => f.id == feedback.id,
+                    );
+                    if (index != -1) feedbackStorage[index] = feedback;
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('ציונים והערות עודכנו'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('שגיאה: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  } finally {
+                    for (final c in noteControllers.values) {
+                      c.dispose();
+                    }
+                  }
+                },
+                child: const Text('שמור'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Dispose controllers if dialog was closed without saving
+    for (final c in noteControllers.values) {
+      c.dispose();
+    }
+  }
+
   bool _isExporting = false;
 
   void _showStationDetailsModal(
@@ -10164,13 +10361,50 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'שם: ${feedback.name}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      (() {
+                        final canEditName =
+                            currentUser?.name == 'יותם אלון' &&
+                            currentUser?.role == 'Admin';
+                        if (canEditName) {
+                          return InkWell(
+                            onTap: _editName,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4.0,
+                                horizontal: 8.0,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'שם: ${feedback.name}',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.blue,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.edit,
+                                    size: 16,
+                                    color: Colors.blue,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        return Text(
+                          'שם: ${feedback.name}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        );
+                      })(),
                       if (feedback.settlement.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Text('יישוב: ${feedback.settlement}'),
@@ -10181,9 +10415,35 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 8),
-              const Text(
-                'קריטריונים:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              Builder(
+                builder: (ctx) {
+                  final canEditScores =
+                      currentUser?.name == 'יותם אלון' &&
+                      currentUser?.role == 'Admin';
+                  return Row(
+                    children: [
+                      const Text(
+                        'קריטריונים:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (canEditScores) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: _editScores,
+                          borderRadius: BorderRadius.circular(8),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4.0),
+                            child: Icon(
+                              Icons.edit,
+                              size: 16,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 8),
               // show saved criteria names if present, otherwise fall back to scores map (only non-zero)
@@ -12106,15 +12366,14 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                           ),
                                                           Text(
                                                             '$totalMax/$totalValue',
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 24,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  color: Colors
-                                                                      .orangeAccent,
-                                                                ),
+                                                            style: const TextStyle(
+                                                              fontSize: 24,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color: Colors
+                                                                  .orangeAccent,
+                                                            ),
                                                           ),
                                                         ],
                                                       ),
@@ -12132,15 +12391,14 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                                           ),
                                                           Text(
                                                             '$percentage%',
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 32,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  color: Colors
-                                                                      .greenAccent,
-                                                                ),
+                                                            style: const TextStyle(
+                                                              fontSize: 32,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color: Colors
+                                                                  .greenAccent,
+                                                            ),
                                                           ),
                                                         ],
                                                       ),
@@ -25358,6 +25616,12 @@ class _PlacerGolanFolderPageState extends State<_PlacerGolanFolderPage> {
         'color': Colors.blueGrey,
       },
       {
+        'title': 'תרגילי הפתעה',
+        'module': 'surprise_drill',
+        'icon': Icons.flash_on,
+        'color': Colors.orange,
+      },
+      {
         'title': 'סיכום אימון',
         'module': 'training_summary',
         'icon': Icons.assessment,
@@ -25635,7 +25899,8 @@ class _DryTrainingFeedbacksListPageState
                       onTap: () {
                         final module = (item['module'] as String?) ?? '';
                         if (module == 'shooting_ranges' ||
-                            module == 'training_summary') {
+                            module == 'training_summary' ||
+                            module == 'surprise_drill') {
                           final feedback = FeedbackModel.fromMap(
                             Map<String, dynamic>.from(item)..remove('id'),
                             id: id,

@@ -623,7 +623,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         (widget.mode == 'range' && rangeFolder == 'מטווחים 474') ||
         (widget.mode == 'range' && rangeFolder == 'פלסר הגולן') ||
         (widget.mode == 'surprise' &&
-            surpriseDrillsFolder == 'משוב תרגילי הפתעה');
+            surpriseDrillsFolder == 'משוב תרגילי הפתעה') ||
+        (widget.mode == 'surprise' && surpriseDrillsFolder == 'פלסר הגולן');
 
     final bool hasAutocompleteData = _autocompleteTrainees.isNotEmpty;
 
@@ -1018,6 +1019,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                                   '   ✅ Condition MET for surprise 474!',
                                 );
                                 _loadTraineesForAutocomplete(s);
+                              }
+                              // ✅ Load trainees for Surprise Drills פלסר הגולן
+                              if (widget.mode == 'surprise' &&
+                                  surpriseDrillsFolder == 'פלסר הגולן') {
+                                debugPrint(
+                                  '   ✅ Condition MET for surprise פלסר הגולן!',
+                                );
+                                _loadTraineesForAutocomplete('פלסר הגולן');
                               }
                             }
                           });
@@ -2237,10 +2246,14 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
           // ✅ CRITICAL: Override folderKey/folderLabel to prevent range filter matching
           'folderKey': surpriseDrillsFolder == 'תרגילי הפתעה כללי'
               ? 'surprise_drills_general'
+              : surpriseDrillsFolder == 'פלסר הגולן'
+              ? 'placer_golan'
               : 'surprise_drills', // NOT ranges_474 or shooting_ranges
           'folderLabel': surpriseDrillsFolder,
           'folderId': surpriseDrillsFolder == 'תרגילי הפתעה כללי'
               ? 'surprise_drills_general'
+              : surpriseDrillsFolder == 'פלסר הגולן'
+              ? 'placer_golan'
               : 'surprise_drills',
           'feedbackType': saveType,
           'rangeMode': widget.mode,
@@ -3125,6 +3138,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
         if (surpriseDrillsFolder == 'תרגילי הפתעה כללי') {
           draftFolderKey = 'surprise_drills_general';
           draftFolderLabel = 'תרגילי הפתעה כללי';
+        } else if (surpriseDrillsFolder == 'פלסר הגולן') {
+          draftFolderKey = 'placer_golan';
+          draftFolderLabel = 'פלסר הגולן';
         } else {
           draftFolderKey = 'surprise_drills';
           draftFolderLabel = 'משוב תרגילי הפתעה';
@@ -4117,6 +4133,8 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
             surpriseDrillsFolder = 'תרגילי הפתעה כללי';
           } else if (rawFolderKey == 'surprise_drills') {
             surpriseDrillsFolder = 'משוב תרגילי הפתעה';
+          } else if (rawFolderKey == 'placer_golan') {
+            surpriseDrillsFolder = 'פלסר הגולן';
           } else if (rawFolderLabel != null && rawFolderLabel.isNotEmpty) {
             // Fallback to folderLabel for backwards compatibility
             surpriseDrillsFolder = rawFolderLabel;
@@ -4469,6 +4487,10 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       value: 'תרגילי הפתעה כללי',
                       child: Text('תרגילי הפתעה כללי'),
                     ),
+                    DropdownMenuItem(
+                      value: 'פלסר הגולן',
+                      child: Text('פלסר הגולן'),
+                    ),
                   ],
                   onChanged: (value) {
                     setState(() {
@@ -4479,7 +4501,12 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       _settlementDisplayText = '';
                       isManualLocation = false;
                       manualLocationText = '';
+                      _autocompleteTrainees = [];
                     });
+                    // Load trainees immediately when פלסר הגולן is selected
+                    if (value == 'פלסר הגולן') {
+                      _loadTraineesForAutocomplete('פלסר הגולן');
+                    }
                     _scheduleAutoSave();
                   },
                 ),
@@ -4540,7 +4567,6 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
               if (widget.mode == 'surprise') ...[
                 // SURPRISE DRILLS: Different behavior based on folder selection
                 if (surpriseDrillsFolder == 'תרגילי הפתעה כללי') ...[
-                  // תרגילי הפתעה כללי: Free text input for settlement
                   TextField(
                     controller: TextEditingController(text: settlementName)
                       ..selection = TextSelection.collapsed(
@@ -4550,6 +4576,27 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       labelText: 'יישוב',
                       border: OutlineInputBorder(),
                       hintText: 'הזן שם יישוב',
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        settlementName = value;
+                        _settlementDisplayText = value;
+                      });
+                      _scheduleAutoSave();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ] else if (surpriseDrillsFolder == 'פלסר הגולן') ...[
+                  // פלסר הגולן: Free text input for team name
+                  TextField(
+                    controller: TextEditingController(text: settlementName)
+                      ..selection = TextSelection.collapsed(
+                        offset: settlementName.length,
+                      ),
+                    decoration: const InputDecoration(
+                      labelText: 'צוות',
+                      border: OutlineInputBorder(),
+                      hintText: 'הזן שם צוות',
                     ),
                     onChanged: (value) {
                       setState(() {
@@ -4956,6 +5003,9 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                       surpriseDrillsFolder == 'משוב תרגילי הפתעה' &&
                       (settlementName.isNotEmpty ||
                           (selectedSettlement?.isNotEmpty ?? false)) &&
+                      _autocompleteTrainees.isNotEmpty) ||
+                  (widget.mode == 'surprise' &&
+                      surpriseDrillsFolder == 'פלסר הגולן' &&
                       _autocompleteTrainees.isNotEmpty)) ...[
                 const Text(
                   'בחירת נוכחים',
