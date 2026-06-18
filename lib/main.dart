@@ -22385,6 +22385,10 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
             f.folderKey == 'surprise_drills_general') {
           return false;
         }
+        // Exclude פלסר הגולן surprise drills – they belong to their own folder
+        if (f.folder == 'פלסר הגולן' || f.folderKey == 'placer_golan') {
+          return false;
+        }
         if (f.module.isNotEmpty) {
           return f.module == 'surprise_drill';
         }
