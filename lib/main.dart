@@ -24465,9 +24465,7 @@ class _TraineeAttendanceStatisticsPageState
             f.folder == 'משוב תרגילי הפתעה' ||
             f.folder == 'משוב סיכום אימון 474' ||
             f.folderKey == 'ranges_474' ||
-            f.folderKey == 'training_summary_474' ||
-            f.folder == 'תרגילים גזרתיים' ||
-            f.folderKey == 'training_summary_sectoral';
+            f.folderKey == 'training_summary_474';
       }).toList();
 
       for (final f in feeds) {
@@ -24557,18 +24555,6 @@ class _TraineeAttendanceStatisticsPageState
             'date': f.createdAt,
             'typeGroup': 'הפתעה',
             'subType': '',
-            'trainees': sessionTrainees,
-          });
-        } else {
-          // sectoral
-          sessionTrainees = ((data['attendees'] as List?)?.cast<String>() ?? [])
-              .where((n) => n.isNotEmpty)
-              .toList();
-          (newData[f.settlement]![tk]!['sessions'] as List).add({
-            'feedbackId': f.id ?? '',
-            'date': f.createdAt,
-            'typeGroup': 'גזרתי',
-            'subType': (data['trainingType'] as String?) ?? '',
             'trainees': sessionTrainees,
           });
         }
@@ -24663,7 +24649,6 @@ class _TraineeAttendanceStatisticsPageState
     if (k == 'מטווחים 474') return 'מטווחים';
     if (k == 'משוב סיכום אימון 474') return 'סיכום אימון';
     if (k == 'משוב תרגילי הפתעה') return 'הפתעה';
-    if (k == 'תרגילים גזרתיים') return 'גזרתי';
     return k;
   }
 
