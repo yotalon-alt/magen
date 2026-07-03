@@ -32,8 +32,9 @@ class _ScreeningsMenuPageState extends State<ScreeningsMenuPage> {
           .where('status', isEqualTo: 'draft')
           .where('courseType', isEqualTo: widget.courseType);
       if (!isAdmin) q = q.where('userId', isEqualTo: uid);
-      final snap = await q.limit(500).get().timeout(const Duration(seconds: 8));
-      if (mounted) setState(() => _draftCount = snap.docs.length);
+      // count() — 1 read regardless of result size
+      final snap = await q.count().get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.count ?? 0);
     } catch (_) {}
   }
 

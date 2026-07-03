@@ -907,12 +907,13 @@ Future<void> loadFeedbacksForCurrentUser({
       );
     }
   } else {
-    // Admin: also load instructor course evaluations (all of them)
+    // Admin: also load instructor course evaluations (most recent 200)
     try {
       final evalSnap = await FirebaseFirestore.instance
           .collection('instructor_course_evaluations')
           .where('status', isEqualTo: 'final')
           .orderBy('createdAt', descending: true)
+          .limit(200)
           .get()
           .timeout(const Duration(seconds: 5));
 
