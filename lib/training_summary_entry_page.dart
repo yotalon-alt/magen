@@ -36,8 +36,9 @@ class _TrainingSummaryEntryPageState extends State<TrainingSummaryEntryPage> {
           .where('module', isEqualTo: 'training_summary')
           .where('isTemporary', isEqualTo: true);
       if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
-      final snap = await q.limit(500).get().timeout(const Duration(seconds: 8));
-      if (mounted) setState(() => _draftCount = snap.docs.length);
+      // count() — 1 read regardless of result size
+      final snap = await q.count().get().timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => _draftCount = snap.count ?? 0);
     } catch (_) {}
   }
 

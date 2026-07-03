@@ -31,32 +31,40 @@ class _SurpriseDrillsEntryPageState extends State<SurpriseDrillsEntryPage> {
       final uid = currentUser?.uid;
       if (uid == null) return;
       final isAdmin = currentUser?.role == 'Admin';
-      Query q = FirebaseFirestore.instance
-          .collection('feedbacks')
-          .where('module', isEqualTo: 'surprise_drill')
-          .where('isTemporary', isEqualTo: true);
-      if (!isAdmin) q = q.where('instructorId', isEqualTo: uid);
-      final snap = await q.limit(500).get().timeout(const Duration(seconds: 8));
 
-      // Also count feedbacks where user is an additional instructor
-      final Set<String> ids = snap.docs.map((d) => d.id).toSet();
-      if (!isAdmin) {
-        try {
-          final sharedSnap = await FirebaseFirestore.instance
+      if (isAdmin) {
+        // Admin: single count query — 1 read total
+        final snap = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .where('module', isEqualTo: 'surprise_drill')
+            .where('isTemporary', isEqualTo: true)
+            .count()
+            .get()
+            .timeout(const Duration(seconds: 8));
+        if (mounted) setState(() => _draftCount = snap.count ?? 0);
+      } else {
+        // Non-admin: 2 count queries (by UID + by name) — 2 reads total
+        final results = await Future.wait([
+          FirebaseFirestore.instance
+              .collection('feedbacks')
+              .where('module', isEqualTo: 'surprise_drill')
+              .where('isTemporary', isEqualTo: true)
+              .where('instructorId', isEqualTo: uid)
+              .count()
+              .get()
+              .timeout(const Duration(seconds: 8)),
+          FirebaseFirestore.instance
               .collection('feedbacks')
               .where('module', isEqualTo: 'surprise_drill')
               .where('isTemporary', isEqualTo: true)
               .where('instructors', arrayContains: currentUser?.name ?? '')
-              .limit(500)
+              .count()
               .get()
-              .timeout(const Duration(seconds: 8));
-          for (final doc in sharedSnap.docs) {
-            ids.add(doc.id);
-          }
-        } catch (_) {}
+              .timeout(const Duration(seconds: 8)),
+        ]);
+        final total = (results[0].count ?? 0) + (results[1].count ?? 0);
+        if (mounted) setState(() => _draftCount = total);
       }
-
-      if (mounted) setState(() => _draftCount = ids.length);
     } catch (_) {}
   }
 

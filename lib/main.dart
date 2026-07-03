@@ -719,6 +719,9 @@ Future<void> main() async {
 /// Global in-memory storage
 final List<FeedbackModel> feedbackStorage = [];
 
+/// Timestamp of last successful feedbackStorage load — used for TTL cache
+DateTime? _feedbackStorageLoadedAt;
+
 /// Helper function to resolve user's Hebrew full name from Firestore
 /// Returns the full Hebrew name, never an email or UID
 Future<String> resolveUserHebrewName(String uid) async {
@@ -757,10 +760,26 @@ Future<String> resolveUserHebrewName(String uid) async {
 }
 
 // Load feedbacks from Firestore according to current user permissions
-Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
-  feedbackStorage.clear();
+Future<void> loadFeedbacksForCurrentUser({
+  bool? isAdmin,
+  bool forceRefresh = false,
+}) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null || uid.isEmpty) return;
+
+  // ⚡ TTL CACHE: skip network call if data is fresh (< 5 minutes) and not forced
+  if (!forceRefresh &&
+      feedbackStorage.isNotEmpty &&
+      _feedbackStorageLoadedAt != null &&
+      DateTime.now().difference(_feedbackStorageLoadedAt!) <
+          const Duration(minutes: 5)) {
+    debugPrint(
+      '⚡ feedbackStorage cache hit (${feedbackStorage.length} items, ${DateTime.now().difference(_feedbackStorageLoadedAt!).inSeconds}s old)',
+    );
+    return;
+  }
+
+  feedbackStorage.clear();
 
   // --- Step 1: Resolve role ---
   // isAdmin is always passed explicitly by callers; fall back to currentUser as safety net
@@ -929,6 +948,9 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
       }
     } catch (_) {}
   }
+
+  // ⚡ Mark successful load timestamp for TTL cache
+  _feedbackStorageLoadedAt = DateTime.now();
 }
 
 /// Migration function to fix incorrectly saved feedback types
@@ -1532,7 +1554,7 @@ class _AlertsPageState extends State<AlertsPage> {
           ),
         );
         // Refresh feedback storage after migration
-        await loadFeedbacksForCurrentUser(isAdmin: true);
+        await loadFeedbacksForCurrentUser(isAdmin: true, forceRefresh: true);
         setState(() {});
       }
     } catch (e) {
@@ -5950,7 +5972,7 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
     try {
       final isAdmin = currentUser?.role == 'Admin';
       debugPrint('🔄 Manual refresh triggered by user');
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(
@@ -13480,7 +13502,7 @@ class _GeneralStatisticsPageState extends State<GeneralStatisticsPage> {
     setState(() => _isRefreshing = true);
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -14981,7 +15003,7 @@ class _RangeStatisticsPageState extends State<RangeStatisticsPage> {
     setState(() => _isRefreshing = true);
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       rangeData.clear();
       await _loadRangeData();
       if (!mounted) return;
@@ -16650,7 +16672,7 @@ class _Brigade474StatisticsPageState extends State<Brigade474StatisticsPage> {
     try {
       // Reload feedbacks from Firestore
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
 
       // Reload brigade data
       await _loadBrigadeData();
@@ -19120,7 +19142,7 @@ class _SurpriseDrillsStatisticsPageState
     setState(() => _isRefreshing = true);
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       surpriseDrillsData.clear();
       await _loadSurpriseDrillsData();
       if (!mounted) return;
@@ -20293,7 +20315,7 @@ class _GeneralFolderSelectionPageState
 
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(
@@ -20463,7 +20485,7 @@ class _Brigade474FinalFoldersPageState
     try {
       final isAdmin = currentUser?.role == 'Admin';
       debugPrint('🔄 Manual refresh triggered for הגמר חטיבה 474');
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(
@@ -20650,7 +20672,7 @@ class _SectoralExercisesFoldersPageState
     setState(() => _isRefreshing = true);
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(
@@ -20935,7 +20957,7 @@ class _SectoralSubFolderViewState extends State<_SectoralSubFolderView> {
     setState(() => _isRefreshing = true);
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       _buildFeedbackList();
       setState(() {});
@@ -21813,7 +21835,7 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
 
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(
@@ -24507,7 +24529,10 @@ class _TraineeAttendanceStatisticsPageState
   Future<void> _refresh() async {
     if (_isRefreshing) return;
     setState(() => _isRefreshing = true);
-    await loadFeedbacksForCurrentUser(isAdmin: currentUser?.role == 'Admin');
+    await loadFeedbacksForCurrentUser(
+      isAdmin: currentUser?.role == 'Admin',
+      forceRefresh: true,
+    );
     await _loadData();
     if (mounted) {
       setState(() => _isRefreshing = false);
@@ -25368,7 +25393,7 @@ class _TrainingFolderSelectionPageState
     setState(() => _isRefreshing = true);
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(

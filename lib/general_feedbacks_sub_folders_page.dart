@@ -140,7 +140,7 @@ class _RegularFeedbacksListPageState extends State<RegularFeedbacksListPage> {
 
     try {
       final isAdmin = currentUser?.role == 'Admin';
-      await loadFeedbacksForCurrentUser(isAdmin: isAdmin);
+      await loadFeedbacksForCurrentUser(isAdmin: isAdmin, forceRefresh: true);
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
