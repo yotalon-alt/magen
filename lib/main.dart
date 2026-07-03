@@ -722,6 +722,76 @@ final List<FeedbackModel> feedbackStorage = [];
 /// Timestamp of last successful feedbackStorage load — used for TTL cache
 DateTime? _feedbackStorageLoadedAt;
 
+// ─────────────────────────────────────────────────────────────
+// localStorage (SharedPreferences) cache — persists between browser sessions
+// ─────────────────────────────────────────────────────────────
+const String _kFeedbackCacheKey = 'fb_cache_v1';
+const String _kFeedbackCacheTimeKey = 'fb_cache_time_v1';
+const String _kFeedbackCacheUidKey = 'fb_cache_uid_v1';
+const Duration _kLocalCacheTtl = Duration(hours: 1);
+
+/// Save feedbackStorage to SharedPreferences (browser localStorage)
+Future<void> _saveFeedbacksToLocalCache(String uid) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = feedbackStorage.map((f) => f.toJson()).toList();
+    final jsonStr = json.encode(jsonList);
+    await prefs.setString(_kFeedbackCacheKey, jsonStr);
+    await prefs.setString(
+      _kFeedbackCacheTimeKey,
+      DateTime.now().toIso8601String(),
+    );
+    await prefs.setString(_kFeedbackCacheUidKey, uid);
+    debugPrint(
+      '💾 Saved ${feedbackStorage.length} feedbacks to localStorage cache',
+    );
+  } catch (e) {
+    debugPrint('⚠️ Failed to save feedback cache: $e');
+  }
+}
+
+/// Load feedbackStorage from SharedPreferences. Returns true on cache hit.
+Future<bool> _loadFeedbacksFromLocalCache(String uid) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Verify cache belongs to this user
+    final cachedUid = prefs.getString(_kFeedbackCacheUidKey);
+    if (cachedUid != uid) return false;
+
+    // Check TTL
+    final timeStr = prefs.getString(_kFeedbackCacheTimeKey);
+    if (timeStr == null) return false;
+    final cachedAt = DateTime.tryParse(timeStr);
+    if (cachedAt == null) return false;
+    if (DateTime.now().difference(cachedAt) > _kLocalCacheTtl) {
+      debugPrint('⏰ localStorage cache expired');
+      return false;
+    }
+
+    // Deserialize
+    final jsonStr = prefs.getString(_kFeedbackCacheKey);
+    if (jsonStr == null || jsonStr.isEmpty) return false;
+    final jsonList = json.decode(jsonStr) as List<dynamic>;
+    feedbackStorage.clear();
+    for (final item in jsonList) {
+      final model = FeedbackModel.fromMap(
+        (item as Map<String, dynamic>),
+        id: (item['id'] as String?),
+      );
+      if (model != null) feedbackStorage.add(model);
+    }
+    _feedbackStorageLoadedAt = cachedAt;
+    debugPrint(
+      '⚡ Loaded ${feedbackStorage.length} feedbacks from localStorage (0 Firestore reads)',
+    );
+    return true;
+  } catch (e) {
+    debugPrint('⚠️ Failed to load feedback cache: $e');
+    return false;
+  }
+}
+
 /// Helper function to resolve user's Hebrew full name from Firestore
 /// Returns the full Hebrew name, never an email or UID
 Future<String> resolveUserHebrewName(String uid) async {
@@ -777,6 +847,12 @@ Future<void> loadFeedbacksForCurrentUser({
       '⚡ feedbackStorage cache hit (${feedbackStorage.length} items, ${DateTime.now().difference(_feedbackStorageLoadedAt!).inSeconds}s old)',
     );
     return;
+  }
+
+  // 💾 localStorage CACHE: skip Firestore if browser cache is fresh (< 1 hour)
+  if (!forceRefresh) {
+    final loaded = await _loadFeedbacksFromLocalCache(uid);
+    if (loaded) return; // 0 Firestore reads!
   }
 
   feedbackStorage.clear();
@@ -952,6 +1028,8 @@ Future<void> loadFeedbacksForCurrentUser({
 
   // ⚡ Mark successful load timestamp for TTL cache
   _feedbackStorageLoadedAt = DateTime.now();
+  // 💾 Persist to localStorage for next session (fire-and-forget)
+  unawaited(_saveFeedbacksToLocalCache(uid));
 }
 
 /// Migration function to fix incorrectly saved feedback types
