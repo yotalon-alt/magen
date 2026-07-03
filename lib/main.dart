@@ -762,27 +762,16 @@ Future<void> loadFeedbacksForCurrentUser({bool? isAdmin}) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null || uid.isEmpty) return;
 
-  // --- Step 1: Resolve role (required before deciding query scope) ---
-  bool adminFlag = isAdmin ?? false;
-  if (isAdmin == null) {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get()
-          .timeout(const Duration(seconds: 5));
-      final role = (doc.data()?['role'] ?? '').toString().toLowerCase();
-      adminFlag = role == 'admin';
-    } catch (_) {
-      adminFlag = false;
-    }
-  }
+  // --- Step 1: Resolve role ---
+  // isAdmin is always passed explicitly by callers; fall back to currentUser as safety net
+  final bool adminFlag = isAdmin ?? (currentUser?.role == 'Admin');
 
   // --- Step 2: Load all feedbacks (admins and instructors see all) ---
   try {
     Query q = FirebaseFirestore.instance
         .collection('feedbacks')
-        .orderBy('createdAt', descending: true);
+        .orderBy('createdAt', descending: true)
+        .limit(300); // Limit initial load for performance
 
     final snap = await q.get().timeout(const Duration(seconds: 8));
     for (final doc
@@ -2088,70 +2077,11 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      final String uid = cred.user!.uid;
-
-      // Step 3: Read user document from Firestore with timeout
-      // ignore: avoid_print
-      print('📋 שלב 2: קריאת מסמך משתמש מ-Firestore (users/$uid)');
-      String? userRole;
-      bool docExists = false;
-
-      try {
-        final profileDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .get()
-            .timeout(const Duration(seconds: 5));
-
-        docExists = profileDoc.exists;
-
-        if (profileDoc.exists) {
-          final data = profileDoc.data();
-          userRole = data?['role'] as String?;
-          // ignore: avoid_print
-          print('✅ מסמך משתמש נמצא. Role: $userRole');
-        } else {
-          // ignore: avoid_print
-          print('⚠️ מסמך משתמש לא קיים ב-Firestore');
-        }
-      } on TimeoutException {
-        // ignore: avoid_print
-        print('⏱️ Timeout בקריאה מ-Firestore (5 שניות)');
-      } on FirebaseException catch (fe) {
-        // ignore: avoid_print
-        print('⚠️ שגיאת Firestore: ${fe.code} - ${fe.message}');
-      } catch (e) {
-        // ignore: avoid_print
-        print('⚠️ שגיאה לא צפויה בקריאת Firestore: $e');
-      }
-
-      // If document doesn't exist, show error and stop
-      if (!docExists) {
-        if (mounted) setState(() => _isLoading = false);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('משתמש לא קיים במערכת - פנה למנהל'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      // Normalize role
-      userRole = (userRole?.toLowerCase() ?? '').trim();
-      final bool isAdmin = userRole == 'admin';
-
-      debugPrint('✅ התחברות הושלמה בהצלחה!');
-      debugPrint('   Email: $email');
-      debugPrint('   UID: $uid');
-      debugPrint('   Role: ${isAdmin ? 'admin' : 'user'}');
+      // Auth succeeded — AuthGate handles profile loading and navigation
+      debugPrint('✅ אימות הצליח! UID: ${cred.user!.uid}');
+      debugPrint('🚀 AuthGate יטפל בניווט אוטומטית');
 
       if (mounted) setState(() => _isLoading = false);
-      if (!mounted) return;
-
-      // AuthGate will automatically navigate based on authStateChanges
-      debugPrint('🚀 AuthGate יטפל בניווט אוטומטית');
     } on FirebaseAuthException catch (fae) {
       debugPrint('❌ FirebaseAuthException: ${fae.code}');
       debugPrint('   Message: ${fae.message}');
