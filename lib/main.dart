@@ -725,9 +725,9 @@ DateTime? _feedbackStorageLoadedAt;
 // ─────────────────────────────────────────────────────────────
 // localStorage (SharedPreferences) cache — persists between browser sessions
 // ─────────────────────────────────────────────────────────────
-const String _kFeedbackCacheKey = 'fb_cache_v1';
-const String _kFeedbackCacheTimeKey = 'fb_cache_time_v1';
-const String _kFeedbackCacheUidKey = 'fb_cache_uid_v1';
+const String _kFeedbackCacheKey = 'fb_cache_v2';
+const String _kFeedbackCacheTimeKey = 'fb_cache_time_v2';
+const String _kFeedbackCacheUidKey = 'fb_cache_uid_v2';
 const Duration _kLocalCacheTtl = Duration(hours: 1);
 
 /// Save feedbackStorage to SharedPreferences (browser localStorage)
@@ -866,7 +866,9 @@ Future<void> loadFeedbacksForCurrentUser({
     Query q = FirebaseFirestore.instance
         .collection('feedbacks')
         .orderBy('createdAt', descending: true)
-        .limit(300); // Limit initial load for performance
+        .limit(
+          1000,
+        ); // Limit initial load for performance (increased from 300 to avoid cutting off older final feedbacks when drafts consume the quota)
 
     final snap = await q.get().timeout(const Duration(seconds: 8));
     for (final doc
