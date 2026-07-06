@@ -5167,6 +5167,23 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         }
                       }
                     });
+                    // ✅ FIX: Update stale controllers to match shifted row.values
+                    for (int ti = 0; ti < traineeRows.length; ti++) {
+                      for (int si = 0; si < shortRangeStagesList.length; si++) {
+                        final val = traineeRows[ti].getValue(si);
+                        final timeVal = traineeRows[ti].getTimeValue(si);
+                        final valStr = val > 0 ? val.toString() : '';
+                        final timeStr = timeVal > 0 ? timeVal.toString() : '';
+                        _textControllers['row_${ti}_station_$si']?.text =
+                            valStr;
+                        _textControllers['desktop_trainee_${ti}_station_$si']
+                                ?.text =
+                            valStr;
+                        _textControllers['desktop_trainee_${ti}_station_${si}_time']
+                                ?.text =
+                            timeStr;
+                      }
+                    }
                     _scheduleAutoSave();
                   },
                   children: shortRangeStagesList.asMap().entries.map((entry) {
@@ -5449,6 +5466,18 @@ class _RangeTrainingPageState extends State<RangeTrainingPage> {
                         }
                       }
                     });
+                    // ✅ FIX: Update stale controllers to match shifted row.values
+                    for (int ti = 0; ti < traineeRows.length; ti++) {
+                      for (int si = 0; si < longRangeStagesList.length; si++) {
+                        final val = traineeRows[ti].getValue(si);
+                        final valStr = val > 0 ? val.toString() : '';
+                        _textControllers['row_${ti}_station_$si']?.text =
+                            valStr;
+                        _textControllers['desktop_trainee_${ti}_station_$si']
+                                ?.text =
+                            valStr;
+                      }
+                    }
                     _scheduleAutoSave();
                   },
                   children: longRangeStagesList.asMap().entries.map((entry) {
