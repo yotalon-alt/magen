@@ -871,10 +871,11 @@ Future<void> loadFeedbacksForCurrentUser({
 
   // --- Step 2: Load all final feedbacks (admins and instructors see all) ---
   try {
+    // No orderBy here — avoids requiring a composite index on isTemporary+createdAt.
+    // Sorting is done client-side after load (negligible cost for current data size).
     Query q = FirebaseFirestore.instance
         .collection('feedbacks')
-        .where('isTemporary', isEqualTo: false)
-        .orderBy('createdAt', descending: true);
+        .where('isTemporary', isEqualTo: false);
 
     final snap = await q.get().timeout(const Duration(seconds: 8));
     for (final doc
@@ -882,6 +883,8 @@ Future<void> loadFeedbacksForCurrentUser({
       final model = FeedbackModel.fromMap(doc.data(), id: doc.id);
       if (model != null) feedbackStorage.add(model);
     }
+    // Sort by createdAt descending (newest first)
+    feedbackStorage.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   } on FirebaseException catch (e) {
     // Index error or permission error — skip gracefully
     debugPrint('loadFeedbacksForCurrentUser main query error: ${e.code}');
@@ -8351,6 +8354,181 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     }
   }
 
+  /// Opens a dialog to link additional personal feedbacks to this training summary
+  Future<void> _showLinkFeedbackDialog(List<String> alreadyLinkedIds) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final settlementToSearch = feedback.settlement;
+    if (settlementToSearch.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('לא ניתן לחפש — אין יישוב במשוב')),
+      );
+      return;
+    }
+
+    final referenceDate = feedback.createdAt.toLocal();
+    final startOfDay = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('טוען משובים...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    List<FeedbackModel> available = [];
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('settlement', isEqualTo: settlementToSearch)
+          .where('isTemporary', isEqualTo: false)
+          .get()
+          .timeout(const Duration(seconds: 10));
+
+      for (final doc
+          in snap.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>()) {
+        final data = doc.data();
+        // Filter by date client-side
+        DateTime? createdAt;
+        final ca = data['createdAt'];
+        if (ca is Timestamp) createdAt = ca.toDate().toLocal();
+        if (createdAt == null) continue;
+        if (createdAt.isBefore(startOfDay) || !createdAt.isBefore(endOfDay)) {
+          continue;
+        }
+        // Only personal feedbacks
+        final exercise = (data['exercise'] as String?) ?? '';
+        final folder = (data['folder'] as String?) ?? '';
+        final isPersonal =
+            (exercise == 'מעגל פתוח' ||
+                exercise == 'מעגל פרוץ' ||
+                exercise == 'סריקות רחוב') &&
+            (folder == 'מחלקות ההגנה – חטיבה 474' ||
+                folder == 'משובים – כללי' ||
+                folder == 'תרגילים גזרתיים');
+        if (!isPersonal) continue;
+        // Skip already linked
+        if (alreadyLinkedIds.contains(doc.id)) continue;
+        final model = FeedbackModel.fromMap(data, id: doc.id);
+        if (model != null) available.add(model);
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בטעינת משובים: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // close loading
+
+    if (available.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('לא נמצאו משובים אישיים לקישור באותו יום ויישוב'),
+        ),
+      );
+      return;
+    }
+
+    final selectedIds = <String>{};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('בחר משובים לקישור'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: available.length,
+                itemBuilder: (_, i) {
+                  final f = available[i];
+                  final isChecked = selectedIds.contains(f.id);
+                  return CheckboxListTile(
+                    value: isChecked,
+                    onChanged: (v) {
+                      setDialogState(() {
+                        if (v == true) {
+                          selectedIds.add(f.id!);
+                        } else {
+                          selectedIds.remove(f.id);
+                        }
+                      });
+                    },
+                    title: Text('${f.role} — ${f.name}'),
+                    subtitle: Text(f.exercise),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('ביטול'),
+              ),
+              ElevatedButton(
+                onPressed: selectedIds.isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, true),
+                child: Text(
+                  selectedIds.isEmpty ? 'הצמד' : 'הצמד (${selectedIds.length})',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true || selectedIds.isEmpty || !mounted) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(feedback.id)
+          .update({
+            'linkedFeedbackIds': FieldValue.arrayUnion(selectedIds.toList()),
+          });
+      _refreshDocFuture();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('${selectedIds.length} משובים קושרו בהצלחה'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('שגיאה בקישור משובים: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -10821,8 +10999,13 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       (data['linkedFeedbackIds'] as List?)
                                           ?.cast<String>() ??
                                       [];
+                                  final canLink =
+                                      currentUser?.name == 'יותם אלון' &&
+                                      currentUser?.role == 'Admin' &&
+                                      feedback.id != null &&
+                                      feedback.id!.isNotEmpty;
 
-                                  if (linkedFeedbackIds.isEmpty) {
+                                  if (linkedFeedbackIds.isEmpty && !canLink) {
                                     return const SizedBox.shrink();
                                   }
 
@@ -10834,14 +11017,14 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                       const Divider(thickness: 2),
                                       const SizedBox(height: 12),
                                       Row(
-                                        children: const [
-                                          Icon(
+                                        children: [
+                                          const Icon(
                                             Icons.link,
                                             color: Colors.orangeAccent,
                                             size: 24,
                                           ),
-                                          SizedBox(width: 8),
-                                          Text(
+                                          const SizedBox(width: 8),
+                                          const Text(
                                             'משובים אישיים מקושרים',
                                             style: TextStyle(
                                               fontSize: 18,
@@ -10849,16 +11032,39 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                               color: Colors.orangeAccent,
                                             ),
                                           ),
+                                          const Spacer(),
+                                          if (canLink)
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.edit,
+                                                size: 20,
+                                                color: Colors.orangeAccent,
+                                              ),
+                                              tooltip: 'הצמד משוב אישי',
+                                              onPressed: () =>
+                                                  _showLinkFeedbackDialog(
+                                                    linkedFeedbackIds,
+                                                  ),
+                                            ),
                                         ],
                                       ),
                                       const SizedBox(height: 12),
-                                      Text(
-                                        '${linkedFeedbackIds.length} משובים מקושרים',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey.shade600,
+                                      if (linkedFeedbackIds.isEmpty)
+                                        const Text(
+                                          'אין משובים מקושרים',
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 14,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          '${linkedFeedbackIds.length} משובים מקושרים',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade600,
+                                          ),
                                         ),
-                                      ),
                                       const SizedBox(height: 12),
 
                                       // Load and display each linked feedback
