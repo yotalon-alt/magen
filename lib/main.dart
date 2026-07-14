@@ -8374,23 +8374,34 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     );
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
-    // Show loading
+    // Show loading — capture dialog context for safe dismissal
+    BuildContext? loadingDialogContext;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('טוען משובים...'),
-            ],
+      builder: (dialogCtx) {
+        loadingDialogContext = dialogCtx;
+        return const Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Text('טוען משובים...'),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
+
+    void closeLoadingDialog() {
+      final ctx = loadingDialogContext;
+      if (ctx != null && ctx.mounted) {
+        Navigator.of(ctx).pop();
+      }
+    }
 
     List<FeedbackModel> available = [];
     try {
@@ -8429,7 +8440,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
         if (model != null) available.add(model);
       }
     } catch (e) {
-      if (mounted) Navigator.of(context).pop();
+      closeLoadingDialog();
       messenger.showSnackBar(
         SnackBar(
           content: Text('שגיאה בטעינת משובים: $e'),
@@ -8440,7 +8451,7 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
     }
 
     if (!mounted) return;
-    Navigator.of(context).pop(); // close loading
+    closeLoadingDialog(); // close loading
 
     if (available.isEmpty) {
       messenger.showSnackBar(
