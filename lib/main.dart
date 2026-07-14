@@ -690,12 +690,10 @@ class _MultiSelectDropdownFieldState extends State<MultiSelectDropdownField> {
   }
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Initialize default in-memory users synchronously
-  initDefaultUsers();
+// 🚀 PERF: Firebase init future — starts in main(), awaited by AuthGate via FutureBuilder
+late final Future<void> _firebaseInitFuture;
 
-  // Initialize Firebase BEFORE starting the app to avoid race conditions
+Future<void> _initFirebaseAsync() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -706,12 +704,22 @@ Future<void> main() async {
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
     // ignore: avoid_print
-    print('Firebase initialized successfully in main()');
+    print('Firebase initialized successfully');
   } catch (e) {
     // Initialization failed or timed out — log but continue
     // ignore: avoid_print
-    print('Firebase init failed in main(): $e');
+    print('Firebase init failed: $e');
   }
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Initialize default in-memory users synchronously
+  initDefaultUsers();
+
+  // 🚀 PERF: Start Firebase init in background — don't block runApp()
+  // The UI (loading spinner) appears immediately; AuthGate waits for this future.
+  _firebaseInitFuture = _initFirebaseAsync();
 
   runApp(const MyApp());
 }
@@ -861,14 +869,12 @@ Future<void> loadFeedbacksForCurrentUser({
   // isAdmin is always passed explicitly by callers; fall back to currentUser as safety net
   final bool adminFlag = isAdmin ?? (currentUser?.role == 'Admin');
 
-  // --- Step 2: Load all feedbacks (admins and instructors see all) ---
+  // --- Step 2: Load all final feedbacks (admins and instructors see all) ---
   try {
     Query q = FirebaseFirestore.instance
         .collection('feedbacks')
-        .orderBy('createdAt', descending: true)
-        .limit(
-          1000,
-        ); // Limit initial load for performance (increased from 300 to avoid cutting off older final feedbacks when drafts consume the quota)
+        .where('isTemporary', isEqualTo: false)
+        .orderBy('createdAt', descending: true);
 
     final snap = await q.get().timeout(const Duration(seconds: 8));
     for (final doc
@@ -1167,7 +1173,26 @@ class MyApp extends StatelessWidget {
           headlineSmall: TextStyle(color: Colors.black87),
         ),
       ),
-      home: const AuthGate(),
+      home: FutureBuilder<void>(
+        future: _firebaseInitFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('מאתחל...'),
+                  ],
+                ),
+              ),
+            );
+          }
+          return const AuthGate();
+        },
+      ),
       routes: {'/main': (_) => const MainScreen()},
       // readiness and alerts routes
       onGenerateRoute: (settings) {
@@ -12999,7 +13024,11 @@ class _FeedbackDetailsPageState extends State<FeedbackDetailsPage> {
                                             feedback.folderKey ==
                                                 'shooting_ranges' ||
                                             feedback.folderKey ==
-                                                'ranges_474') &&
+                                                'ranges_474' ||
+                                            feedback.folderKey ==
+                                                'placer_golan' ||
+                                            feedback.module ==
+                                                'shooting_ranges') &&
                                         feedback.id != null &&
                                         feedback.id!.isNotEmpty;
 
