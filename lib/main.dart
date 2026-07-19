@@ -6875,9 +6875,14 @@ class _FeedbacksPageState extends State<FeedbacksPage> {
           return false;
         }
       }
-      // Instructor filter
+      // Instructor filter - check both primary instructor AND additional instructors
       if (_filterInstructor != 'הכל') {
-        if (f.instructorName.isEmpty || f.instructorName != _filterInstructor) {
+        final isPrimaryInstructor = f.instructorName == _filterInstructor;
+        final isAdditionalInstructor = f.instructors.contains(
+          _filterInstructor,
+        );
+
+        if (!isPrimaryInstructor && !isAdditionalInstructor) {
           return false;
         }
       }
@@ -22114,9 +22119,14 @@ class _FeedbacksPageDirectViewState extends State<FeedbacksPageDirectView> {
           return false;
         }
       }
-      // Instructor filter
+      // Instructor filter - check both primary instructor AND additional instructors
       if (_filterInstructor != 'הכל') {
-        if (f.instructorName.isEmpty || f.instructorName != _filterInstructor) {
+        final isPrimaryInstructor = f.instructorName == _filterInstructor;
+        final isAdditionalInstructor = f.instructors.contains(
+          _filterInstructor,
+        );
+
+        if (!isPrimaryInstructor && !isAdditionalInstructor) {
           return false;
         }
       }
